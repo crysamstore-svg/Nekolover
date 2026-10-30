@@ -1,0 +1,6 @@
+{
+  "name": "NekoLover Read",
+  "description": "Lector Kawaii Dark & EPUB/PDF con estanterías 3D, stickers movibles, citas literarias, tipografía Dark Reborn y sonidos ambientales.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

@@ -1,0 +1,33 @@
+🐾 NEKOLOVER READ — PAQUETE DE PROYECTO ANDROID / APK 🖤
+============================================================
+
+Este archivo ZIP contiene el proyecto nativo Android completo configurado con Gradle,
+código Java, iconos, recursos y los archivos compilados de la aplicación web
+para funcionar 100% OFFLINE en cualquier teléfono o tablet Android.
+
+CÓMO GENERAR TU ARCHIVO .APK EN 2 MINUTOS:
+
+OPCIÓN 1: CON ANDROID STUDIO (Recomendado)
+-------------------------------------------
+1. Descomprime este archivo ZIP en tu computadora.
+2. Abre Android Studio.
+3. Haz clic en "Open" y selecciona la carpeta descomprimida "android-project".
+4. Espera a que Gradle sincronice las dependencias automáticamente.
+5. En el menú superior, ve a:
+   Build > Build Bundle(s) / APK(s) > Build APK(s)
+6. ¡Listo! Android Studio compilará el archivo:
+   app/build/outputs/apk/debug/app-debug.apk
+7. Pásalo a tu celular Android y tócalo para instalar.
+
+OPCIÓN 2: POR TERMINAL (Línea de comandos)
+-------------------------------------------
+En la carpeta del proyecto, ejecuta:
+- En Windows:
+    gradlew.bat assembleDebug
+- En Mac / Linux:
+    ./gradlew assembleDebug
+
+El APK se generará en:
+app/build/outputs/apk/debug/app-debug.apk
+
+¡Disfruta de NekoLover Read en tu móvil Android! 🐾📖

@@ -1,0 +1,367 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: 'Quicksand', sans-serif;
+  --font-cute: 'Fredoka', cursive;
+  --font-reborn: 'Cinzel Decorative', 'Pirata One', serif;
+  --font-gothic: 'UnifrakturMaguntia', cursive;
+  --font-creepster: 'Creepster', cursive;
+  --font-serif-classic: 'Playfair Display', serif;
+  --font-lora: 'Lora', serif;
+}
+
+:root, [data-theme="kawaii-dark"] {
+  --bg-color: #121019;
+  --card-bg: #1a1726;
+  --card-hover: #221e33;
+  --border-color: #2e2646;
+  --accent-pink: #ff79c6;
+  --accent-purple: #bd93f9;
+  --accent-secondary: #ff92d0;
+  --text-main: #e2d6ff;
+  --text-muted: #9f8fc2;
+  --shelf-color: #241b35;
+  --shelf-border: #ff79c6;
+  --reader-bg: #161322;
+  --reader-text: #f0e6ff;
+}
+
+[data-theme="vanilla-fresa"] {
+  --bg-color: #21131b;
+  --card-bg: #2d1a25;
+  --card-hover: #3a2230;
+  --border-color: #48283b;
+  --accent-pink: #ff85a2;
+  --accent-purple: #fce1e4;
+  --accent-secondary: #ffa3b9;
+  --text-main: #fff0f3;
+  --text-muted: #cca5b4;
+  --shelf-color: #3b2030;
+  --shelf-border: #ff85a2;
+  --reader-bg: #fff5f7;
+  --reader-text: #2a1521;
+}
+
+[data-theme="nocturno"] {
+  --bg-color: #05070d;
+  --card-bg: #0b0f19;
+  --card-hover: #131b2e;
+  --border-color: #182238;
+  --accent-pink: #80b3ff;
+  --accent-purple: #a8c8fb;
+  --accent-secondary: #60a5fa;
+  --text-main: #d1e2ff;
+  --text-muted: #7997ca;
+  --shelf-color: #0e172a;
+  --shelf-border: #3b82f6;
+  --reader-bg: #030509;
+  --reader-text: #c0d8ff;
+}
+
+[data-theme="brujita-lavanda"] {
+  --bg-color: #110d1c;
+  --card-bg: #1a142b;
+  --card-hover: #241c3c;
+  --border-color: #322554;
+  --accent-pink: #c084fc;
+  --accent-purple: #e9d5ff;
+  --accent-secondary: #a855f7;
+  --text-main: #f3e8ff;
+  --text-muted: #a78bfa;
+  --shelf-color: #23183d;
+  --shelf-border: #c084fc;
+  --reader-bg: #171126;
+  --reader-text: #fae8ff;
+}
+
+[data-theme="carmesi-vampiro"] {
+  --bg-color: #14070a;
+  --card-bg: #210c12;
+  --card-hover: #30111a;
+  --border-color: #441723;
+  --accent-pink: #f43f5e;
+  --accent-purple: #fda4af;
+  --accent-secondary: #fb7185;
+  --text-main: #ffe4e6;
+  --text-muted: #be7b87;
+  --shelf-color: #2b0e17;
+  --shelf-border: #f43f5e;
+  --reader-bg: #18090d;
+  --reader-text: #ffeef0;
+}
+
+body {
+  background-color: var(--bg-color);
+  color: var(--text-main);
+  font-family: 'Quicksand', sans-serif;
+  overflow-x: hidden;
+  -webkit-tap-highlight-color: transparent;
+  transition: background-color 0.3s ease, color 0.3s ease;
+}
+
+.dark-reborn-title {
+  font-family: 'Cinzel Decorative', 'Pirata One', serif;
+  letter-spacing: 0.04em;
+  text-shadow: 0 0 14px var(--accent-pink);
+}
+
+.dark-reborn-font {
+  font-family: 'Cinzel Decorative', serif;
+}
+
+.font-cute {
+  font-family: 'Fredoka', cursive;
+}
+
+.font-reborn {
+  font-family: 'Cinzel Decorative', 'Pirata One', serif;
+}
+
+.font-gothic {
+  font-family: 'UnifrakturMaguntia', cursive;
+}
+
+.font-creepster {
+  font-family: 'Creepster', cursive;
+}
+
+.font-serif-classic {
+  font-family: 'Playfair Display', serif;
+}
+
+.font-lora {
+  font-family: 'Lora', serif;
+}
+
+/* Custom Scrollbars */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: var(--bg-color);
+}
+::-webkit-scrollbar-thumb {
+  background: var(--border-color);
+  border-radius: 99px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--accent-pink);
+}
+
+/* Cat ears badge decoration */
+.cat-ears-badge {
+  position: relative;
+}
+.cat-ears-badge::before, .cat-ears-badge::after {
+  content: '';
+  position: absolute;
+  top: -6px;
+  width: 0;
+  height: 0;
+  border-left: 6px solid transparent;
+  border-right: 6px solid transparent;
+  border-bottom: 8px solid var(--accent-pink);
+  transition: border-bottom-color 0.3s ease;
+}
+.cat-ears-badge::before { left: 4px; transform: rotate(-15deg); }
+.cat-ears-badge::after { right: 4px; transform: rotate(15deg); }
+
+/* Shelf 3D Texture */
+.shelf-texture {
+  background: linear-gradient(180deg, var(--shelf-color) 0%, #08060d 100%);
+  border-bottom: 5px solid var(--shelf-border);
+  box-shadow: 0 10px 22px rgba(0, 0, 0, 0.75);
+}
+
+/* Modal Pop In Animation */
+.modal-animate {
+  animation: popIn 0.22s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+@keyframes popIn {
+  from { opacity: 0; transform: scale(0.94); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+/* Movable Sticker Floating Glow */
+.movable-sticker {
+  user-select: none;
+  touch-action: none;
+  filter: drop-shadow(0px 4px 8px rgba(0,0,0,0.7));
+  cursor: grab;
+  transition: transform 0.1s ease, filter 0.15s ease;
+}
+
+.movable-sticker:active {
+  cursor: grabbing;
+  transform: scale(1.15) rotate(5deg);
+  filter: drop-shadow(0px 8px 16px var(--accent-pink));
+}
+
+/* Reading area epub override */
+#epub-render {
+  width: 100% !important;
+  height: 100% !important;
+  min-height: 520px;
+}
+
+/* Global Ultra-Dark OLED Night Mode (High Contrast Grayscale & Pure Black) */
+[data-night-mode="true"] {
+  --bg-color: #000000 !important;
+  --card-bg: #0c0c0c !important;
+  --card-hover: #171717 !important;
+  --border-color: #2b2b2b !important;
+  --accent-pink: #ffffff !important;
+  --accent-purple: #e0e0e0 !important;
+  --accent-secondary: #aaaaaa !important;
+  --text-main: #f5f5f5 !important;
+  --text-muted: #888888 !important;
+  --shelf-color: #050505 !important;
+  --shelf-border: #444444 !important;
+  --reader-bg: #000000 !important;
+  --reader-text: #f0f0f0 !important;
+  background-color: #000000 !important;
+  color: #f5f5f5 !important;
+}
+
+[data-night-mode="true"] body {
+  background-color: #000000 !important;
+  color: #f5f5f5 !important;
+}
+
+[data-night-mode="true"] .cat-ears-badge::before,
+[data-night-mode="true"] .cat-ears-badge::after {
+  border-bottom-color: #ffffff !important;
+}
+
+[data-night-mode="true"] .shelf-texture {
+  background: #080808 !important;
+  border-bottom-color: #444444 !important;
+  box-shadow: 0 10px 22px rgba(0, 0, 0, 1) !important;
+}
+
+[data-night-mode="true"] #page-container {
+  background-color: #000000 !important;
+  color: #f0f0f0 !important;
+  border-color: #333333 !important;
+  box-shadow: 0 0 40px rgba(0, 0, 0, 1) !important;
+}
+
+[data-night-mode="true"] .epub-rendered-content {
+  color: #f0f0f0 !important;
+}
+
+[data-night-mode="true"] .epub-rendered-content * {
+  color: #f0f0f0 !important;
+  background-color: transparent !important;
+}
+
+/* Real Book Page Flip 3D Animation */
+.page-flip-forward {
+  animation: pageFlipForward 0.35s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+  transform-origin: left center;
+}
+
+.page-flip-backward {
+  animation: pageFlipBackward 0.35s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+  transform-origin: right center;
+}
+
+@keyframes pageFlipForward {
+  0% {
+    transform: perspective(1000px) rotateY(-14deg) scale(0.98);
+    opacity: 0.75;
+    filter: drop-shadow(-8px 10px 20px rgba(0,0,0,0.6));
+  }
+  100% {
+    transform: perspective(1000px) rotateY(0deg) scale(1);
+    opacity: 1;
+    filter: drop-shadow(0 4px 12px rgba(0,0,0,0.4));
+  }
+}
+
+@keyframes pageFlipBackward {
+  0% {
+    transform: perspective(1000px) rotateY(14deg) scale(0.98);
+    opacity: 0.75;
+    filter: drop-shadow(8px 10px 20px rgba(0,0,0,0.6));
+  }
+  100% {
+    transform: perspective(1000px) rotateY(0deg) scale(1);
+    opacity: 1;
+    filter: drop-shadow(0 4px 12px rgba(0,0,0,0.4));
+  }
+}
+
+/* Conventional Bookshelf Styles (Modo Estantería Convencional) */
+.conventional-shelf-container {
+  background: var(--card-bg);
+  border: 1px solid var(--border-color);
+  border-radius: 1.25rem;
+  overflow: hidden;
+  box-shadow: 0 10px 30px -10px rgba(0, 0, 0, 0.5);
+}
+
+.conventional-shelf-row {
+  position: relative;
+  padding-top: 1.5rem;
+  padding-bottom: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.conventional-shelf-bar {
+  height: 26px;
+  width: 100%;
+  position: relative;
+  border-radius: 4px 4px 6px 6px;
+  box-shadow: 0 10px 24px -2px rgba(0, 0, 0, 0.75);
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* 1. Madera Caoba Gótica */
+.shelf-wood-gothic {
+  background: linear-gradient(180deg, #4d2337 0%, #351625 45%, #200c16 85%, #12060d 100%);
+  border-top: 3px solid #994770;
+  border-bottom: 5px solid #0d0408;
+  box-shadow: 0 12px 24px rgba(0, 0, 0, 0.8), inset 0 1px 3px rgba(255, 121, 198, 0.2);
+}
+
+/* 2. Madera Roble Oscuro / Ébano */
+.shelf-wood-oak {
+  background: linear-gradient(180deg, #452b1e 0%, #2e1c12 45%, #1b100a 85%, #0e0804 100%);
+  border-top: 3px solid #82563b;
+  border-bottom: 5px solid #080402;
+  box-shadow: 0 12px 24px rgba(0, 0, 0, 0.8), inset 0 1px 3px rgba(212, 175, 55, 0.2);
+}
+
+/* 3. Digital Neón */
+.shelf-digital-neon {
+  background: linear-gradient(180deg, #22153b 0%, #170d29 45%, #0e071c 85%, #07030e 100%);
+  border-top: 3px solid #ff79c6;
+  border-bottom: 5px solid #000000;
+  box-shadow: 0 6px 20px rgba(255, 121, 198, 0.35), 0 12px 24px rgba(0, 0, 0, 0.8), inset 0 1px 4px rgba(0, 240, 255, 0.3);
+}
+
+/* 4. Digital Matrix Cyber */
+.shelf-digital-cyber {
+  background: linear-gradient(180deg, #102e1d 0%, #0a1f13 45%, #05130b 85%, #020905 100%);
+  border-top: 3px solid #50fa7b;
+  border-bottom: 5px solid #000000;
+  box-shadow: 0 6px 20px rgba(80, 250, 123, 0.3), 0 12px 24px rgba(0, 0, 0, 0.8), inset 0 1px 4px rgba(80, 250, 123, 0.25);
+}
+
+/* 5. Minimal OLED */
+.shelf-minimal-oled {
+  background: linear-gradient(180deg, #27272a 0%, #1c1c1f 45%, #131316 85%, #09090b 100%);
+  border-top: 3px solid #52525b;
+  border-bottom: 5px solid #000000;
+  box-shadow: 0 12px 24px rgba(0, 0, 0, 0.9), inset 0 1px 2px rgba(255, 255, 255, 0.1);
+}
+
+
+

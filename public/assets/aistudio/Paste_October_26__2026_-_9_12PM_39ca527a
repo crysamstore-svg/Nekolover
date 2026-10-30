@@ -1,0 +1,1080 @@
+```html
+<!DOCTYPE html>
+<html lang="es" class="h-full">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>NekoLover Read 🐾🖤 Lector Kawaii Dark & EPUB/PDF</title>
+
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+
+    <!-- FontAwesome for Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+    <!-- Google Fonts: Dark Reborn & Kawaii Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Cinzel+Decorative:wght@700;900&family=Pirata+One&family=UnifrakturMaguntia&family=Creepster&family=Quicksand:wght@400;500;600;700&family=Fredoka:wght@400;500;600;700&family=Playfair+Display:ital,wght@0,400;0,700;1,400&family=Lora:ital,wght@0,400;0,600;1,400&display=swap" rel="stylesheet">
+
+    <!-- PDF.js library -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+
+    <!-- ePub.js & JSZip libraries -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/epub.js/0.3.88/epub.min.js"></script>
+
+    <script>
+        pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Quicksand', 'sans-serif'],
+                        cute: ['Fredoka', 'cursive'],
+                        reborn: ['"Cinzel Decorative"', '"Pirata One"', 'serif'],
+                        gothic: ['"UnifrakturMaguntia"', 'cursive'],
+                        creepster: ['"Creepster"', 'cursive'],
+                        serif_classic: ['"Playfair Display"', 'serif'],
+                        lora: ['"Lora"', 'serif']
+                    }
+                }
+            }
+        }
+    </script>
+
+    <style>
+        /* Theme Presets via CSS Custom Variables */
+        :root[data-theme="kawaii-dark"] {
+            --bg-color: #121019;
+            --card-bg: #1a1726;
+            --border-color: #2a243d;
+            --accent-pink: #ff79c6;
+            --accent-purple: #bd93f9;
+            --text-main: #e2d6ff;
+            --shelf-color: #241b35;
+            --shelf-border: #ff79c6;
+            --reader-bg: #1a1726;
+            --reader-text: #e2d6ff;
+        }
+
+        :root[data-theme="vanilla-fresa"] {
+            --bg-color: #21131b;
+            --card-bg: #2d1a25;
+            --border-color: #48283b;
+            --accent-pink: #ff85a2;
+            --accent-purple: #fce1e4;
+            --text-main: #fff0f3;
+            --shelf-color: #3b2030;
+            --shelf-border: #ff85a2;
+            --reader-bg: #fff0f3;
+            --reader-text: #2d1a25;
+        }
+
+        :root[data-theme="nocturno"] {
+            --bg-color: #05070d;
+            --card-bg: #0b0f19;
+            --border-color: #182238;
+            --accent-pink: #80b3ff;
+            --accent-purple: #a8c8fb;
+            --text-main: #d1e2ff;
+            --shelf-color: #0e172a;
+            --shelf-border: #3b82f6;
+            --reader-bg: #030509;
+            --reader-text: #c0d8ff;
+        }
+
+        body {
+            background-color: var(--bg-color);
+            color: var(--text-main);
+            font-family: 'Quicksand', sans-serif;
+            overflow-x: hidden;
+            -webkit-tap-highlight-color: transparent;
+            touch-action: manipulation;
+            transition: background-color 0.3s ease, color 0.3s ease;
+        }
+
+        .dark-reborn-title {
+            font-family: 'Cinzel Decorative', 'Pirata One', serif;
+            letter-spacing: 0.05em;
+            text-shadow: 0 0 12px var(--accent-pink);
+        }
+
+        .dark-reborn-font {
+            font-family: 'Cinzel Decorative', serif;
+        }
+
+        .bg-theme-card { background-color: var(--card-bg); }
+        .border-theme { border-color: var(--border-color); }
+        .text-accent-pink { color: var(--accent-pink); }
+        .text-accent-purple { color: var(--accent-purple); }
+        .bg-accent-pink { background-color: var(--accent-pink); }
+        .bg-accent-purple { background-color: var(--accent-purple); }
+
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: var(--bg-color);
+        }
+        ::-webkit-scrollbar-thumb {
+            background: var(--border-color);
+            border-radius: 99px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: var(--accent-pink);
+        }
+
+        /* Movable Stickers */
+        .movable-sticker {
+            position: absolute;
+            cursor: move;
+            user-select: none;
+            touch-action: none;
+            z-index: 25;
+            transition: transform 0.1s ease;
+            filter: drop-shadow(0px 3px 6px rgba(0,0,0,0.6));
+        }
+        .movable-sticker:active {
+            transform: scale(1.22) rotate(4deg);
+        }
+
+        .shelf-texture {
+            background: linear-gradient(180deg, var(--shelf-color) 0%, #0a0810 100%);
+            border-bottom: 6px solid var(--shelf-border);
+            box-shadow: 0 8px 18px rgba(0,0,0,0.7);
+        }
+
+        /* Cat ears badge decoration */
+        .cat-ears-badge {
+            position: relative;
+        }
+        .cat-ears-badge::before, .cat-ears-badge::after {
+            content: '';
+            position: absolute;
+            top: -6px;
+            width: 0;
+            height: 0;
+            border-left: 6px solid transparent;
+            border-right: 6px solid transparent;
+            border-bottom: 8px solid var(--accent-pink);
+        }
+        .cat-ears-badge::before { left: 4px; transform: rotate(-15deg); }
+        .cat-ears-badge::after { right: 4px; transform: rotate(15deg); }
+
+        .modal-animate {
+            animation: popIn 0.25s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        }
+
+        @keyframes popIn {
+            from { opacity: 0; transform: scale(0.92); }
+            to { opacity: 1; transform: scale(1); }
+        }
+
+        #epub-render {
+            width: 100% !important;
+            height: 100% !important;
+            min-height: 60vh;
+        }
+    </style>
+</head>
+<body class="h-full flex flex-col min-h-screen selection:bg-pink-500 selection:text-black">
+
+    <!-- TOP NAVIGATION HEADER -->
+    <header class="bg-theme-card border-b border-theme sticky top-0 z-40 px-3 sm:px-6 py-2.5 flex items-center justify-between shadow-lg">
+        <!-- Logo & Title with Dark Reborn Font -->
+        <div class="flex items-center space-x-2 sm:space-x-3 cursor-pointer" onclick="switchView('library')">
+            <div class="cat-ears-badge w-10 h-10 rounded-2xl bg-gradient-to-tr from-pink-500 to-purple-600 flex items-center justify-center text-xl shadow-lg">
+                🐾
+            </div>
+            <div>
+                <h1 class="dark-reborn-title text-base sm:text-xl font-bold bg-gradient-to-r from-pink-400 via-purple-300 to-blue-400 bg-clip-text text-transparent leading-tight">
+                    NekoLover Read
+                </h1>
+                <p class="text-[10px] sm:text-xs text-accent-purple font-medium">Dark Reborn & EPUB Engine 🦇🖤</p>
+            </div>
+        </div>
+
+        <!-- Navigation Bar & Theme Picker Trigger -->
+        <nav class="flex items-center space-x-1.5 sm:space-x-3">
+            <button onclick="switchView('library')" id="nav-library" class="px-3 sm:px-4 py-2 rounded-xl text-xs sm:text-sm font-semibold flex items-center space-x-2 transition bg-accent-pink text-black shadow-md">
+                <i class="fa-solid fa-cat"></i>
+                <span class="hidden sm:inline">Biblioteca</span>
+            </button>
+            <button onclick="switchView('quotes')" id="nav-quotes" class="px-3 sm:px-4 py-2 rounded-xl text-xs sm:text-sm font-semibold flex items-center space-x-2 transition hover:bg-white/10">
+                <i class="fa-solid fa-quote-right"></i>
+                <span class="hidden sm:inline">Notas</span>
+            </button>
+
+            <!-- Theme Switcher Menu Trigger -->
+            <button onclick="toggleGlobalThemeModal()" class="px-3 py-2 bg-black/40 border border-theme rounded-xl text-xs text-accent-pink font-cute flex items-center gap-1.5 hover:border-pink-400 transition" title="Cambiar Tema global">
+                <i class="fa-solid fa-palette"></i>
+                <span class="hidden md:inline">Temas</span>
+            </button>
+
+            <!-- Native File Upload Button (PDF & EPUB) -->
+            <label for="mobile-file-input" class="px-3 sm:px-4 py-2 rounded-xl text-xs sm:text-sm font-bold bg-pink-500/20 text-accent-pink border border-pink-500/40 hover:bg-pink-500 hover:text-black transition flex items-center space-x-1.5 cursor-pointer shadow-sm">
+                <i class="fa-solid fa-file-circle-plus"></i>
+                <span>Subir Archivo</span>
+            </label>
+            <input type="file" id="mobile-file-input" accept=".pdf,.epub" multiple class="hidden" onchange="handleNativeFileSelect(event)">
+        </nav>
+    </header>
+
+    <!-- MAIN VIEW AREA -->
+    <main class="flex-1 flex flex-col">
+
+        <!-- 1. LIBRARY VIEW -->
+        <section id="view-library" class="p-3 sm:p-6 max-w-7xl mx-auto w-full flex-1">
+            <!-- Search & Controls Bar -->
+            <div class="flex flex-col md:flex-row md:items-center justify-between gap-3 mb-6 bg-theme-card p-3 sm:p-4 rounded-2xl border border-theme shadow-lg">
+                <!-- Category Buttons -->
+                <div class="flex items-center space-x-1.5 overflow-x-auto pb-2 md:pb-0 scrollbar-none">
+                    <button onclick="filterCategory('all')" class="cat-btn active px-3 py-1.5 rounded-full text-xs font-bold transition bg-accent-pink text-black shrink-0">Todos</button>
+                    <button onclick="filterCategory('reading')" class="cat-btn px-3 py-1.5 rounded-full text-xs font-bold transition bg-black/30 hover:bg-black/50 shrink-0">📖 Leyendo</button>
+                    <button onclick="filterCategory('unread')" class="cat-btn px-3 py-1.5 rounded-full text-xs font-bold transition bg-black/30 hover:bg-black/50 shrink-0">🐾 Pendientes</button>
+                    <button onclick="filterCategory('completed')" class="cat-btn px-3 py-1.5 rounded-full text-xs font-bold transition bg-black/30 hover:bg-black/50 shrink-0">✨ Leídos</button>
+                    <button onclick="filterCategory('favorites')" class="cat-btn px-3 py-1.5 rounded-full text-xs font-bold transition bg-black/30 hover:bg-black/50 shrink-0">🖤 Favoritos</button>
+                </div>
+
+                <!-- Search Input -->
+                <div class="relative flex-1 sm:w-60">
+                    <i class="fa-solid fa-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-accent-purple/60 text-xs"></i>
+                    <input type="text" id="search-input" onkeyup="renderLibrary()" placeholder="Buscar por título o autor..." class="w-full bg-black/40 border border-theme rounded-xl pl-8 pr-3 py-1.5 text-xs text-white focus:outline-none focus:border-pink-400">
+                </div>
+            </div>
+
+            <!-- BOOKSHELF DISPLAY AREA -->
+            <div id="shelf-container" class="space-y-10">
+                <!-- Shelves rendered here -->
+            </div>
+        </section>
+
+        <!-- 2. BOOK READER VIEW -->
+        <section id="view-reader" class="hidden flex-1 flex flex-col h-[calc(100vh-62px)] bg-black/90 relative overflow-hidden">
+            <!-- Reader Navbar -->
+            <div class="bg-theme-card border-b border-theme px-3 py-2 flex items-center justify-between z-30 shadow-md">
+                <div class="flex items-center space-x-2 truncate pr-2">
+                    <button onclick="switchView('library')" class="p-1.5 hover:text-pink-400 transition" title="Volver">
+                        <i class="fa-solid fa-arrow-left text-base"></i>
+                    </button>
+                    <span id="reader-book-title" class="dark-reborn-font font-bold text-xs sm:text-sm text-accent-pink truncate max-w-[120px] sm:max-w-xs">Nombre del Libro</span>
+                </div>
+
+                <!-- Page Controls -->
+                <div class="flex items-center space-x-1.5">
+                    <button onclick="changePage(-1)" class="px-2.5 py-1 bg-black/40 rounded-lg hover:bg-white/10 transition text-xs"><i class="fa-solid fa-chevron-left"></i></button>
+                    <span class="text-[11px] text-accent-purple font-mono px-1"><span id="current-page">1</span>/<span id="total-pages">1</span></span>
+                    <button onclick="changePage(1)" class="px-2.5 py-1 bg-black/40 rounded-lg hover:bg-white/10 transition text-xs"><i class="fa-solid fa-chevron-right"></i></button>
+                </div>
+
+                <!-- Reader Actions -->
+                <div class="flex items-center space-x-1.5">
+                    <button onclick="toggleFontSettingsModal()" class="p-1.5 bg-black/40 border border-theme hover:border-pink-400 rounded-lg text-xs text-accent-pink" title="Estilo de Letra Dark Reborn">
+                        <i class="fa-solid fa-font"></i>
+                    </button>
+                    <button onclick="toggleGlobalThemeModal()" class="p-1.5 bg-black/40 border border-theme hover:border-pink-400 rounded-lg text-xs text-accent-pink" title="Temas Rápidos">
+                        <i class="fa-solid fa-palette"></i>
+                    </button>
+                    <button onclick="toggleStickerDrawer()" class="px-2.5 py-1.5 bg-pink-500/20 border border-pink-500/40 text-accent-pink rounded-xl text-xs font-semibold hover:bg-pink-500 hover:text-black transition flex items-center space-x-1">
+                        <span>🎀</span> <span class="hidden sm:inline">Stickers</span>
+                    </button>
+                    <button onclick="openAddNoteModal()" class="px-2.5 py-1.5 bg-purple-500/20 border border-purple-500/40 text-accent-purple rounded-xl text-xs font-semibold hover:bg-purple-500 hover:text-black transition flex items-center space-x-1">
+                        <i class="fa-solid fa-feather"></i> <span class="hidden sm:inline">Cita</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Sticker Floating Drawer -->
+            <div id="sticker-drawer" class="hidden absolute top-12 right-2 sm:right-6 z-40 bg-theme-card border border-theme p-3 rounded-2xl shadow-2xl w-64 modal-animate">
+                <div class="flex items-center justify-between border-b border-theme pb-2 mb-2">
+                    <span class="font-cute text-xs text-accent-pink font-bold">🐾 Stickers Movibles</span>
+                    <button onclick="toggleStickerDrawer()" class="text-xs text-accent-purple hover:text-white"><i class="fa-solid fa-xmark"></i></button>
+                </div>
+                <div class="grid grid-cols-4 gap-2 max-h-48 overflow-y-auto p-1" id="sticker-palette">
+                    <!-- Dynamic Stickers -->
+                </div>
+                <p class="text-[10px] text-accent-purple/80 text-center mt-2">Toca un sticker para pegarlo. Arrástralo libremente con el dedo o ratón.</p>
+            </div>
+
+            <!-- Reader Canvas & Container -->
+            <div class="flex-1 relative overflow-auto flex justify-center items-start p-2 sm:p-4" id="reader-viewport">
+                <div id="page-container" class="relative shadow-2xl min-h-[500px] w-full max-w-3xl rounded-xl overflow-hidden transition-all my-auto p-2 sm:p-4" style="background-color: var(--reader-bg); color: var(--reader-text);">
+                    <!-- PDF Canvas -->
+                    <canvas id="pdf-canvas" class="block mx-auto max-w-full hidden shadow-lg rounded"></canvas>
+                    
+                    <!-- EPUB Render Div -->
+                    <div id="epub-render" class="w-full h-full min-h-[550px] hidden"></div>
+                    
+                    <!-- Demo Text Render -->
+                    <div id="demo-reader" class="p-4 sm:p-8 text-sm sm:text-base leading-relaxed hidden"></div>
+
+                    <!-- Movable Sticker Layer -->
+                    <div id="sticker-layer" class="absolute inset-0 pointer-events-auto">
+                        <!-- Placed stickers -->
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- 3. QUOTES & NOTES VAULT VIEW -->
+        <section id="view-quotes" class="hidden p-3 sm:p-6 max-w-6xl mx-auto w-full flex-1">
+            <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 mb-6">
+                <div>
+                    <h2 class="dark-reborn-title text-xl sm:text-2xl font-bold text-accent-pink flex items-center gap-2">
+                        <span>💬</span> Citas & Notas Dark Reborn
+                    </h2>
+                    <p class="text-xs text-accent-purple">Tus fragmentos literarios guardados con estilo</p>
+                </div>
+                <div class="relative w-full sm:w-64">
+                    <input type="text" id="notes-search" onkeyup="renderNotes()" placeholder="Buscar citas o libros..." class="w-full bg-theme-card border border-theme rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-pink-400">
+                </div>
+            </div>
+
+            <div id="notes-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                <!-- Dynamic Notes -->
+            </div>
+        </section>
+    </main>
+
+    <!-- MODAL: GLOBAL THEME SWITCHER -->
+    <div id="modal-global-theme" class="hidden fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+        <div class="bg-theme-card border border-theme rounded-3xl p-5 max-w-sm w-full shadow-2xl relative modal-animate">
+            <button onclick="toggleGlobalThemeModal()" class="absolute top-4 right-4 text-accent-purple hover:text-pink-400"><i class="fa-solid fa-xmark text-lg"></i></button>
+            <h3 class="dark-reborn-font font-bold text-lg text-accent-pink mb-4 text-center">🎨 Temas de Color & Lectura</h3>
+            
+            <div class="space-y-3">
+                <button onclick="applyGlobalTheme('kawaii-dark')" class="w-full p-3 rounded-2xl bg-[#1a1726] border-2 border-[#ff79c6] text-[#ff79c6] flex items-center justify-between font-bold text-xs shadow-md hover:scale-[1.02] transition">
+                    <div class="flex items-center gap-2">
+                        <span class="text-lg">🖤</span>
+                        <div class="text-left">
+                            <p class="font-bold">Kawaii Dark (Neko Goth)</p>
+                            <p class="text-[10px] text-purple-300 font-normal">Morado Neón & Rosa Gótico</p>
+                        </div>
+                    </div>
+                    <i class="fa-solid fa-check theme-check hidden" id="check-kawaii-dark"></i>
+                </button>
+
+                <button onclick="applyGlobalTheme('vanilla-fresa')" class="w-full p-3 rounded-2xl bg-[#2d1a25] border-2 border-[#ff85a2] text-[#ff85a2] flex items-center justify-between font-bold text-xs shadow-md hover:scale-[1.02] transition">
+                    <div class="flex items-center gap-2">
+                        <span class="text-lg">🍓</span>
+                        <div class="text-left">
+                            <p class="font-bold">Vainilla Fresa</p>
+                            <p class="text-[10px] text-pink-200 font-normal">Crema Pastel & Fresa Dulce Gótico</p>
+                        </div>
+                    </div>
+                    <i class="fa-solid fa-check theme-check hidden" id="check-vanilla-fresa"></i>
+                </button>
+
+                <button onclick="applyGlobalTheme('nocturno')" class="w-full p-3 rounded-2xl bg-[#0b0f19] border-2 border-[#3b82f6] text-[#80b3ff] flex items-center justify-between font-bold text-xs shadow-md hover:scale-[1.02] transition">
+                    <div class="flex items-center gap-2">
+                        <span class="text-lg">🌙</span>
+                        <div class="text-left">
+                            <p class="font-bold">Nocturno Ultra Dark</p>
+                            <p class="text-[10px] text-blue-200 font-normal">Azul Noche & Plata OLED</p>
+                        </div>
+                    </div>
+                    <i class="fa-solid fa-check theme-check hidden" id="check-nocturno"></i>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL: DARK REBORN FONT SELECTOR -->
+    <div id="modal-font-settings" class="hidden fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+        <div class="bg-theme-card border border-theme rounded-3xl p-5 max-w-sm w-full shadow-2xl relative modal-animate">
+            <button onclick="toggleFontSettingsModal()" class="absolute top-4 right-4 text-accent-purple hover:text-pink-400"><i class="fa-solid fa-xmark text-lg"></i></button>
+            <h3 class="dark-reborn-font font-bold text-lg text-accent-pink mb-4 text-center">🦇 Tipografía Dark Reborn</h3>
+            
+            <div class="space-y-2.5">
+                <button onclick="applyReaderFont('Quicksand, sans-serif')" class="w-full p-2.5 rounded-xl bg-black/40 border border-theme text-left text-xs font-sans hover:border-pink-400 transition">
+                    ✨ Quicksand (Kawaii Limpia)
+                </button>
+                <button onclick="applyReaderFont(\'"Cinzel Decorative", serif\')" class="w-full p-2.5 rounded-xl bg-black/40 border border-theme text-left text-xs dark-reborn-font hover:border-pink-400 transition">
+                    🖤 Cinzel Decorative (Gótico Real)
+                </button>
+                <button onclick="applyReaderFont(\'"Pirata One", serif\')" class="w-full p-2.5 rounded-xl bg-black/40 border border-theme text-left text-xs font-reborn hover:border-pink-400 transition">
+                    🏴‍☠️ Pirata One (Vikingo Dark)
+                </button>
+                <button onclick="applyReaderFont(\'"UnifrakturMaguntia", cursive\')" class="w-full p-2.5 rounded-xl bg-black/40 border border-theme text-left text-xs font-gothic hover:border-pink-400 transition">
+                    📜 UnifrakturMaguntia (Old Goth)
+                </button>
+                <button onclick="applyReaderFont(\'"Playfair Display", serif\')" class="w-full p-2.5 rounded-xl bg-black/40 border border-theme text-left text-xs font-serif hover:border-pink-400 transition">
+                    📖 Playfair Display (Elegante)
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL: ADD QUOTE / NOTE -->
+    <div id="modal-note" class="hidden fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+        <div class="bg-theme-card border border-theme rounded-3xl p-5 max-w-md w-full shadow-2xl relative modal-animate">
+            <button onclick="closeAddNoteModal()" class="absolute top-4 right-4 text-accent-purple hover:text-pink-400"><i class="fa-solid fa-xmark text-lg"></i></button>
+            <h3 class="dark-reborn-font font-bold text-lg text-accent-pink mb-3 flex items-center gap-2">
+                <span>✍️</span> Guardar Cita o Pensamiento
+            </h3>
+            <form onsubmit="handleSaveNote(event)" class="space-y-3">
+                <div>
+                    <label class="block text-xs font-semibold text-white mb-1">Cita / Fragmento</label>
+                    <textarea id="note-text" required rows="3" placeholder="Escribe o pega aquí la cita..." class="w-full bg-black/40 border border-theme rounded-xl p-2.5 text-xs text-white focus:border-pink-400 focus:outline-none"></textarea>
+                </div>
+                <div class="grid grid-cols-2 gap-2">
+                    <div>
+                        <label class="block text-xs font-semibold text-white mb-1">Página / Cap.</label>
+                        <input type="text" id="note-chapter" placeholder="Ej: Pág. 32" class="w-full bg-black/40 border border-theme rounded-xl px-3 py-2 text-xs text-white focus:border-pink-400 focus:outline-none">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold text-white mb-1">Categoría</label>
+                        <select id="note-emotion" class="w-full bg-black/40 border border-theme rounded-xl px-2 py-2 text-xs text-white focus:border-pink-400 focus:outline-none">
+                            <option value="🖤 Dark Reborn">🖤 Dark Reborn</option>
+                            <option value="🍓 Vainilla Fresa">🍓 Vainilla Fresa</option>
+                            <option value="💖 Favorito">💖 Favorito</option>
+                            <option value="🦇 Oscuro">🦇 Oscuro</option>
+                        </select>
+                    </div>
+                </div>
+                <div>
+                    <label class="block text-xs font-semibold text-white mb-1">Reflexión Personal</label>
+                    <input type="text" id="note-comment" placeholder="¿Qué sentiste al leer esto?" class="w-full bg-black/40 border border-theme rounded-xl px-3 py-2 text-xs text-white focus:border-pink-400 focus:outline-none">
+                </div>
+                <button type="submit" class="w-full py-2.5 bg-accent-pink text-black font-cute font-bold rounded-xl shadow-lg hover:opacity-90 transition mt-2">
+                    Guardar Nota 🐾
+                </button>
+            </form>
+        </div>
+    </div>
+
+    <!-- JAVASCRIPT LOGIC -->
+    <script>
+        // IndexedDB Configuration for Persistent PDF/EPUB Storage
+        const DB_NAME = 'NekoLoverReadDB';
+        const DB_VERSION = 1;
+        let db = null;
+
+        function initDB() {
+            return new Promise((resolve, reject) => {
+                const request = indexedDB.open(DB_NAME, DB_VERSION);
+                request.onupgradeneeded = (e) => {
+                    const database = e.target.result;
+                    if (!database.objectStoreNames.contains('files')) {
+                        database.createObjectStore('files');
+                    }
+                };
+                request.onsuccess = (e) => {
+                    db = e.target.result;
+                    resolve(db);
+                };
+                request.onerror = (e) => reject(e);
+            });
+        }
+
+        function saveFileToIDB(id, fileBlob) {
+            return new Promise((resolve, reject) => {
+                if (!db) return resolve();
+                const tx = db.transaction('files', 'readwrite');
+                const store = tx.objectStore('files');
+                store.put(fileBlob, id);
+                tx.oncomplete = () => resolve();
+                tx.onerror = (e) => reject(e);
+            });
+        }
+
+        function getFileFromIDB(id) {
+            return new Promise((resolve, reject) => {
+                if (!db) return resolve(null);
+                const tx = db.transaction('files', 'readonly');
+                const store = tx.objectStore('files');
+                const request = store.get(id);
+                request.onsuccess = () => resolve(request.result);
+                request.onerror = (e) => reject(e);
+            });
+        }
+
+        // APP STATE
+        let books = [
+            {
+                id: 'demo-neko-1',
+                title: 'El Gato Negro & Las Sombras Kawaii',
+                author: 'Sora Neko',
+                category: 'reading',
+                favorite: true,
+                emoji: '🐈‍⬛',
+                type: 'demo',
+                content: [
+                    "Página 1: En una vieja mansión de tejados oscuros y destellos fucsia, un gatito negro abría lentamente sus ojitos brillantes.",
+                    "Página 2: Las sombras de la noche no eran oscuras ni frías; olían a vainilla, fresa y misterios góticos renacidos.",
+                    "Página 3: ¡Bienvenido a NekoLover Read! Puedes cargar tus propios libros EPUB y PDF desde tu dispositivo, añadir stickers flotantes y personalizar la tipografía Dark Reborn."
+                ]
+            }
+        ];
+
+        let quotes = [
+            {
+                id: 'q-demo-1',
+                bookTitle: 'El Gato Negro & Las Sombras Kawaii',
+                chapter: 'Pág. 2',
+                emotion: '🖤 Dark Reborn',
+                text: 'Las sombras de la noche no eran frías; olían a vainilla, fresa y misterios góticos.',
+                comment: 'Excelente frase estilo Dark Reborn.'
+            }
+        ];
+
+        const KAWAII_STICKERS = ['🐈‍⬛', '🐾', '🍓', '🧁', '🦇', '💀', '🖤', '🎀', '🧪', '🕯️', '🔮', '✨', '☕', '🗡️', '🥀', '🌙'];
+        let pageStickers = {};
+        let currentTheme = 'kawaii-dark';
+        let currentCategoryFilter = 'all';
+        let currentBook = null;
+        let currentPageNum = 1;
+        let totalPagesNum = 1;
+        let pdfDoc = null;
+        let epubBook = null;
+        let epubRendition = null;
+        let currentReaderFont = 'Quicksand, sans-serif';
+
+        // INIT APP
+        window.addEventListener('DOMContentLoaded', async () => {
+            try { await initDB(); } catch (err) {}
+            loadLocalStorage();
+            applyGlobalTheme(currentTheme);
+            renderLibrary();
+            renderStickerPalette();
+        });
+
+        function saveLocalStorage() {
+            localStorage.setItem('nl_books', JSON.stringify(books));
+            localStorage.setItem('nl_quotes', JSON.stringify(quotes));
+            localStorage.setItem('nl_stickers', JSON.stringify(pageStickers));
+            localStorage.setItem('nl_theme', currentTheme);
+        }
+
+        function loadLocalStorage() {
+            const b = localStorage.getItem('nl_books');
+            const q = localStorage.getItem('nl_quotes');
+            const s = localStorage.getItem('nl_stickers');
+            const t = localStorage.getItem('nl_theme');
+            if (b) books = JSON.parse(b);
+            if (q) quotes = JSON.parse(q);
+            if (s) pageStickers = JSON.parse(s);
+            if (t) currentTheme = t;
+        }
+
+        // THEME MANAGEMENT
+        function toggleGlobalThemeModal() {
+            document.getElementById('modal-global-theme').classList.toggle('hidden');
+        }
+
+        function applyGlobalTheme(themeName) {
+            currentTheme = themeName;
+            document.documentElement.setAttribute('data-theme', themeName);
+
+            document.querySelectorAll('.theme-check').forEach(el => el.classList.add('hidden'));
+            const activeCheck = document.getElementById(`check-${themeName}`);
+            if (activeCheck) activeCheck.classList.remove('hidden');
+
+            saveLocalStorage();
+            renderLibrary();
+        }
+
+        function toggleFontSettingsModal() {
+            document.getElementById('modal-font-settings').classList.toggle('hidden');
+        }
+
+        function applyReaderFont(fontFamily) {
+            currentReaderFont = fontFamily;
+            const demoReader = document.getElementById('demo-reader');
+            demoReader.style.fontFamily = fontFamily;
+            if (epubRendition) {
+                epubRendition.themes.font(fontFamily);
+            }
+            toggleFontSettingsModal();
+        }
+
+        // VIEW NAVIGATION
+        function switchView(viewName) {
+            document.getElementById('view-library').classList.add('hidden');
+            document.getElementById('view-reader').classList.add('hidden');
+            document.getElementById('view-quotes').classList.add('hidden');
+
+            document.getElementById('nav-library').className = "px-3 sm:px-4 py-2 rounded-xl text-xs sm:text-sm font-semibold flex items-center space-x-2 transition hover:bg-white/10";
+            document.getElementById('nav-quotes').className = "px-3 sm:px-4 py-2 rounded-xl text-xs sm:text-sm font-semibold flex items-center space-x-2 transition hover:bg-white/10";
+
+            if (viewName === 'library') {
+                document.getElementById('view-library').classList.remove('hidden');
+                document.getElementById('nav-library').className = "px-3 sm:px-4 py-2 rounded-xl text-xs sm:text-sm font-semibold flex items-center space-x-2 transition bg-accent-pink text-black shadow-md";
+                renderLibrary();
+            } else if (viewName === 'quotes') {
+                document.getElementById('view-quotes').classList.remove('hidden');
+                document.getElementById('nav-quotes').className = "px-3 sm:px-4 py-2 rounded-xl text-xs sm:text-sm font-semibold flex items-center space-x-2 transition bg-accent-pink text-black shadow-md";
+                renderNotes();
+            } else if (viewName === 'reader') {
+                document.getElementById('view-reader').classList.remove('hidden');
+            }
+        }
+
+        // MOBILE FILE INPUT FOR EPUB & PDF
+        async function handleNativeFileSelect(event) {
+            const files = event.target.files;
+            if (!files || files.length === 0) return;
+
+            for (let i = 0; i < files.length; i++) {
+                const file = files[i];
+                const bookId = 'book-' + Date.now() + '-' + Math.random().toString(36).substr(2, 4);
+                const fileExt = file.name.split('.').pop().toLowerCase();
+                
+                let type = 'pdf';
+                let emoji = '🦇';
+                if (fileExt === 'epub') {
+                    type = 'epub';
+                    emoji = '📗';
+                }
+
+                await saveFileToIDB(bookId, file);
+
+                const newBook = {
+                    id: bookId,
+                    title: file.name.replace(/\.[^/.]+$/, ""),
+                    author: 'Dispositivo Local',
+                    category: 'unread',
+                    favorite: false,
+                    emoji: emoji,
+                    type: type
+                };
+
+                books.unshift(newBook);
+            }
+
+            saveLocalStorage();
+            renderLibrary();
+            event.target.value = '';
+        }
+
+        // LIBRARY & SHELF RENDERING
+        function filterCategory(cat) {
+            currentCategoryFilter = cat;
+            document.querySelectorAll('.cat-btn').forEach(btn => {
+                btn.className = "cat-btn px-3 py-1.5 rounded-full text-xs font-bold transition bg-black/30 hover:bg-black/50 shrink-0";
+            });
+            event.target.className = "cat-btn active px-3 py-1.5 rounded-full text-xs font-bold transition bg-accent-pink text-black shrink-0";
+            renderLibrary();
+        }
+
+        function renderLibrary() {
+            const container = document.getElementById('shelf-container');
+            const searchQuery = document.getElementById('search-input').value.toLowerCase();
+            container.innerHTML = '';
+
+            let filtered = books.filter(book => {
+                const matchesSearch = book.title.toLowerCase().includes(searchQuery) || book.author.toLowerCase().includes(searchQuery);
+                if (currentCategoryFilter === 'all') return matchesSearch;
+                if (currentCategoryFilter === 'favorites') return matchesSearch && book.favorite;
+                return matchesSearch && book.category === currentCategoryFilter;
+            });
+
+            if (filtered.length === 0) {
+                container.innerHTML = `
+                    <div class="text-center py-16 text-accent-purple/60">
+                        <p class="text-4xl mb-2">🐾</p>
+                        <p class="font-cute text-sm">No hay libros en esta estantería...</p>
+                    </div>
+                `;
+                return;
+            }
+
+            const chunkSize = window.innerWidth < 640 ? 3 : 4;
+            for (let i = 0; i < filtered.length; i += chunkSize) {
+                const shelfBooks = filtered.slice(i, i + chunkSize);
+                
+                const shelfEl = document.createElement('div');
+                shelfEl.className = 'relative mb-6';
+
+                let booksHTML = shelfBooks.map(book => `
+                    <div class="group relative flex flex-col items-center w-24 sm:w-32 cursor-pointer transform hover:-translate-y-2 transition-all duration-300" onclick="openBook('${book.id}')">
+                        <div class="w-20 sm:w-28 h-28 sm:h-40 rounded-r-lg rounded-l-xs bg-gradient-to-br from-black/40 via-theme-card to-black/80 border-r-4 border-pink-500/60 p-2 sm:p-3 shadow-xl flex flex-col justify-between relative overflow-hidden">
+                            <div class="flex justify-between items-start">
+                                <span class="text-xl sm:text-2xl">${book.emoji}</span>
+                                <button onclick="event.stopPropagation(); toggleFavorite('${book.id}')" class="text-xs ${book.favorite ? 'text-pink-400' : 'text-gray-500 hover:text-pink-400'}">
+                                    <i class="fa-solid fa-heart"></i>
+                                </button>
+                            </div>
+                            <div>
+                                <h4 class="dark-reborn-font font-bold text-[11px] sm:text-xs text-accent-pink leading-tight line-clamp-2">${book.title}</h4>
+                                <p class="text-[9px] text-accent-purple truncate mt-0.5">${book.author}</p>
+                            </div>
+                            <div class="absolute bottom-0 right-0 left-0 h-1 bg-gradient-to-r from-pink-500 to-purple-500"></div>
+                        </div>
+                        <div class="w-16 h-1.5 bg-black/60 rounded-full blur-xs mt-1"></div>
+                    </div>
+                `).join('');
+
+                shelfEl.innerHTML = `
+                    <div class="flex items-end justify-around px-2 sm:px-6 pb-1">
+                        ${booksHTML}
+                    </div>
+                    <div class="shelf-texture h-4 w-full rounded-md flex items-center justify-between px-3 text-[10px] text-accent-pink/70">
+                        <span>🐾</span>
+                        <span>🖤</span>
+                        <span>🐾</span>
+                    </div>
+                `;
+
+                container.appendChild(shelfEl);
+            }
+        }
+
+        function toggleFavorite(id) {
+            const b = books.find(x => x.id === id);
+            if (b) {
+                b.favorite = !b.favorite;
+                saveLocalStorage();
+                renderLibrary();
+            }
+        }
+
+        // READER LOGIC FOR EPUB, PDF & DEMO
+        async function openBook(id) {
+            currentBook = books.find(b => b.id === id);
+            if (!currentBook) return;
+
+            document.getElementById('reader-book-title').innerText = currentBook.title;
+            currentPageNum = 1;
+
+            switchView('reader');
+
+            const pdfCanvas = document.getElementById('pdf-canvas');
+            const epubRender = document.getElementById('epub-render');
+            const demoReader = document.getElementById('demo-reader');
+
+            pdfCanvas.classList.add('hidden');
+            epubRender.classList.add('hidden');
+            demoReader.classList.add('hidden');
+
+            if (epubRendition) {
+                try { epubRendition.destroy(); } catch(e){}
+                epubRendition = null;
+            }
+
+            if (currentBook.type === 'demo') {
+                demoReader.classList.remove('hidden');
+                demoReader.style.fontFamily = currentReaderFont;
+                totalPagesNum = currentBook.content.length;
+                renderDemoPage(currentPageNum);
+            } else {
+                const fileBlob = await getFileFromIDB(currentBook.id);
+                if (!fileBlob) {
+                    alert('No se pudo abrir el archivo local del dispositivo.');
+                    switchView('library');
+                    return;
+                }
+
+                const arrayBuffer = await fileBlob.arrayBuffer();
+
+                if (currentBook.type === 'pdf') {
+                    pdfCanvas.classList.remove('hidden');
+                    pdfjsLib.getDocument({ data: arrayBuffer }).promise.then(pdf => {
+                        pdfDoc = pdf;
+                        totalPagesNum = pdf.numPages;
+                        renderPdfPage(currentPageNum);
+                    }).catch(err => {
+                        alert('Error al procesar el archivo PDF.');
+                        switchView('library');
+                    });
+                } else if (currentBook.type === 'epub') {
+                    epubRender.classList.remove('hidden');
+                    try {
+                        epubBook = ePub(arrayBuffer);
+                        epubRendition = epubBook.renderTo("epub-render", {
+                            width: "100%",
+                            height: "100%",
+                            spread: "none"
+                        });
+                        
+                        await epubRendition.display();
+                        epubRendition.themes.font(currentReaderFont);
+
+                        totalPagesNum = 50; // Dynamic estimation for EPUB chapters
+                        document.getElementById('current-page').innerText = currentPageNum;
+                        document.getElementById('total-pages').innerText = totalPagesNum;
+                        renderStickersForPage();
+                    } catch(e) {
+                        alert('Error al procesar el archivo EPUB.');
+                        switchView('library');
+                    }
+                }
+            }
+        }
+
+        function renderDemoPage(pageNum) {
+            document.getElementById('current-page').innerText = pageNum;
+            document.getElementById('total-pages').innerText = totalPagesNum;
+
+            const demoReader = document.getElementById('demo-reader');
+            demoReader.innerText = currentBook.content[pageNum - 1] || "Página vacía";
+            renderStickersForPage();
+        }
+
+        function renderPdfPage(pageNum) {
+            document.getElementById('current-page').innerText = pageNum;
+            document.getElementById('total-pages').innerText = totalPagesNum;
+
+            pdfDoc.getPage(pageNum).then(page => {
+                const canvas = document.getElementById('pdf-canvas');
+                const ctx = canvas.getContext('2d');
+                
+                const containerWidth = document.getElementById('page-container').clientWidth || 600;
+                const unscaledViewport = page.getViewport({ scale: 1.0 });
+                const scale = containerWidth / unscaledViewport.width;
+                const viewport = page.getViewport({ scale: scale });
+
+                canvas.height = viewport.height;
+                canvas.width = viewport.width;
+
+                page.render({ canvasContext: ctx, viewport: viewport }).promise.then(() => {
+                    renderStickersForPage();
+                });
+            });
+        }
+
+        function changePage(delta) {
+            if (!currentBook) return;
+            
+            if (currentBook.type === 'epub' && epubRendition) {
+                if (delta > 0) epubRendition.next();
+                else epubRendition.prev();
+                currentPageNum = Math.max(1, currentPageNum + delta);
+                document.getElementById('current-page').innerText = currentPageNum;
+                renderStickersForPage();
+                return;
+            }
+
+            const newPage = currentPageNum + delta;
+            if (newPage >= 1 && newPage <= totalPagesNum) {
+                currentPageNum = newPage;
+                if (currentBook.type === 'pdf') {
+                    renderPdfPage(currentPageNum);
+                } else {
+                    renderDemoPage(currentPageNum);
+                }
+            }
+        }
+
+        // STICKERS LOGIC
+        function toggleStickerDrawer() {
+            document.getElementById('sticker-drawer').classList.toggle('hidden');
+        }
+
+        function renderStickerPalette() {
+            const palette = document.getElementById('sticker-palette');
+            palette.innerHTML = KAWAII_STICKERS.map(emoji => `
+                <button onclick="addStickerToPage('${emoji}')" class="text-2xl p-1.5 rounded-xl bg-black/40 hover:bg-white/10 transition transform hover:scale-125">
+                    ${emoji}
+                </button>
+            `).join('');
+        }
+
+        function getPageKey() {
+            return `${currentBook.id}-p${currentPageNum}`;
+        }
+
+        function addStickerToPage(emoji) {
+            const key = getPageKey();
+            if (!pageStickers[key]) pageStickers[key] = [];
+
+            const newSticker = {
+                id: 'stk-' + Date.now(),
+                emoji: emoji,
+                x: 40 + Math.random() * 40,
+                y: 40 + Math.random() * 40
+            };
+
+            pageStickers[key].push(newSticker);
+            saveLocalStorage();
+            renderStickersForPage();
+        }
+
+        function renderStickersForPage() {
+            const layer = document.getElementById('sticker-layer');
+            layer.innerHTML = '';
+
+            if (!currentBook) return;
+            const key = getPageKey();
+            const stickers = pageStickers[key] || [];
+
+            stickers.forEach(stk => {
+                const el = document.createElement('div');
+                el.className = 'movable-sticker text-3xl select-none';
+                el.style.left = `${stk.x}px`;
+                el.style.top = `${stk.y}px`;
+                el.innerText = stk.emoji;
+
+                makeDraggableAndTouch(el, stk);
+
+                el.ondblclick = () => {
+                    pageStickers[key] = pageStickers[key].filter(s => s.id !== stk.id);
+                    saveLocalStorage();
+                    renderStickersForPage();
+                };
+
+                layer.appendChild(el);
+            });
+        }
+
+        function makeDraggableAndTouch(element, stickerObj) {
+            let pos1 = 0, pos2 = 0, pos3 = 0, pos4 = 0;
+
+            element.onmousedown = dragMouseDown;
+            element.ontouchstart = dragTouchStart;
+
+            function dragMouseDown(e) {
+                e.preventDefault();
+                pos3 = e.clientX;
+                pos4 = e.clientY;
+                document.onmouseup = closeDragElement;
+                document.onmousemove = elementDrag;
+            }
+
+            function dragTouchStart(e) {
+                const touch = e.touches[0];
+                pos3 = touch.clientX;
+                pos4 = touch.clientY;
+                document.ontouchend = closeDragElement;
+                document.ontouchmove = elementTouchDrag;
+            }
+
+            function elementDrag(e) {
+                e.preventDefault();
+                pos1 = pos3 - e.clientX;
+                pos2 = pos4 - e.clientY;
+                pos3 = e.clientX;
+                pos4 = e.clientY;
+
+                let newY = element.offsetTop - pos2;
+                let newX = element.offsetLeft - pos1;
+
+                element.style.top = newY + "px";
+                element.style.left = newX + "px";
+
+                stickerObj.x = newX;
+                stickerObj.y = newY;
+            }
+
+            function elementTouchDrag(e) {
+                const touch = e.touches[0];
+                pos1 = pos3 - touch.clientX;
+                pos2 = pos4 - touch.clientY;
+                pos3 = touch.clientX;
+                pos4 = touch.clientY;
+
+                let newY = element.offsetTop - pos2;
+                let newX = element.offsetLeft - pos1;
+
+                element.style.top = newY + "px";
+                element.style.left = newX + "px";
+
+                stickerObj.x = newX;
+                stickerObj.y = newY;
+            }
+
+            function closeDragElement() {
+                document.onmouseup = null;
+                document.onmousemove = null;
+                document.ontouchend = null;
+                document.ontouchmove = null;
+                saveLocalStorage();
+            }
+        }
+
+        // NOTES & QUOTES VAULT
+        function openAddNoteModal() {
+            document.getElementById('modal-note').classList.remove('hidden');
+        }
+        function closeAddNoteModal() {
+            document.getElementById('modal-note').classList.add('hidden');
+        }
+
+        function handleSaveNote(e) {
+            e.preventDefault();
+            const text = document.getElementById('note-text').value;
+            const chapter = document.getElementById('note-chapter').value || `Pág. ${currentPageNum}`;
+            const emotion = document.getElementById('note-emotion').value;
+            const comment = document.getElementById('note-comment').value;
+
+            const newNote = {
+                id: 'q-' + Date.now(),
+                bookTitle: currentBook ? currentBook.title : 'Libro General',
+                chapter: chapter,
+                emotion: emotion,
+                text: text,
+                comment: comment
+            };
+
+            quotes.unshift(newNote);
+            saveLocalStorage();
+            closeAddNoteModal();
+            document.getElementById('note-text').value = '';
+            document.getElementById('note-comment').value = '';
+        }
+
+        function renderNotes() {
+            const grid = document.getElementById('notes-grid');
+            const search = document.getElementById('notes-search').value.toLowerCase();
+            grid.innerHTML = '';
+
+            const filtered = quotes.filter(q => q.text.toLowerCase().includes(search) || q.bookTitle.toLowerCase().includes(search));
+
+            if (filtered.length === 0) {
+                grid.innerHTML = `
+                    <div class="col-span-full text-center py-12 text-accent-purple/60">
+                        <p class="text-3xl mb-2">💬</p>
+                        <p class="font-cute text-sm">No hay citas registradas aún...</p>
+                    </div>
+                `;
+                return;
+            }
+
+            filtered.forEach(q => {
+                const card = document.createElement('div');
+                card.className = "bg-theme-card border border-theme rounded-2xl p-4 shadow-lg flex flex-col justify-between hover:border-pink-400 transition";
+                card.innerHTML = `
+                    <div>
+                        <div class="flex items-center justify-between text-xs text-accent-pink mb-2">
+                            <span class="dark-reborn-font font-bold truncate max-w-[160px]">📖 ${q.bookTitle}</span>
+                            <span class="bg-black/40 px-2 py-0.5 rounded-full text-[10px] text-accent-purple border border-theme">${q.emotion}</span>
+                        </div>
+                        <p class="text-xs italic text-white/90 bg-black/40 p-3 rounded-xl border-l-2 border-pink-400 mb-2">"${q.text}"</p>
+                        ${q.comment ? `<p class="text-[11px] text-accent-pink font-cute">💬 ${q.comment}</p>` : ''}
+                    </div>
+                    <div class="flex justify-between items-center mt-3 pt-2 border-t border-theme text-[10px] text-accent-purple">
+                        <span>${q.chapter}</span>
+                        <div class="flex space-x-2">
+                            <button onclick="copyQuote('${q.id}')" class="text-xs hover:text-pink-400" title="Copiar"><i class="fa-regular fa-copy"></i></button>
+                            <button onclick="deleteQuote('${q.id}')" class="text-xs text-red-400 hover:text-red-300" title="Eliminar"><i class="fa-solid fa-trash"></i></button>
+                        </div>
+                    </div>
+                `;
+                grid.appendChild(card);
+            });
+        }
+
+        function copyQuote(id) {
+            const q = quotes.find(x => x.id === id);
+            if (q) {
+                const textToCopy = `"${q.text}" — ${q.bookTitle} (${q.chapter})`;
+                const dummy = document.createElement("textarea");
+                document.body.appendChild(dummy);
+                dummy.value = textToCopy;
+                dummy.select();
+                document.execCommand("copy");
+                document.body.removeChild(dummy);
+            }
+        }
+
+        function deleteQuote(id) {
+            quotes = quotes.filter(q => q.id !== id);
+            saveLocalStorage();
+            renderNotes();
+        }
+    </script>
+</body>
+</html>
+```
