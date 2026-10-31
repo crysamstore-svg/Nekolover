@@ -178,19 +178,19 @@ export const Header: React.FC<HeaderProps> = ({
           </button>
         )}
 
-        {/* Ambient Lo-Fi Sound Toggle */}
+        {/* Estantería de Música & Sonido ambiental */}
         {(!headerConfig || headerConfig.showAudio) && (
           <button
             onClick={onOpenAudioModal}
-            className={`px-2.5 sm:px-3 py-2 rounded-xl text-xs flex items-center gap-1.5 border transition ${
+            className={`px-2.5 sm:px-3 py-2 rounded-xl text-xs flex items-center gap-1.5 border transition active:scale-95 ${
               isAudioPlaying
-                ? 'bg-[var(--accent-purple)]/25 text-[var(--accent-purple)] border-[var(--accent-purple)] animate-pulse'
+                ? 'bg-[var(--accent-purple)]/25 text-[var(--accent-purple)] border-[var(--accent-purple)] shadow-[0_0_12px_rgba(189,147,249,0.3)] animate-pulse'
                 : 'bg-black/30 text-[var(--text-muted)] border-[var(--border-color)] hover:text-[var(--accent-purple)] hover:border-[var(--accent-purple)]/60'
             }`}
-            title="Sonido ambiental Lo-Fi (Lluvia Gótica & Ronroneo Neko)"
+            title="Estantería de Música: Sube canciones de tus archivos, ajusta volumen o activa sonido Lo-Fi"
           >
             {isAudioPlaying ? <Volume2 className="w-4 h-4 text-[var(--accent-purple)]" /> : <Music className="w-4 h-4" />}
-            <span className="hidden lg:inline font-cute font-medium">Ambiente</span>
+            <span className="hidden sm:inline font-cute font-medium">Música</span>
           </button>
         )}
 

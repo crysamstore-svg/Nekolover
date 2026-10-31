@@ -28,6 +28,61 @@ import { Book, PageSticker, TextHighlight, ReaderModeId } from '../types';
 import { KAWAII_STICKERS, READER_MODES } from '../data/defaultBooks';
 import { getFileFromDB } from '../utils/db';
 import { parseEpubFile } from '../utils/epubParser';
+import { ReadingSettingsModal } from './ReadingSettingsModal';
+import { MusicShelfModal } from './MusicShelfModal';
+import { musicPlayer } from '../utils/musicManager';
+
+interface PdfTextItem {
+  str: string;
+  left: number;
+  top: number;
+  width: number;
+  height: number;
+  fontSize: number;
+}
+
+const extractPdfText = (textContent: any): string => {
+  if (!textContent || !textContent.items || textContent.items.length === 0) return '';
+  const items = textContent.items as any[];
+
+  let result = '';
+  let lastY: number | null = null;
+  let lastX = 0;
+  let lastWidth = 0;
+
+  for (let i = 0; i < items.length; i++) {
+    const item = items[i];
+    const str = item.str || '';
+    if (!str && !item.hasEOL) continue;
+
+    const transform = item.transform || [];
+    const currentY = transform[5] !== undefined ? Math.round(transform[5]) : null;
+    const currentX = transform[4] !== undefined ? transform[4] : 0;
+
+    if (lastY !== null && currentY !== null) {
+      const yDiff = Math.abs(currentY - lastY);
+      if (yDiff > 6) {
+        if (yDiff > 16) {
+          result += '\n\n';
+        } else {
+          result += '\n';
+        }
+      } else {
+        const xGap = currentX - (lastX + lastWidth);
+        if (xGap > 3 && !result.endsWith(' ') && !str.startsWith(' ')) {
+          result += ' ';
+        }
+      }
+    }
+
+    result += str;
+    lastY = currentY;
+    lastX = currentX;
+    lastWidth = item.width || 0;
+  }
+
+  return result.trim();
+};
 
 interface ReaderProps {
   book: Book;
@@ -43,7 +98,9 @@ interface ReaderProps {
   onSaveHighlights: (pageKey: string, highlights: TextHighlight[]) => void;
   onUpdateBookProgress: (bookId: string, currentPage: number, totalPages: number) => void;
   currentFont: string;
+  onSelectFont?: (font: string) => void;
   onOpenAudioModal: () => void;
+  onOpenMusicShelf?: () => void;
   onRecordReadingSession?: (minutes: number, pagesRead: number) => void;
   readerMode?: ReaderModeId;
   onSelectReaderMode?: (mode: ReaderModeId) => void;
@@ -69,7 +126,9 @@ export const Reader: React.FC<ReaderProps> = ({
   onSaveHighlights,
   onUpdateBookProgress,
   currentFont,
+  onSelectFont,
   onOpenAudioModal,
+  onOpenMusicShelf,
   onRecordReadingSession,
   readerMode: propReaderMode,
   onSelectReaderMode,
@@ -82,6 +141,18 @@ export const Reader: React.FC<ReaderProps> = ({
 }) => {
   const [currentPage, setCurrentPage] = useState<number>(book.currentPage || 1);
   const [totalPages, setTotalPages] = useState<number>(book.totalPages || 1);
+
+  // Modals for Unified Kawaii Reading Settings & Music Shelf
+  const [isSettingsModalOpen, setIsSettingsModalOpen] = useState<boolean>(false);
+  const [isMusicModalOpen, setIsMusicModalOpen] = useState<boolean>(false);
+  const [isMusicPlaying, setIsMusicPlaying] = useState<boolean>(() => musicPlayer.isPlaying);
+
+  useEffect(() => {
+    const unsub = musicPlayer.subscribe(() => {
+      setIsMusicPlaying(musicPlayer.isPlaying);
+    });
+    return () => unsub();
+  }, []);
 
   // Synchronized font size
   const [internalFontSize, setInternalFontSize] = useState<number>(() => {
@@ -110,6 +181,15 @@ export const Reader: React.FC<ReaderProps> = ({
   });
   const [loadingFile, setLoadingFile] = useState<boolean>(false);
   const [fileError, setFileError] = useState<string | null>(null);
+
+  // PDF Text Reflow (acomodar letras al ampliar) & Text Layer para selección y marcado directo
+  const [pdfReflowMode, setPdfReflowMode] = useState<boolean>(() => {
+    const saved = localStorage.getItem('nl_pdf_reflow_mode');
+    return saved !== null ? saved === 'true' : true;
+  });
+  const [pdfPageText, setPdfPageText] = useState<string>('');
+  const [pdfTextItems, setPdfTextItems] = useState<PdfTextItem[]>([]);
+  const [pdfViewportDim, setPdfViewportDim] = useState<{ width: number; height: number }>({ width: 0, height: 0 });
 
   // Synchronized contrast reading mode
   const [internalReaderMode, setInternalReaderMode] = useState<ReaderModeId>(() => {
@@ -441,63 +521,92 @@ export const Reader: React.FC<ReaderProps> = ({
     };
   }, [book.id, book.type]);
 
-  // Render PDF page onto canvas with High-DPI HD Retina resolution
+  // Render PDF page onto canvas with High-DPI HD Retina resolution & extract selectable text
   const renderPdfPage = async (pageNum: number, pdfInstance?: any) => {
     const pdf = pdfInstance || pdfDocRef.current;
-    if (!pdf || !canvasRef.current) return;
+    if (!pdf) return;
 
     try {
       const page = await pdf.getPage(pageNum);
+
+      // 1. Extraer texto para modo lectura acomodada y citas directas
+      const textContent = await page.getTextContent();
+      const extracted = extractPdfText(textContent);
+      setPdfPageText(extracted);
+
+      // 2. Renderizar Canvas y capa de texto interactiva si el canvas está disponible
       const canvas = canvasRef.current;
-      const ctx = canvas.getContext('2d');
-      if (!ctx) return;
+      if (canvas) {
+        const ctx = canvas.getContext('2d');
+        if (ctx) {
+          const viewportWidth = containerRef.current?.clientWidth || 750;
+          const unscaledViewport = page.getViewport({ scale: 1.0 });
 
-      const viewportWidth = containerRef.current?.clientWidth || 750;
-      const unscaledViewport = page.getViewport({ scale: 1.0 });
+          // Base scale fits viewport nicely with padding
+          const fitScale = (viewportWidth - 52) / unscaledViewport.width;
+          const baseScale = Math.max(0.65, fitScale);
+          const finalScale = baseScale * zoomLevel;
 
-      // Base scale fits viewport nicely with padding
-      const fitScale = (viewportWidth - 52) / unscaledViewport.width;
-      const baseScale = Math.max(0.65, fitScale);
-      const finalScale = baseScale * zoomLevel;
+          const pixelRatio = Math.max(window.devicePixelRatio || 1, 2.0);
+          const viewport = page.getViewport({ scale: finalScale });
 
-      // High-DPI Retina multiplier (at least 2.0x, or devicePixelRatio)
-      // This ensures all text, drawings, and embedded images render in ultra-sharp HD
-      const pixelRatio = Math.max(window.devicePixelRatio || 1, 2.0);
-      const viewport = page.getViewport({ scale: finalScale });
+          canvas.width = Math.floor(viewport.width * pixelRatio);
+          canvas.height = Math.floor(viewport.height * pixelRatio);
 
-      // High-res internal canvas dimensions
-      canvas.width = Math.floor(viewport.width * pixelRatio);
-      canvas.height = Math.floor(viewport.height * pixelRatio);
+          canvas.style.width = `${Math.floor(viewport.width)}px`;
+          canvas.style.height = `${Math.floor(viewport.height)}px`;
 
-      // Display dimensions (CSS size)
-      canvas.style.width = `${Math.floor(viewport.width)}px`;
-      canvas.style.height = `${Math.floor(viewport.height)}px`;
+          ctx.imageSmoothingEnabled = true;
+          ctx.imageSmoothingQuality = 'high';
 
-      // Enable high-quality image smoothing for crisp photos/graphics
-      ctx.imageSmoothingEnabled = true;
-      ctx.imageSmoothingQuality = 'high';
+          const transform = pixelRatio !== 1 ? [pixelRatio, 0, 0, pixelRatio, 0, 0] : null;
 
-      // Transform matrix so PDF.js draws into the high-DPI buffer
-      const transform = pixelRatio !== 1 ? [pixelRatio, 0, 0, pixelRatio, 0, 0] : null;
+          const renderContext = {
+            canvasContext: ctx,
+            viewport: viewport,
+            transform: transform
+          };
 
-      const renderContext = {
-        canvasContext: ctx,
-        viewport: viewport,
-        transform: transform
-      };
+          await page.render(renderContext).promise;
 
-      await page.render(renderContext).promise;
+          setPdfViewportDim({
+            width: Math.floor(viewport.width),
+            height: Math.floor(viewport.height)
+          });
+
+          // Calcular items de texto exactos para selección directa sobre el PDF
+          const items: any[] = textContent.items || [];
+          const overlayItems: PdfTextItem[] = items.map((item: any) => {
+            const tx = item.transform[4] || 0;
+            const ty = item.transform[5] || 0;
+            const [vx, vy] = viewport.convertToViewportPoint(tx, ty);
+            const fontSizeVal = Math.hypot(item.transform[0] || 0, item.transform[1] || 0);
+            const scaledWidth = (item.width || 0) * (viewport.width / unscaledViewport.width);
+            const scaledHeight = (item.height || fontSizeVal) * (viewport.height / unscaledViewport.height);
+            return {
+              str: item.str,
+              left: Math.round(vx),
+              top: Math.round(vy - scaledHeight),
+              width: Math.max(2, Math.ceil(scaledWidth)),
+              height: Math.max(8, Math.ceil(scaledHeight)),
+              fontSize: Math.max(8, Math.round(fontSizeVal * (viewport.height / unscaledViewport.height)))
+            };
+          }).filter(it => it.str && it.str.trim().length > 0);
+
+          setPdfTextItems(overlayItems);
+        }
+      }
     } catch (err) {
       console.warn('PDF page rendering error:', err);
     }
   };
 
-  // Re-render PDF if page or zoom changes
+  // Re-render PDF if page or zoom or mode changes
   useEffect(() => {
     if (book.type === 'pdf' && pdfDocRef.current) {
       renderPdfPage(currentPage);
     }
-  }, [currentPage, zoomLevel, book.type]);
+  }, [currentPage, zoomLevel, book.type, pdfReflowMode]);
 
   // Update EPUB font when currentFont changes
   useEffect(() => {
@@ -863,32 +972,40 @@ export const Reader: React.FC<ReaderProps> = ({
 
         {/* Right: Tools & Actions */}
         <div className="flex items-center space-x-1 sm:space-x-1.5">
-          {/* PDF Zoom Controls */}
-          {book.type === 'pdf' && (
-            <div className="flex items-center space-x-1 bg-black/50 border border-[var(--border-color)] rounded-xl px-1.5 py-1">
-              <button
-                onClick={() => setZoomLevel((z) => Math.max(0.5, Number((z - 0.25).toFixed(2))))}
-                className="p-1 rounded text-xs text-[var(--text-main)] hover:bg-white/10 hover:text-[var(--accent-pink)] transition"
-                title="Alejar / Reducir (-) [Atajo: -]"
-              >
-                <ZoomOut className="w-3.5 h-3.5" />
-              </button>
-              <button
-                onClick={() => setZoomLevel(1.0)}
-                className="text-[11px] font-mono text-[var(--accent-pink)] px-1 hover:underline font-bold min-w-10 text-center"
-                title="Restablecer zoom al 100% [Atajo: 0]"
-              >
-                {Math.round(zoomLevel * 100)}%
-              </button>
-              <button
-                onClick={() => setZoomLevel((z) => Math.min(3.5, Number((z + 0.25).toFixed(2))))}
-                className="p-1 rounded text-xs text-[var(--text-main)] hover:bg-white/10 hover:text-[var(--accent-pink)] transition"
-                title="Ampliar / Acercar (+) [Atajo: +]"
-              >
-                <ZoomIn className="w-3.5 h-3.5" />
-              </button>
-            </div>
-          )}
+          {/* Unico Icono Kawaii de Configuración de Lectura */}
+          <button
+            type="button"
+            onClick={() => setIsSettingsModalOpen(true)}
+            className="px-2.5 sm:px-3 py-1.5 rounded-xl text-xs font-cute font-bold bg-gradient-to-r from-pink-500/20 via-purple-500/20 to-pink-500/10 border border-[var(--accent-pink)] text-[var(--accent-pink)] hover:bg-[var(--accent-pink)] hover:text-black transition flex items-center gap-1.5 shadow-md active:scale-95"
+            title="Ajustes Kawaii de Lectura: Fuente, tamaño, márgenes, contraste, iluminación y modo PDF"
+          >
+            <span className="text-sm">🌸</span>
+            <span className="hidden sm:inline">Ajustes</span>
+          </button>
+
+          {/* Estantería de Música */}
+          <button
+            type="button"
+            onClick={() => {
+              if (onOpenMusicShelf) {
+                onOpenMusicShelf();
+              } else {
+                setIsMusicModalOpen(true);
+              }
+            }}
+            className={`px-2.5 sm:px-3 py-1.5 rounded-xl text-xs font-cute font-bold transition flex items-center gap-1.5 shadow-md active:scale-95 ${
+              isMusicPlaying
+                ? 'bg-[var(--accent-purple)] text-black border border-[var(--accent-purple)] shadow-[0_0_12px_rgba(189,147,249,0.5)] animate-pulse'
+                : 'bg-black/40 border border-[var(--border-color)] text-[var(--text-muted)] hover:text-[var(--accent-purple)] hover:border-[var(--accent-purple)]'
+            }`}
+            title="Estantería de Música: Escuchar música de fondo mientras lees, subir canciones y ajustar volumen"
+          >
+            <span className="text-sm">{isMusicPlaying ? '🎶' : '🎵'}</span>
+            <span className="hidden sm:inline">Música</span>
+            {isMusicPlaying && (
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping" />
+            )}
+          </button>
 
           {/* Sticker Drawer Button */}
           <button
@@ -930,20 +1047,6 @@ export const Reader: React.FC<ReaderProps> = ({
           >
             <Feather className="w-3.5 h-3.5" />
             <span className="hidden sm:inline">Cita</span>
-          </button>
-
-          {/* Permiso de Iluminación continua mientras el libro esté abierto */}
-          <button
-            onClick={toggleWakeLock}
-            className={`p-1.5 sm:px-2.5 sm:py-1.5 rounded-xl text-xs font-semibold flex items-center gap-1 transition ${
-              isWakeLockActive
-                ? 'bg-amber-500/20 text-amber-300 border border-amber-500/50 shadow-[0_0_12px_rgba(245,158,11,0.3)] animate-pulse'
-                : 'bg-black/40 border border-[var(--border-color)] text-[var(--text-muted)] hover:text-white'
-            }`}
-            title={isWakeLockActive ? 'Iluminación continua ACTIVA: Pantalla encendida' : 'Activar iluminación continua (evitar que la pantalla se apague)'}
-          >
-            <Lightbulb className={`w-3.5 h-3.5 ${isWakeLockActive ? 'fill-amber-300 text-amber-300' : ''}`} />
-            <span className="hidden lg:inline">{isWakeLockActive ? 'Luz fija' : 'Iluminación'}</span>
           </button>
 
           {/* Fullscreen Toggle */}
@@ -1233,9 +1336,13 @@ export const Reader: React.FC<ReaderProps> = ({
             onTouchEnd={handleTextSelection}
             className={`relative shadow-2xl min-h-[540px] ${
               book.type === 'pdf'
-                ? zoomLevel > 1.0
+                ? zoomLevel > 1.0 && !pdfReflowMode
                   ? 'w-auto max-w-none'
-                  : 'w-full max-w-4xl'
+                  : containerWidth === 'narrow'
+                  ? 'w-full max-w-xl'
+                  : containerWidth === 'wide'
+                  ? 'w-full max-w-4xl'
+                  : 'w-full max-w-3xl'
                 : containerWidth === 'narrow'
                 ? 'w-full max-w-xl'
                 : containerWidth === 'wide'
@@ -1288,157 +1395,129 @@ export const Reader: React.FC<ReaderProps> = ({
               </div>
             </button>
 
-            {/* 1. PDF Canvas & Toolbar */}
+            {/* 1. PDF Canvas & Reflow Adaptable (Sin barras estorbosas en la página) */}
             {book.type === 'pdf' && (
               <div className="w-full flex flex-col items-center">
-                {/* PDF Subrayar & Citar Barra */}
-                <div className="w-full max-w-xl mx-auto mb-3 bg-black/60 backdrop-blur-md border border-[var(--border-color)] rounded-2xl p-2.5 flex flex-wrap items-center justify-between gap-2 shadow-lg">
-                  <div className="flex items-center gap-1.5 text-xs font-semibold text-[var(--accent-pink)]">
-                    <Highlighter className="w-3.5 h-3.5" />
-                    <span>Subrayar Cita en PDF:</span>
+                {/* VISTA 1: Modo Acomodar Letras (Reflow Adaptable sin desbordamiento horizontal) */}
+                {pdfReflowMode ? (
+                  <div className="w-full">
+                    {pdfPageText ? (
+                      <div 
+                        className="prose max-w-none transition-all whitespace-pre-line select-text break-words px-1 sm:px-4 py-2"
+                        style={{ 
+                          fontSize: `${fontSize}px`, 
+                          lineHeight: lineHeight,
+                          color: currentReaderModeConfig.text,
+                          fontFamily: currentFont 
+                        }}
+                      >
+                        {renderHighlightedContent(pdfPageText, currentPageHighlights)}
+                      </div>
+                    ) : (
+                      <div className="text-center py-12 px-4 space-y-3 bg-black/30 rounded-2xl border border-white/5">
+                        <div className="text-3xl animate-bounce">📜</div>
+                        <h4 className="font-bold text-sm text-[var(--accent-pink)]">
+                          Modo Lectura Adaptable
+                        </h4>
+                        <p className="text-xs text-[var(--text-muted)] max-w-md mx-auto">
+                          Si esta página contiene texto, se extraerá automáticamente. Si es un documento escaneado como imagen, cambia al modo "Página Fija".
+                        </p>
+                        <button
+                          type="button"
+                          onClick={() => setPdfReflowMode(false)}
+                          className="px-3 py-1.5 bg-[var(--accent-pink)] text-black font-bold text-xs rounded-xl"
+                        >
+                          Ver en Página Fija
+                        </button>
+                      </div>
+                    )}
                   </div>
-                  <div className="flex items-center gap-1.5">
-                    <button
-                      type="button"
-                      onClick={() => setIsPdfQuoteInputOpen(!isPdfQuoteInputOpen)}
-                      className="px-2.5 py-1 rounded-xl text-xs font-bold bg-[var(--accent-pink)] text-black hover:opacity-90 transition flex items-center gap-1 shadow"
+                ) : (
+                  /* VISTA 2: Vista Página Fija (Canvas con Capa de Selección Directa y Subrayados Visuales) */
+                  <div className="w-full flex justify-center items-center overflow-x-auto overflow-y-visible p-1">
+                    <div 
+                      className="relative mx-auto shadow-2xl rounded-lg overflow-hidden select-text"
+                      style={{
+                        width: pdfViewportDim.width > 0 ? `${pdfViewportDim.width}px` : 'auto',
+                        height: pdfViewportDim.height > 0 ? `${pdfViewportDim.height}px` : 'auto'
+                      }}
                     >
-                      <Feather className="w-3 h-3" />
-                      <span>{isPdfQuoteInputOpen ? 'Ocultar' : 'Subrayar'}</span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => onOpenAddQuote()}
-                      className="px-2.5 py-1 rounded-xl text-xs font-bold bg-purple-500/30 text-[var(--accent-purple)] border border-purple-500/40 hover:bg-purple-500 hover:text-black transition flex items-center gap-1"
-                      title="Guardar cita en el Baúl con portada del libro"
-                    >
-                      <span>🪶 Baúl</span>
-                    </button>
-                  </div>
-
-                  {isPdfQuoteInputOpen && (
-                    <div className="w-full pt-2 mt-1 border-t border-white/10 flex flex-col gap-2">
-                      <input
-                        type="text"
-                        value={pdfQuoteDraft}
-                        onChange={(e) => setPdfQuoteDraft(e.target.value)}
-                        placeholder="Escribe o pega la frase de esta página del PDF a subrayar..."
-                        className="w-full bg-black/70 border border-[var(--border-color)] rounded-xl px-3 py-1.5 text-xs text-white placeholder-[var(--text-muted)] focus:outline-none focus:border-[var(--accent-pink)]"
+                      <canvas
+                        ref={canvasRef}
+                        className="block mx-auto rounded-lg transition-all duration-150"
+                        style={{
+                          width: pdfViewportDim.width > 0 ? `${pdfViewportDim.width}px` : '100%',
+                          height: pdfViewportDim.height > 0 ? `${pdfViewportDim.height}px` : 'auto'
+                        }}
                       />
-                      <div className="flex items-center justify-between gap-1 flex-wrap">
-                        <span className="text-[10px] text-[var(--text-muted)]">Elige color:</span>
-                        <div className="flex items-center gap-1.5 flex-wrap">
-                          <button
-                            type="button"
-                            onClick={() => {
-                              if (!pdfQuoteDraft.trim()) return;
-                              const newHl: TextHighlight = {
-                                id: `hl-${Date.now()}`,
-                                bookId: book.id,
-                                page: currentPage,
-                                text: pdfQuoteDraft.trim(),
-                                color: 'pink',
-                                createdAt: Date.now()
-                              };
-                              onSaveHighlights(pageKey, [...currentPageHighlights, newHl]);
-                              setPdfQuoteDraft('');
-                              setToastHighlight('Subrayado Rosa agregado al PDF 🌸');
-                              setTimeout(() => setToastHighlight(null), 2500);
+
+                      {/* Capa de subrayados y citas marcadas directamente sobre el lienzo del PDF */}
+                      {currentPageHighlights.map((hl) => {
+                        const cleanQuote = hl.text.toLowerCase().trim();
+                        const matchingItems = pdfTextItems.filter((item) => {
+                          const itemStr = item.str.toLowerCase();
+                          return cleanQuote.includes(itemStr) || itemStr.includes(cleanQuote);
+                        });
+
+                        const highlightColors = {
+                          pink: 'bg-pink-500/35 border-b-2 border-pink-400 shadow-[0_0_8px_rgba(244,63,94,0.5)]',
+                          purple: 'bg-purple-500/35 border-b-2 border-purple-400 shadow-[0_0_8px_rgba(168,85,247,0.5)]',
+                          gold: 'bg-amber-500/35 border-b-2 border-amber-400 shadow-[0_0_8px_rgba(245,158,11,0.5)]',
+                          emerald: 'bg-emerald-500/35 border-b-2 border-emerald-400 shadow-[0_0_8px_rgba(16,185,129,0.5)]'
+                        };
+
+                        return matchingItems.map((item, idx) => (
+                          <div
+                            key={`pdf-hl-${hl.id}-${idx}`}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onOpenAddQuote(hl.text);
                             }}
-                            className="px-2 py-0.5 rounded-lg text-[10px] font-bold bg-pink-500/20 text-pink-300 border border-pink-500/40 hover:bg-pink-500 hover:text-black transition"
-                          >
-                            🌸 Rosa
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              if (!pdfQuoteDraft.trim()) return;
-                              const newHl: TextHighlight = {
-                                id: `hl-${Date.now()}`,
-                                bookId: book.id,
-                                page: currentPage,
-                                text: pdfQuoteDraft.trim(),
-                                color: 'purple',
-                                createdAt: Date.now()
-                              };
-                              onSaveHighlights(pageKey, [...currentPageHighlights, newHl]);
-                              setPdfQuoteDraft('');
-                              setToastHighlight('Subrayado Violeta agregado al PDF 🔮');
-                              setTimeout(() => setToastHighlight(null), 2500);
+                            className={`absolute rounded cursor-pointer transition-all hover:brightness-125 z-10 ${highlightColors[hl.color] || highlightColors.pink}`}
+                            style={{
+                              left: `${item.left}px`,
+                              top: `${item.top}px`,
+                              width: `${item.width}px`,
+                              height: `${item.height}px`
                             }}
-                            className="px-2 py-0.5 rounded-lg text-[10px] font-bold bg-purple-500/20 text-purple-300 border border-purple-500/40 hover:bg-purple-500 hover:text-black transition"
-                          >
-                            🔮 Violeta
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              if (!pdfQuoteDraft.trim()) return;
-                              const newHl: TextHighlight = {
-                                id: `hl-${Date.now()}`,
-                                bookId: book.id,
-                                page: currentPage,
-                                text: pdfQuoteDraft.trim(),
-                                color: 'gold',
-                                createdAt: Date.now()
-                              };
-                              onSaveHighlights(pageKey, [...currentPageHighlights, newHl]);
-                              setPdfQuoteDraft('');
-                              setToastHighlight('Subrayado Oro agregado al PDF ✨');
-                              setTimeout(() => setToastHighlight(null), 2500);
+                            title={`Cita marcada: "${hl.text}". Clic para abrir en el Baúl.`}
+                          />
+                        ));
+                      })}
+
+                      {/* Capa de texto seleccionable directamente sobre el lienzo del PDF */}
+                      <div 
+                        className="pdf-text-layer absolute inset-0 select-text pointer-events-auto z-20"
+                        style={{
+                          width: pdfViewportDim.width > 0 ? `${pdfViewportDim.width}px` : '100%',
+                          height: pdfViewportDim.height > 0 ? `${pdfViewportDim.height}px` : 'auto'
+                        }}
+                      >
+                        {pdfTextItems.map((item, idx) => (
+                          <span
+                            key={`txt-${idx}`}
+                            style={{
+                              position: 'absolute',
+                              left: `${item.left}px`,
+                              top: `${item.top}px`,
+                              width: `${item.width}px`,
+                              height: `${item.height}px`,
+                              fontSize: `${item.fontSize}px`,
+                              lineHeight: `${item.height}px`,
+                              color: 'transparent',
+                              backgroundColor: 'transparent',
+                              userSelect: 'text',
+                              cursor: 'text',
+                              whiteSpace: 'pre'
                             }}
-                            className="px-2 py-0.5 rounded-lg text-[10px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/40 hover:bg-amber-500 hover:text-black transition"
                           >
-                            ✨ Oro
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              if (!pdfQuoteDraft.trim()) return;
-                              const newHl: TextHighlight = {
-                                id: `hl-${Date.now()}`,
-                                bookId: book.id,
-                                page: currentPage,
-                                text: pdfQuoteDraft.trim(),
-                                color: 'emerald',
-                                createdAt: Date.now()
-                              };
-                              onSaveHighlights(pageKey, [...currentPageHighlights, newHl]);
-                              setPdfQuoteDraft('');
-                              setToastHighlight('Subrayado Esmeralda agregado al PDF 🌿');
-                              setTimeout(() => setToastHighlight(null), 2500);
-                            }}
-                            className="px-2 py-0.5 rounded-lg text-[10px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 hover:bg-emerald-500 hover:text-black transition"
-                          >
-                            🌿 Esmeralda
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              if (!pdfQuoteDraft.trim()) return;
-                              onOpenAddQuote(pdfQuoteDraft.trim());
-                              setPdfQuoteDraft('');
-                            }}
-                            className="px-2 py-0.5 rounded-lg text-[10px] font-bold bg-white/20 text-white hover:bg-white/30 transition"
-                          >
-                            🪶 Guardar Cita
-                          </button>
-                        </div>
+                            {item.str}
+                          </span>
+                        ))}
                       </div>
                     </div>
-                  )}
-                </div>
-
-                <div className="w-full flex justify-center items-center overflow-x-auto overflow-y-visible p-1">
-                  <canvas
-                    ref={canvasRef}
-                    className="block mx-auto shadow-2xl rounded-lg transition-all duration-150"
-                    style={{
-                      maxWidth: zoomLevel <= 1.0 ? '100%' : 'none',
-                      height: 'auto'
-                    }}
-                  />
-                </div>
+                  </div>
+                )}
               </div>
             )}
 
@@ -1762,6 +1841,46 @@ export const Reader: React.FC<ReaderProps> = ({
           <ChevronRight className="w-3.5 h-3.5" />
         </button>
       </div>
+
+      {/* Kawaii Reading Settings Modal (Ajustes de Lectura unificados) */}
+      <ReadingSettingsModal
+        isOpen={isSettingsModalOpen}
+        onClose={() => setIsSettingsModalOpen(false)}
+        bookType={book.type}
+        pdfReflowMode={pdfReflowMode}
+        onTogglePdfReflow={(reflow) => {
+          setPdfReflowMode(reflow);
+          localStorage.setItem('nl_pdf_reflow_mode', String(reflow));
+          setToastHighlight(reflow ? '📖 Modo Acomodar Letras: Las palabras se ajustan al ancho' : '📄 Modo Página Fija: Vista original');
+        }}
+        currentFont={currentFont}
+        onSelectFont={(font) => {
+          onSelectFont?.(font);
+          localStorage.setItem('nl_font', font);
+        }}
+        fontSize={fontSize}
+        onSelectFontSize={(size) => setFontSize(size)}
+        lineHeight={lineHeight}
+        onSelectLineHeight={(lh) => setLineHeight(lh)}
+        containerWidth={containerWidth}
+        onSelectContainerWidth={(w) => setContainerWidth(w)}
+        readerMode={readerMode}
+        onSelectReaderMode={(m) => setReaderMode(m)}
+        isWakeLockActive={isWakeLockActive}
+        onToggleWakeLock={toggleWakeLock}
+        zoomLevel={zoomLevel}
+        onSetZoomLevel={(z) => setZoomLevel(z)}
+      />
+
+      {/* Music Shelf Modal (Estantería de Música - Subir archivos y sonar de fondo) */}
+      <MusicShelfModal
+        isOpen={isMusicModalOpen}
+        onClose={() => setIsMusicModalOpen(false)}
+        onToast={(msg) => {
+          setToastHighlight(msg);
+          setTimeout(() => setToastHighlight(null), 3000);
+        }}
+      />
     </div>
   );
 };

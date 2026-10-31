@@ -127,3 +127,15 @@ export interface ShelfBackgroundConfig {
   blur: number; // 0 to 12 (px)
   fit: 'cover' | 'pattern';
 }
+
+export interface MusicTrack {
+  id: string;
+  title: string;
+  artist?: string;
+  fileName?: string;
+  fileSize?: string;
+  duration?: number;
+  isCustom: boolean;
+  type?: 'soundscape-rain' | 'soundscape-purr' | 'file';
+  addedAt: number;
+}

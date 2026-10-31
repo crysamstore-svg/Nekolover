@@ -15,6 +15,8 @@ import { ThemeModal } from './components/ThemeModal';
 import { FontModal } from './components/FontModal';
 import { AddQuoteModal } from './components/AddQuoteModal';
 import { AmbientAudioModal } from './components/AmbientAudioModal';
+import { MusicShelfModal } from './components/MusicShelfModal';
+import { musicPlayer } from './utils/musicManager';
 import { BookmarksDrawer } from './components/BookmarksDrawer';
 import { SettingsView, HeaderButtonsConfig } from './components/SettingsView';
 import { DEFAULT_SHELF_BG } from './components/ShelfBackgroundModal';
@@ -184,6 +186,14 @@ export default function App() {
     }
     localStorage.setItem('nl_night_mode', isNightMode ? 'true' : 'false');
   }, [isNightMode]);
+
+  // Sync music player isPlaying state with Header indicator
+  useEffect(() => {
+    const unsub = musicPlayer.subscribe(() => {
+      setIsAudioPlaying(musicPlayer.isPlaying);
+    });
+    return () => unsub();
+  }, []);
 
   const handleToggleNightMode = () => {
     setIsNightMode((prev) => {
@@ -599,7 +609,9 @@ export default function App() {
             onSaveHighlights={handleSaveHighlights}
             onUpdateBookProgress={handleUpdateBookProgress}
             currentFont={currentFont}
+            onSelectFont={setCurrentFont}
             onOpenAudioModal={() => setIsAudioModalOpen(true)}
+            onOpenMusicShelf={() => setIsAudioModalOpen(true)}
             onRecordReadingSession={handleRecordReadingSession}
             readerMode={readerMode}
             onSelectReaderMode={(mode) => {
@@ -729,10 +741,10 @@ export default function App() {
         currentPage={activeBook?.currentPage || 1}
       />
 
-      <AmbientAudioModal
+      <MusicShelfModal
         isOpen={isAudioModalOpen}
         onClose={() => setIsAudioModalOpen(false)}
-        onAudioStateChange={setIsAudioPlaying}
+        onToast={showToast}
       />
 
       <BookmarksDrawer
