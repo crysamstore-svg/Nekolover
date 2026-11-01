@@ -14,7 +14,7 @@ Un lector de libros digital moderno e inteligente para enriquecer la experiencia
 ## 💳 Modelo de Monetización (Freemium)
 Esta aplicación utiliza un modelo híbrido para mantener el servicio.
 
-* **Plan Gratuito:** Acceso completo al lector de libros con un límite.
+* **Plan Gratuito:** Acceso al lector de libros con un límite.
 * **Suscripción Premium (Mensual):** Acceso ilimitado a todas las funciones y herramientas exclusivas. 
 
 *Los pagos y la administración de suscripciones recurrentes se procesan de forma segura a través de **PayPal**.*
