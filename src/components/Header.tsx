@@ -11,7 +11,8 @@ import {
   Moon, 
   Sun,
   Download,
-  MoreVertical
+  MoreVertical,
+  Crown
 } from 'lucide-react';
 import { HeaderButtonsConfig } from './SettingsView';
 
@@ -28,6 +29,8 @@ interface HeaderProps {
   onToggleNightMode: () => void;
   onDownloadZip?: () => void;
   headerConfig?: HeaderButtonsConfig;
+  isVip?: boolean;
+  onOpenVipModal?: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -42,7 +45,9 @@ export const Header: React.FC<HeaderProps> = ({
   isNightMode,
   onToggleNightMode,
   onDownloadZip,
-  headerConfig
+  headerConfig,
+  isVip,
+  onOpenVipModal
 }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -178,19 +183,42 @@ export const Header: React.FC<HeaderProps> = ({
           </button>
         )}
 
-        {/* Estantería de Música & Sonido ambiental */}
+        {/* Botón VIP ($2 USD/mes) */}
+        <button
+          onClick={onOpenVipModal}
+          className={`px-2.5 sm:px-3 py-2 rounded-xl text-xs font-cute font-bold flex items-center gap-1.5 transition active:scale-95 ${
+            isVip
+              ? 'bg-amber-400 text-black border border-amber-300 shadow-[0_0_12px_rgba(251,191,36,0.6)] font-extrabold'
+              : 'bg-gradient-to-r from-amber-500/20 via-pink-500/20 to-amber-500/10 border border-amber-400/70 text-amber-300 hover:bg-amber-400 hover:text-black shadow-sm'
+          }`}
+          title={isVip ? 'Membresía VIP Activa ($2/mes) - Ver detalles' : 'Suscripción VIP ($2 USD/mes): Música, todas las fuentes, fotos de estantería, stickers y notas'}
+        >
+          <Crown className={`w-3.5 h-3.5 ${isVip ? 'fill-black' : 'text-amber-400'}`} />
+          <span className="hidden sm:inline font-bold">
+            {isVip ? 'VIP Activo' : 'VIP $2/m'}
+          </span>
+        </button>
+
+        {/* Estantería de Música (Función VIP) */}
         {(!headerConfig || headerConfig.showAudio) && (
           <button
-            onClick={onOpenAudioModal}
+            onClick={() => {
+              if (!isVip && onOpenVipModal) {
+                onOpenVipModal();
+              } else {
+                onOpenAudioModal();
+              }
+            }}
             className={`px-2.5 sm:px-3 py-2 rounded-xl text-xs flex items-center gap-1.5 border transition active:scale-95 ${
               isAudioPlaying
                 ? 'bg-[var(--accent-purple)]/25 text-[var(--accent-purple)] border-[var(--accent-purple)] shadow-[0_0_12px_rgba(189,147,249,0.3)] animate-pulse'
                 : 'bg-black/30 text-[var(--text-muted)] border-[var(--border-color)] hover:text-[var(--accent-purple)] hover:border-[var(--accent-purple)]/60'
             }`}
-            title="Estantería de Música: Sube canciones de tus archivos, ajusta volumen o activa sonido Lo-Fi"
+            title={isVip ? 'Estantería de Música: Sube canciones de tus archivos y escucha de fondo' : 'Reproductor de Música: Exclusivo Suscripción VIP ($2/mes)'}
           >
             {isAudioPlaying ? <Volume2 className="w-4 h-4 text-[var(--accent-purple)]" /> : <Music className="w-4 h-4" />}
             <span className="hidden sm:inline font-cute font-medium">Música</span>
+            {!isVip && <span className="text-[10px] text-amber-300 font-bold ml-0.5">👑</span>}
           </button>
         )}
 

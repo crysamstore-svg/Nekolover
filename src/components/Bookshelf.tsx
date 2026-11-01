@@ -37,6 +37,8 @@ interface BookshelfProps {
   onViewModeChange?: (mode: ShelfViewMode) => void;
   shelfBgConfig?: ShelfBackgroundConfig;
   onUpdateShelfBgConfig?: (config: ShelfBackgroundConfig) => void;
+  isVip?: boolean;
+  onOpenVipModal?: () => void;
 }
 
 export const Bookshelf: React.FC<BookshelfProps> = ({
@@ -54,7 +56,9 @@ export const Bookshelf: React.FC<BookshelfProps> = ({
   viewMode: propViewMode,
   onViewModeChange,
   shelfBgConfig,
-  onUpdateShelfBgConfig
+  onUpdateShelfBgConfig,
+  isVip,
+  onOpenVipModal
 }) => {
   const [activeCategory, setActiveCategory] = useState<BookCategory>('all');
   const [searchQuery, setSearchQuery] = useState('');
@@ -731,6 +735,8 @@ export const Bookshelf: React.FC<BookshelfProps> = ({
         onSaveConfig={(cfg) => {
           onUpdateShelfBgConfig?.(cfg);
         }}
+        isVip={isVip}
+        onOpenVipModal={onOpenVipModal}
       />
     </div>
   );

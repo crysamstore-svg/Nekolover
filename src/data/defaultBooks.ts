@@ -146,9 +146,13 @@ export const FONT_OPTIONS: FontOption[] = [
 ];
 
 export const KAWAII_STICKERS: string[] = [
+  // 1-20: Gratuitos
   '🐈‍⬛', '🐾', '🍓', '🧁', '🦇', '💀', '🖤', '🎀',
   '🧪', '🕯️', '🔮', '✨', '☕', '🗡️', '🥀', '🌙',
-  '🐱', '🍩', '🩸', '🕸️', '🧸', '🪓', '🕷️', '🏰'
+  '🐱', '🍩', '🩸', '🕸️',
+  // 21+: Exclusivos VIP
+  '🧸', '🪓', '🕷️', '🏰', '👑', '💎', '🍷', '🎭',
+  '🍰', '🪶', '🗝️', '🥞', '🐺', '🪐', '🍬', '⚡'
 ];
 
 export const DEFAULT_BOOKS: Book[] = [

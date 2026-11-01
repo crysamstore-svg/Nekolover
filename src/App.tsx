@@ -16,7 +16,9 @@ import { FontModal } from './components/FontModal';
 import { AddQuoteModal } from './components/AddQuoteModal';
 import { AmbientAudioModal } from './components/AmbientAudioModal';
 import { MusicShelfModal } from './components/MusicShelfModal';
+import { VipSubscriptionModal } from './components/VipSubscriptionModal';
 import { musicPlayer } from './utils/musicManager';
+import { vipManager } from './utils/vipManager';
 import { BookmarksDrawer } from './components/BookmarksDrawer';
 import { SettingsView, HeaderButtonsConfig } from './components/SettingsView';
 import { DEFAULT_SHELF_BG } from './components/ShelfBackgroundModal';
@@ -160,6 +162,23 @@ export default function App() {
   const [isAudioPlaying, setIsAudioPlaying] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [bookToDelete, setBookToDelete] = useState<Book | null>(null);
+
+  // VIP Subscription ($2 USD/month) State
+  const [isVip, setIsVip] = useState<boolean>(() => vipManager.isVip());
+  const [isVipModalOpen, setIsVipModalOpen] = useState<boolean>(false);
+  const [vipFeatureReason, setVipFeatureReason] = useState<'music' | 'fonts' | 'shelf_bg' | 'stickers' | 'highlights' | 'notes' | null>(null);
+
+  const openVipModal = (reason?: 'music' | 'fonts' | 'shelf_bg' | 'stickers' | 'highlights' | 'notes') => {
+    setVipFeatureReason(reason || null);
+    setIsVipModalOpen(true);
+  };
+
+  useEffect(() => {
+    const unsub = vipManager.onVipChange((vip) => {
+      setIsVip(vip);
+    });
+    return () => unsub();
+  }, []);
 
   const showToast = useCallback((msg: string) => {
     setToastMessage(msg);
@@ -552,7 +571,13 @@ export default function App() {
           }
         }}
         onOpenThemeModal={() => setIsThemeModalOpen(true)}
-        onOpenAudioModal={() => setIsAudioModalOpen(true)}
+        onOpenAudioModal={() => {
+          if (!isVip) {
+            openVipModal('music');
+          } else {
+            setIsAudioModalOpen(true);
+          }
+        }}
         onFileUpload={handleFileUpload}
         quotesCount={quotes.length}
         bookmarksCount={bookmarks.length}
@@ -561,6 +586,8 @@ export default function App() {
         onToggleNightMode={handleToggleNightMode}
         onDownloadZip={handleDownloadZip}
         headerConfig={headerConfig}
+        isVip={isVip}
+        onOpenVipModal={() => openVipModal()}
       />
 
       {/* Main Content View Switcher */}
@@ -588,6 +615,8 @@ export default function App() {
             }}
             shelfBgConfig={shelfBgConfig}
             onUpdateShelfBgConfig={handleUpdateShelfBgConfig}
+            isVip={isVip}
+            onOpenVipModal={() => openVipModal('shelf_bg')}
           />
         )}
 
@@ -598,6 +627,11 @@ export default function App() {
             onOpenFontModal={() => setIsFontModalOpen(true)}
             onOpenThemeModal={() => setIsThemeModalOpen(true)}
             onOpenAddQuote={(selText) => {
+              if (!isVip && quotes.length >= 3) {
+                openVipModal('notes');
+                showToast('👑 Límite de 3 notas alcanzado. Pásate a VIP ($2/mes) para notas infinitas.');
+                return;
+              }
               setQuoteSelectedText(selText);
               setIsAddQuoteOpen(true);
             }}
@@ -610,8 +644,20 @@ export default function App() {
             onUpdateBookProgress={handleUpdateBookProgress}
             currentFont={currentFont}
             onSelectFont={setCurrentFont}
-            onOpenAudioModal={() => setIsAudioModalOpen(true)}
-            onOpenMusicShelf={() => setIsAudioModalOpen(true)}
+            onOpenAudioModal={() => {
+              if (!isVip) {
+                openVipModal('music');
+              } else {
+                setIsAudioModalOpen(true);
+              }
+            }}
+            onOpenMusicShelf={() => {
+              if (!isVip) {
+                openVipModal('music');
+              } else {
+                setIsAudioModalOpen(true);
+              }
+            }}
             onRecordReadingSession={handleRecordReadingSession}
             readerMode={readerMode}
             onSelectReaderMode={(mode) => {
@@ -633,6 +679,9 @@ export default function App() {
               setFontSize(fs);
               localStorage.setItem('nl_font_size', String(fs));
             }}
+            isVip={isVip}
+            onOpenVipModal={openVipModal}
+            quotesCount={quotes.length}
           />
         )}
 
@@ -640,10 +689,17 @@ export default function App() {
           <QuotesVault
             quotes={quotes}
             onOpenAddQuote={() => {
+              if (!isVip && quotes.length >= 3) {
+                openVipModal('notes');
+                showToast('👑 Límite de 3 notas alcanzado. Pásate a VIP ($2/mes) para notas infinitas.');
+                return;
+              }
               setQuoteSelectedText(undefined);
               setIsAddQuoteOpen(true);
             }}
             onDeleteQuote={handleDeleteQuote}
+            isVip={isVip}
+            onOpenVipModal={() => openVipModal('notes')}
           />
         )}
 
@@ -727,6 +783,8 @@ export default function App() {
         onClose={() => setIsFontModalOpen(false)}
         currentFont={currentFont}
         onSelectFont={setCurrentFont}
+        isVip={isVip}
+        onOpenVipModal={() => openVipModal('fonts')}
       />
 
       <AddQuoteModal
@@ -754,6 +812,17 @@ export default function App() {
         books={books}
         onSelectBookmark={handleSelectBookmark}
         onDeleteBookmark={handleDeleteBookmark}
+      />
+
+      {/* NekoLover VIP Club Subscription Modal ($2.00 USD/month) */}
+      <VipSubscriptionModal
+        isOpen={isVipModalOpen}
+        onClose={() => setIsVipModalOpen(false)}
+        onSubscribed={() => {
+          setIsVip(true);
+          showToast('👑 ¡Membresía VIP Activada! Disfruta de música, fotos, tipografías y notas ilimitadas.');
+        }}
+        featureReason={vipFeatureReason}
       />
 
       {/* In-App Gothic Delete Book Confirmation Modal */}

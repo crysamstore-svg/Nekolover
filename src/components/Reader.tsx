@@ -110,6 +110,9 @@ interface ReaderProps {
   onSelectLineHeight?: (lh: number) => void;
   fontSize?: number;
   onSelectFontSize?: (fs: number) => void;
+  isVip?: boolean;
+  onOpenVipModal?: (reason?: 'music' | 'fonts' | 'shelf_bg' | 'stickers' | 'highlights' | 'notes') => void;
+  quotesCount?: number;
 }
 
 export const Reader: React.FC<ReaderProps> = ({
@@ -137,7 +140,10 @@ export const Reader: React.FC<ReaderProps> = ({
   lineHeight: propLineHeight,
   onSelectLineHeight,
   fontSize: propFontSize,
-  onSelectFontSize
+  onSelectFontSize,
+  isVip,
+  onOpenVipModal,
+  quotesCount
 }) => {
   const [currentPage, setCurrentPage] = useState<number>(book.currentPage || 1);
   const [totalPages, setTotalPages] = useState<number>(book.totalPages || 1);
@@ -281,6 +287,11 @@ export const Reader: React.FC<ReaderProps> = ({
   };
 
   const handleAddHighlight = (color: 'pink' | 'purple' | 'gold' | 'emerald') => {
+    if (color === 'emerald' && !isVip) {
+      onOpenVipModal?.('highlights');
+      setToastHighlight('👑 Resaltador Esmeralda exclusivo VIP ($2/mes). Tienes 3 colores gratuitos.');
+      return;
+    }
     if (!selectedText) return;
     const cleanText = selectedText.trim();
     if (!cleanText) return;
@@ -669,7 +680,17 @@ export const Reader: React.FC<ReaderProps> = ({
   };
 
   // Movable Stickers logic with stick / unstick (pegar y volver a mover)
-  const handleAddSticker = (emoji: string) => {
+  const handleAddSticker = (emoji: string, stickerIndex?: number) => {
+    // Restricción VIP: máximo 20 stickers en la versión gratuita
+    const totalPlaced = Object.values(stickers).reduce((acc, curr) => acc + curr.length, 0);
+    if (!isVip) {
+      if ((stickerIndex !== undefined && stickerIndex >= 20) || totalPlaced >= 20) {
+        onOpenVipModal?.('stickers');
+        setToastHighlight('👑 Límite de 20 stickers alcanzado. Suscríbete a VIP ($2/mes) para stickers ilimitados.');
+        return;
+      }
+    }
+
     const newSticker: PageSticker = {
       id: `stk-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
       emoji,
@@ -938,6 +959,11 @@ export const Reader: React.FC<ReaderProps> = ({
 
   // Get selected text for quoting
   const handleCaptureSelection = () => {
+    if (!isVip && quotesCount !== undefined && quotesCount >= 3) {
+      onOpenVipModal?.('notes');
+      setToastHighlight('👑 Límite de 3 notas alcanzado. Pásate a VIP ($2/mes) para notas y citas infinitas.');
+      return;
+    }
     const sel = window.getSelection()?.toString().trim();
     onOpenAddQuote(sel || undefined);
   };
@@ -983,10 +1009,14 @@ export const Reader: React.FC<ReaderProps> = ({
             <span className="hidden sm:inline">Ajustes</span>
           </button>
 
-          {/* Estantería de Música */}
+          {/* Estantería de Música (Función VIP) */}
           <button
             type="button"
             onClick={() => {
+              if (!isVip) {
+                onOpenVipModal?.('music');
+                return;
+              }
               if (onOpenMusicShelf) {
                 onOpenMusicShelf();
               } else {
@@ -998,10 +1028,11 @@ export const Reader: React.FC<ReaderProps> = ({
                 ? 'bg-[var(--accent-purple)] text-black border border-[var(--accent-purple)] shadow-[0_0_12px_rgba(189,147,249,0.5)] animate-pulse'
                 : 'bg-black/40 border border-[var(--border-color)] text-[var(--text-muted)] hover:text-[var(--accent-purple)] hover:border-[var(--accent-purple)]'
             }`}
-            title="Estantería de Música: Escuchar música de fondo mientras lees, subir canciones y ajustar volumen"
+            title={isVip ? "Estantería de Música: Escuchar de fondo y subir canciones" : "Reproductor de Música: Exclusivo VIP ($2/mes) 👑"}
           >
             <span className="text-sm">{isMusicPlaying ? '🎶' : '🎵'}</span>
             <span className="hidden sm:inline">Música</span>
+            {!isVip && <span className="text-[10px] text-amber-300 font-bold ml-0.5">👑</span>}
             {isMusicPlaying && (
               <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping" />
             )}
@@ -1111,20 +1142,48 @@ export const Reader: React.FC<ReaderProps> = ({
             </div>
           </div>
 
-          <p className="text-[10px] text-[var(--text-muted)] mb-2">
-            Haz clic para colocar. Puedes agrandarlo, achicarlo, moverlo o arrastrar su esquina.
-          </p>
+          {!isVip && (
+            <p className="text-[10px] text-amber-300 font-semibold mb-2 flex items-center justify-between bg-amber-400/10 px-2 py-1 rounded-lg border border-amber-400/20">
+              <span>Gratis: 20 stickers disponibles</span>
+              <button
+                type="button"
+                onClick={() => onOpenVipModal?.('stickers')}
+                className="underline hover:text-white"
+              >
+                VIP: Infinitos 👑
+              </button>
+            </p>
+          )}
 
           <div className="grid grid-cols-6 gap-2 max-h-48 overflow-y-auto p-1 scrollbar-none">
-            {KAWAII_STICKERS.map((emoji, idx) => (
-              <button
-                key={idx}
-                onClick={() => handleAddSticker(emoji)}
-                className="text-2xl p-1.5 rounded-xl bg-black/40 hover:bg-white/15 transition transform hover:scale-125 flex items-center justify-center border border-transparent hover:border-[var(--accent-pink)] active:scale-95"
-              >
-                {emoji}
-              </button>
-            ))}
+            {KAWAII_STICKERS.map((emoji, idx) => {
+              const isLocked = !isVip && idx >= 20;
+              return (
+                <button
+                  key={idx}
+                  onClick={() => {
+                    if (isLocked) {
+                      onOpenVipModal?.('stickers');
+                      return;
+                    }
+                    handleAddSticker(emoji, idx);
+                  }}
+                  className={`text-2xl p-1.5 rounded-xl transition transform hover:scale-125 flex items-center justify-center border relative active:scale-95 ${
+                    isLocked
+                      ? 'bg-black/50 border-amber-400/30 opacity-75 hover:border-amber-400'
+                      : 'bg-black/40 hover:bg-white/15 border-transparent hover:border-[var(--accent-pink)]'
+                  }`}
+                  title={isLocked ? 'Sticker Exclusivo VIP ($2/mes) 👑' : 'Pegar sticker'}
+                >
+                  <span>{emoji}</span>
+                  {isLocked && (
+                    <span className="absolute -top-1 -right-1 text-[9px] leading-none">
+                      👑
+                    </span>
+                  )}
+                </button>
+              );
+            })}
           </div>
 
           {currentPageStickers.length > 0 && (
@@ -1169,9 +1228,13 @@ export const Reader: React.FC<ReaderProps> = ({
               />
               <button
                 onClick={() => handleAddHighlight('emerald')}
-                className="w-5 h-5 rounded-full bg-emerald-400 hover:scale-125 transition border border-white/20"
-                title="Esmeralda"
-              />
+                className={`w-5 h-5 rounded-full bg-emerald-400 hover:scale-125 transition border border-white/20 relative flex items-center justify-center ${
+                  !isVip ? 'opacity-80' : ''
+                }`}
+                title={!isVip ? 'Esmeralda Místico (👑 Exclusivo VIP $2/mes)' : 'Esmeralda'}
+              >
+                {!isVip && <span className="text-[9px] leading-none">👑</span>}
+              </button>
               <button
                 onClick={() => setShowColorPicker(false)}
                 className="p-1 text-xs text-[var(--text-muted)] hover:text-white"
@@ -1184,13 +1247,18 @@ export const Reader: React.FC<ReaderProps> = ({
               <button
                 onClick={() => setShowColorPicker(true)}
                 className="px-2 py-1 rounded-xl bg-pink-500/20 text-[var(--accent-pink)] hover:bg-pink-500 hover:text-black transition text-xs font-semibold flex items-center gap-1"
-                title="Subrayar texto"
+                title="Subrayar texto (3 colores gratis, Esmeralda VIP)"
               >
                 <Highlighter className="w-3.5 h-3.5" />
                 <span>Subrayar</span>
               </button>
               <button
                 onClick={() => {
+                  if (!isVip && quotesCount !== undefined && quotesCount >= 3) {
+                    onOpenVipModal?.('notes');
+                    setToastHighlight('👑 Límite de 3 notas alcanzado. Pásate a VIP ($2/mes) para notas infinitas.');
+                    return;
+                  }
                   onOpenAddQuote(selectedText);
                   setSelectionPos(null);
                 }}
@@ -1199,6 +1267,9 @@ export const Reader: React.FC<ReaderProps> = ({
               >
                 <Feather className="w-3.5 h-3.5" />
                 <span>Cita</span>
+                {!isVip && quotesCount !== undefined && quotesCount >= 3 && (
+                  <span className="text-[9px] text-amber-300 font-bold">👑</span>
+                )}
               </button>
               <button
                 onClick={() => {
@@ -1275,14 +1346,23 @@ export const Reader: React.FC<ReaderProps> = ({
               />
               <button
                 onClick={() => handleAddHighlight('emerald')}
-                className="w-5 h-5 rounded-full bg-emerald-400 hover:scale-125 active:scale-95 transition border border-white/30"
-                title="Esmeralda"
-              />
+                className={`w-5 h-5 rounded-full bg-emerald-400 hover:scale-125 active:scale-95 transition border border-white/30 relative flex items-center justify-center ${
+                  !isVip ? 'opacity-80' : ''
+                }`}
+                title={!isVip ? 'Esmeralda Místico (👑 Exclusivo VIP $2/mes)' : 'Esmeralda'}
+              >
+                {!isVip && <span className="text-[9px] leading-none">👑</span>}
+              </button>
             </div>
 
             {/* Crear Cita */}
             <button
               onClick={() => {
+                if (!isVip && quotesCount !== undefined && quotesCount >= 3) {
+                  onOpenVipModal?.('notes');
+                  setToastHighlight('👑 Límite de 3 notas alcanzado. Pásate a VIP ($2/mes) para notas infinitas.');
+                  return;
+                }
                 onOpenAddQuote(selectedText);
                 setSelectedText('');
                 setSelectionPos(null);
@@ -1292,6 +1372,9 @@ export const Reader: React.FC<ReaderProps> = ({
             >
               <Feather className="w-3.5 h-3.5" />
               <span className="hidden xs:inline">Cita</span>
+              {!isVip && quotesCount !== undefined && quotesCount >= 3 && (
+                <span className="text-[9px] text-amber-300 font-bold">👑</span>
+              )}
             </button>
           </div>
         </div>
@@ -1870,6 +1953,8 @@ export const Reader: React.FC<ReaderProps> = ({
         onToggleWakeLock={toggleWakeLock}
         zoomLevel={zoomLevel}
         onSetZoomLevel={(z) => setZoomLevel(z)}
+        isVip={isVip}
+        onOpenVipModal={() => onOpenVipModal?.('fonts')}
       />
 
       {/* Music Shelf Modal (Estantería de Música - Subir archivos y sonar de fondo) */}

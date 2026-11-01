@@ -45,6 +45,9 @@ interface ReadingSettingsModalProps {
   // Zoom (for PDF page view)
   zoomLevel?: number;
   onSetZoomLevel?: (zoom: number) => void;
+  // VIP
+  isVip?: boolean;
+  onOpenVipModal?: () => void;
 }
 
 export const ReadingSettingsModal: React.FC<ReadingSettingsModalProps> = ({
@@ -66,7 +69,9 @@ export const ReadingSettingsModal: React.FC<ReadingSettingsModalProps> = ({
   isWakeLockActive,
   onToggleWakeLock,
   zoomLevel = 1.0,
-  onSetZoomLevel
+  onSetZoomLevel,
+  isVip,
+  onOpenVipModal
 }) => {
   if (!isOpen) return null;
 
@@ -246,27 +251,54 @@ export const ReadingSettingsModal: React.FC<ReadingSettingsModalProps> = ({
 
           {/* 4. TIPOGRAFÍA Y FUENTES */}
           <div className="bg-black/40 border border-[var(--border-color)] p-3.5 rounded-2xl space-y-2">
-            <span className="text-xs font-bold text-white block">
-              Tipografía Literaria & Kawaii
-            </span>
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold text-white block">
+                Tipografía Literaria & Kawaii
+              </span>
+              {!isVip && (
+                <button
+                  type="button"
+                  onClick={onOpenVipModal}
+                  className="text-[10px] text-amber-300 font-bold hover:underline flex items-center gap-1"
+                >
+                  <span>👑 4 gratis • Desbloquear todas</span>
+                </button>
+              )}
+            </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 max-h-40 overflow-y-auto pr-1 scrollbar-none">
-              {FONT_OPTIONS.map((f: FontOption) => {
+              {FONT_OPTIONS.map((f: FontOption, idx: number) => {
                 const isSelected = currentFont === f.family;
+                const isLocked = !isVip && idx >= 4;
                 return (
                   <button
                     key={f.id}
                     type="button"
-                    onClick={() => onSelectFont(f.family)}
+                    onClick={() => {
+                      if (isLocked) {
+                        onOpenVipModal?.();
+                        return;
+                      }
+                      onSelectFont(f.family);
+                    }}
                     className={`p-2 rounded-xl border text-left transition flex items-center justify-between ${
                       isSelected
                         ? 'bg-[var(--accent-pink)]/20 border-[var(--accent-pink)] text-[var(--accent-pink)]'
+                        : isLocked
+                        ? 'bg-black/40 border-amber-400/20 text-[var(--text-muted)] hover:border-amber-400/50'
                         : 'bg-black/30 border-white/5 text-[var(--text-muted)] hover:text-white hover:border-white/20'
                     }`}
                   >
                     <div className="truncate">
-                      <span className="text-xs font-bold block truncate" style={{ fontFamily: f.family }}>
-                        {f.name}
-                      </span>
+                      <div className="flex items-center gap-1">
+                        <span className="text-xs font-bold block truncate" style={{ fontFamily: f.family }}>
+                          {f.name}
+                        </span>
+                        {isLocked && (
+                          <span className="text-[9px] px-1 py-0.2 rounded bg-amber-400 text-black font-bold shrink-0">
+                            👑 VIP
+                          </span>
+                        )}
+                      </div>
                       <span className="text-[9px] text-[var(--text-muted)] truncate block">
                         {f.category}
                       </span>

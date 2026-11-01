@@ -17,12 +17,16 @@ interface QuotesVaultProps {
   quotes: Quote[];
   onOpenAddQuote: () => void;
   onDeleteQuote: (id: string) => void;
+  isVip?: boolean;
+  onOpenVipModal?: () => void;
 }
 
 export const QuotesVault: React.FC<QuotesVaultProps> = ({
   quotes,
   onOpenAddQuote,
-  onDeleteQuote
+  onDeleteQuote,
+  isVip,
+  onOpenVipModal
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedEmotion, setSelectedEmotion] = useState<string>('all');
@@ -94,11 +98,22 @@ export const QuotesVault: React.FC<QuotesVaultProps> = ({
         <div className="flex flex-wrap items-center gap-2 w-full md:w-auto">
           {/* Add Quote Button */}
           <button
-            onClick={onOpenAddQuote}
+            onClick={() => {
+              if (!isVip && quotes.length >= 3) {
+                onOpenVipModal?.();
+                return;
+              }
+              onOpenAddQuote();
+            }}
             className="px-3.5 py-2 rounded-xl text-xs font-bold bg-[var(--accent-pink)] text-black hover:opacity-90 transition flex items-center gap-1.5 shadow-md active:scale-95"
           >
             <Plus className="w-3.5 h-3.5" />
             <span>Nueva Cita</span>
+            {!isVip && quotes.length >= 3 && (
+              <span className="px-1 py-0.2 rounded bg-amber-400 text-black text-[9px] font-bold">
+                👑 VIP
+              </span>
+            )}
           </button>
 
           {/* Export Markdown */}

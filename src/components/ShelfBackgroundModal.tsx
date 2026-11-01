@@ -72,13 +72,17 @@ interface ShelfBackgroundModalProps {
   onClose: () => void;
   config: ShelfBackgroundConfig;
   onSaveConfig: (nextConfig: ShelfBackgroundConfig) => void;
+  isVip?: boolean;
+  onOpenVipModal?: () => void;
 }
 
 export const ShelfBackgroundModal: React.FC<ShelfBackgroundModalProps> = ({
   isOpen,
   onClose,
   config,
-  onSaveConfig
+  onSaveConfig,
+  isVip,
+  onOpenVipModal
 }) => {
   const [currentConfig, setCurrentConfig] = useState<ShelfBackgroundConfig>(config || DEFAULT_SHELF_BG);
   const [isProcessingImage, setIsProcessingImage] = useState(false);
@@ -286,13 +290,36 @@ export const ShelfBackgroundModal: React.FC<ShelfBackgroundModalProps> = ({
             <div className="flex flex-wrap items-center gap-2">
               <button
                 type="button"
-                onClick={() => fileInputRef.current?.click()}
+                onClick={() => {
+                  if (!isVip) {
+                    onOpenVipModal?.();
+                    return;
+                  }
+                  fileInputRef.current?.click();
+                }}
                 disabled={isProcessingImage}
-                className="px-4 py-2.5 rounded-xl bg-gradient-to-r from-[var(--accent-pink)] to-[var(--accent-purple)] text-black font-cute font-bold text-xs shadow-md hover:opacity-90 active:scale-95 transition flex items-center gap-2"
+                className={`px-4 py-2.5 rounded-xl text-black font-cute font-bold text-xs shadow-md transition flex items-center gap-2 active:scale-95 ${
+                  isVip
+                    ? 'bg-gradient-to-r from-[var(--accent-pink)] to-[var(--accent-purple)] hover:opacity-90'
+                    : 'bg-gradient-to-r from-amber-400 to-pink-500 shadow-[0_0_15px_rgba(245,158,11,0.3)] hover:opacity-95'
+                }`}
               >
                 <Upload className="w-4 h-4" />
-                <span>{isProcessingImage ? 'Optimizando foto...' : 'Elegir Imagen de tu Dispositivo'}</span>
+                <span>
+                  {isProcessingImage 
+                    ? 'Optimizando foto...' 
+                    : isVip 
+                    ? 'Elegir Imagen de tu Dispositivo' 
+                    : 'Subir Foto de tu Dispositivo (👑 VIP $2/mes)'}
+                </span>
               </button>
+
+              {!isVip && (
+                <span className="text-[11px] text-amber-300 font-semibold flex items-center gap-1">
+                  <span>👑</span>
+                  <span>Exclusivo VIP</span>
+                </span>
+              )}
 
               {currentConfig.customImage && (
                 <button
