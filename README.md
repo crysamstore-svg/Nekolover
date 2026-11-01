@@ -7,7 +7,7 @@ Un lector de libros digital moderno e inteligente para enriquecer la experiencia
 ## 🚀 Características Principales
 * **Lectura Multi-formato:** Soporte completo para abrir y visualizar archivos de lectura locales.
 * **personalización de estantería** te permite subir imagenes y crear el fondo perfecto para tu estanteria virtual.
-* **permite escuchar tu música favorita** estantería de música que permite escuchar música mientras lee.
+* **Permite escuchar tu música favorita** estantería de música que permite escuchar música mientras lee.
 * **personalización de la tipografía de tu libro** estilos dark y kawaii
 * **Interfaz Limpia:** Diseñado exclusivamente para maximizar la concentración del lector.
 
