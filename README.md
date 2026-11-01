@@ -24,5 +24,3 @@ La aplicación se compila de forma independiente en formato **APK** para disposi
 
 ---
 *Este repositorio sirve como documentación oficial del producto y backend conceptual para la validación de la plataforma de pagos.*
-
-)
