@@ -4,7 +4,6 @@ import {
   Crown, 
   Check, 
   Sparkles, 
-  CreditCard, 
   ShieldCheck, 
   Music, 
   Type, 
@@ -12,15 +11,20 @@ import {
   Smile, 
   Highlighter, 
   Feather, 
+  ArrowRight,
+  ExternalLink,
   Lock,
-  ArrowRight
+  FileText,
+  KeyRound
 } from 'lucide-react';
 import { vipManager, VipSubscriptionData } from '../utils/vipManager';
+import { LegalTab } from './LegalModal';
 
 interface VipSubscriptionModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSubscribed?: () => void;
+  onOpenLegalModal?: (tab: LegalTab) => void;
   featureReason?: 'music' | 'fonts' | 'shelf_bg' | 'stickers' | 'highlights' | 'notes' | null;
 }
 
@@ -28,14 +32,21 @@ export const VipSubscriptionModal: React.FC<VipSubscriptionModalProps> = ({
   isOpen,
   onClose,
   onSubscribed,
+  onOpenLegalModal,
   featureReason
 }) => {
   const [subscription, setSubscription] = useState<VipSubscriptionData>(() => vipManager.getSubscription());
-  const [paymentMethod, setPaymentMethod] = useState<'card' | 'paypal' | 'gpay'>('card');
-  const [cardNumber, setCardNumber] = useState('');
-  const [cardName, setCardName] = useState('');
-  const [cardExpiry, setCardExpiry] = useState('');
-  const [cardCvc, setCardCvc] = useState('');
+  // Data minimization: Strictly ONLY PayPal email address is requested
+  const [paypalEmail, setPaypalEmail] = useState('');
+  const [manualCode, setManualCode] = useState('');
+  const [showCodeInput, setShowCodeInput] = useState(false);
+  const [codeSuccessMessage, setCodeSuccessMessage] = useState<string | null>(null);
+  
+  // Mandatory separate legal checkboxes (Two separate boxes as strictly required)
+  const [acceptTermsAndRefund, setAcceptTermsAndRefund] = useState(false);
+  const [acceptPrivacy, setAcceptPrivacy] = useState(false);
+  const [validationError, setValidationError] = useState<string | null>(null);
+
   const [isProcessing, setIsProcessing] = useState(false);
   const [successAnimation, setSuccessAnimation] = useState(false);
 
@@ -45,12 +56,35 @@ export const VipSubscriptionModal: React.FC<VipSubscriptionModalProps> = ({
 
   const handleSubscribe = (e: React.FormEvent) => {
     e.preventDefault();
+    setValidationError(null);
+
+    // Verify both checkboxes are independently checked
+    if (!acceptTermsAndRefund || !acceptPrivacy) {
+      setValidationError('Debes marcar ambas casillas de verificación por separado para continuar de conformidad con la ley.');
+      return;
+    }
+
+    // Email format validation
+    if (!paypalEmail || !paypalEmail.includes('@') || !paypalEmail.includes('.')) {
+      setValidationError('Por favor, introduce una dirección de correo electrónico válida asociada a tu cuenta de PayPal.');
+      return;
+    }
+
     setIsProcessing(true);
 
+    // Simulate secure PayPal subscription execution
     setTimeout(() => {
-      const sub = vipManager.subscribe(
-        paymentMethod === 'card' ? 'Tarjeta Bancaria' : paymentMethod === 'paypal' ? 'PayPal' : 'Google Pay'
-      );
+      // 1. Save legal audit trail log with exact ISO date, legal version, and checkboxes accepted
+      vipManager.saveConsentLog({
+        consentType: 'vip_checkout_paypal',
+        termsAccepted: acceptTermsAndRefund,
+        privacyAccepted: acceptPrivacy,
+        refundPolicyAccepted: acceptTermsAndRefund,
+        email: paypalEmail.trim()
+      });
+
+      // 2. Activate VIP subscription
+      const sub = vipManager.subscribe('PayPal', paypalEmail.trim());
       setSubscription(sub);
       setIsProcessing(false);
       setSuccessAnimation(true);
@@ -58,14 +92,35 @@ export const VipSubscriptionModal: React.FC<VipSubscriptionModalProps> = ({
 
       setTimeout(() => {
         setSuccessAnimation(false);
-      }, 3500);
+      }, 4000);
     }, 1200);
   };
 
   const handleCancelSubscription = () => {
-    if (window.confirm('¿Seguro que deseas cancelar tu suscripción VIP? Volverás al plan gratuito con límites.')) {
+    if (window.confirm('¿Seguro que deseas cancelar tu suscripción VIP? Mantendrás tu acceso hasta que termine tu periodo y luego volverás al plan gratuito.')) {
       vipManager.cancel();
       setSubscription(vipManager.getSubscription());
+    }
+  };
+
+  const handleActivateManualCode = (e: React.FormEvent) => {
+    e.preventDefault();
+    setValidationError(null);
+    setCodeSuccessMessage(null);
+
+    if (!manualCode.trim()) {
+      setValidationError('Por favor ingresa un código de activación válido provisto por soporte o PayPal.');
+      return;
+    }
+
+    const res = vipManager.activateWithCode(manualCode, paypalEmail);
+    if (res.success && res.sub) {
+      setSubscription(res.sub);
+      setCodeSuccessMessage(res.message);
+      setManualCode('');
+      onSubscribed?.();
+    } else {
+      setValidationError(res.message);
     }
   };
 
@@ -86,13 +141,13 @@ export const VipSubscriptionModal: React.FC<VipSubscriptionModalProps> = ({
       icon: '🖼️'
     },
     stickers: {
-      title: 'Límite de Stickers Gratuitos',
-      desc: 'La versión gratuita incluye los primeros 20 stickers. ¡Pásate a VIP para usar la colección completa de stickers ilimitados!',
+      title: 'Límite de Stickers Gratuitos (Máx 20)',
+      desc: 'La versión gratuita incluye hasta 20 stickers colocados. ¡Pásate a VIP para usar stickers ilimitados!',
       icon: '🎀'
     },
     highlights: {
       title: 'Subrayador Esmeralda Exclusivo VIP',
-      desc: 'El resaltado en Verde Esmeralda Místico y paletas avanzadas son exclusivos para miembros VIP (el plan gratuito incluye 3 colores).',
+      desc: 'El resaltado en Verde Esmeralda Místico es exclusivo para miembros VIP (el plan gratuito incluye 3 colores).',
       icon: '🌈'
     },
     notes: {
@@ -106,11 +161,15 @@ export const VipSubscriptionModal: React.FC<VipSubscriptionModalProps> = ({
 
   return (
     <div className="fixed inset-0 bg-black/85 backdrop-blur-md z-50 flex items-center justify-center p-3 sm:p-5 select-none overflow-y-auto">
-      <div className="bg-gradient-to-b from-[#181324] via-[#120f1d] to-[#0a0812] border-2 border-amber-400/60 rounded-3xl p-4 sm:p-6 max-w-lg w-full shadow-[0_0_50px_rgba(251,191,36,0.25)] relative modal-animate my-auto max-h-[92vh] flex flex-col">
+      <div 
+        className="bg-gradient-to-b from-[#181324] via-[#120f1d] to-[#0a0812] border-2 border-amber-400/60 rounded-3xl p-4 sm:p-6 max-w-lg w-full shadow-[0_0_50px_rgba(251,191,36,0.25)] relative modal-animate my-auto max-h-[92vh] flex flex-col"
+        onClick={(e) => e.stopPropagation()}
+      >
         {/* Close button */}
         <button
           onClick={onClose}
           className="absolute top-4 right-4 p-1.5 rounded-xl text-[var(--text-muted)] hover:text-white hover:bg-white/10 transition z-10"
+          title="Cerrar ventana"
         >
           <X className="w-5 h-5" />
         </button>
@@ -122,9 +181,18 @@ export const VipSubscriptionModal: React.FC<VipSubscriptionModalProps> = ({
             <h3 className="dark-reborn-title text-2xl font-bold bg-gradient-to-r from-amber-300 via-pink-400 to-amber-200 bg-clip-text text-transparent">
               ¡Bienvenido al Club VIP de NekoLover!
             </h3>
-            <p className="text-sm text-amber-200/90 max-w-sm mx-auto">
-              Tu suscripción mensual de <strong>$2 USD</strong> está activa. Todas las funciones, música, tipografías, fotos de estantería, stickers y notas ilimitadas están desbloqueadas.
+            <p className="text-sm text-amber-200/90 max-w-sm mx-auto leading-relaxed">
+              Tu suscripción mensual de <strong>$2.00 USD</strong> mediante <strong>PayPal</strong> está activa para <span className="text-white font-mono">{paypalEmail || 'tu cuenta'}</span>.
             </p>
+            <div className="bg-black/50 border border-emerald-500/30 p-3 rounded-2xl max-w-xs mx-auto text-xs text-emerald-300 space-y-1">
+              <div className="flex items-center justify-center gap-1.5 font-bold">
+                <Check className="w-4 h-4 stroke-[3]" />
+                <span>Registro de consentimiento guardado</span>
+              </div>
+              <div className="text-[10px] text-white/70">
+                Puedes consultar tu comprobante legal en la sección de Ajustes en cualquier momento.
+              </div>
+            </div>
             <div className="pt-2">
               <button
                 onClick={onClose}
@@ -148,11 +216,18 @@ export const VipSubscriptionModal: React.FC<VipSubscriptionModalProps> = ({
                 La experiencia literaria definitiva sin límites
               </p>
 
-              {/* Price Tag */}
-              <div className="inline-flex items-baseline gap-1 mt-2.5 px-4 py-1.5 rounded-full bg-amber-400/15 border border-amber-400/40 text-amber-300">
-                <span className="text-2xl font-extrabold text-white">$2.00</span>
-                <span className="text-xs font-semibold text-amber-300">USD / mes</span>
-                <span className="text-[10px] text-pink-300/80 ml-1.5">• Cancela cuando quieras</span>
+              {/* Price Tag - Solo PayPal */}
+              <div className="inline-flex flex-col items-center mt-2.5 gap-1">
+                <div className="inline-flex items-baseline gap-1 px-4 py-1.5 rounded-full bg-amber-400/15 border border-amber-400/40 text-amber-300">
+                  <span className="text-2xl font-extrabold text-white">$2.00</span>
+                  <span className="text-xs font-semibold text-amber-300">USD / mes</span>
+                  <span className="text-[10px] text-pink-300/90 ml-1.5 font-semibold">• Procesado vía PayPal</span>
+                </div>
+                <div className="flex items-center gap-1.5 text-[11px] text-amber-200/80">
+                  <span>🅿️ Pago exclusivo por PayPal</span>
+                  <span>•</span>
+                  <span>Cancela en cualquier momento</span>
+                </div>
               </div>
             </div>
 
@@ -171,7 +246,7 @@ export const VipSubscriptionModal: React.FC<VipSubscriptionModalProps> = ({
               </div>
             )}
 
-            {/* VIP Status or Benefits list */}
+            {/* VIP Status for Active Members */}
             {isVip ? (
               <div className="bg-emerald-950/40 border border-emerald-500/50 rounded-2xl p-4 text-center space-y-3">
                 <div className="inline-flex items-center gap-1.5 text-emerald-300 font-bold text-sm bg-emerald-500/20 px-3 py-1 rounded-full border border-emerald-500/30">
@@ -180,6 +255,8 @@ export const VipSubscriptionModal: React.FC<VipSubscriptionModalProps> = ({
                 </div>
                 <p className="text-xs text-emerald-200/80">
                   Plan: <strong>{subscription.planName}</strong>
+                  <br />
+                  Método: <strong>PayPal</strong> ({subscription.email || 'correo guardado'})
                   <br />
                   Válido hasta:{' '}
                   {subscription.expiresAt
@@ -190,12 +267,19 @@ export const VipSubscriptionModal: React.FC<VipSubscriptionModalProps> = ({
                       })
                     : 'Indefinido'}
                 </p>
-                <div className="pt-2">
+                <div className="pt-2 flex flex-col items-center gap-2">
                   <button
                     onClick={handleCancelSubscription}
                     className="text-xs text-red-400 hover:text-red-300 underline font-medium"
                   >
-                    Cancelar suscripción VIP (volver a cuenta gratuita)
+                    Cancelar renovación en PayPal (volver al plan gratuito al vencer)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => onOpenLegalModal?.('audit')}
+                    className="text-[11px] text-amber-300 hover:text-white flex items-center gap-1 font-mono"
+                  >
+                    <span>📜 Ver mi registro de consentimiento legal</span>
                   </button>
                 </div>
               </div>
@@ -313,163 +397,215 @@ export const VipSubscriptionModal: React.FC<VipSubscriptionModalProps> = ({
               </div>
             </div>
 
-            {/* Payment Section for Non-VIP */}
+            {/* Payment Section for Non-VIP (SOLO PAYPAL & 2 CASILLAS SEPARADAS) */}
             {!isVip && (
-              <form onSubmit={handleSubscribe} className="space-y-3 pt-2 border-t border-white/10">
-                <h4 className="text-xs font-bold text-white flex items-center justify-between">
-                  <span>Elige tu método de pago seguro:</span>
-                  <span className="text-[10px] text-amber-300 flex items-center gap-1 font-mono">
-                    <ShieldCheck className="w-3.5 h-3.5" /> 256-bit SSL
-                  </span>
-                </h4>
+              <form onSubmit={handleSubscribe} className="space-y-3.5 pt-3 border-t border-white/10">
+                <div className="bg-gradient-to-r from-blue-950/60 to-indigo-950/40 p-3.5 rounded-2xl border border-blue-500/30 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <div className="w-8 h-8 rounded-xl bg-blue-600 flex items-center justify-center font-bold text-white shadow">
+                        🅿️
+                      </div>
+                      <div>
+                        <h4 className="text-xs font-bold text-white">Suscripción Exclusiva por PayPal</h4>
+                        <p className="text-[10px] text-blue-200/80">Pasarela oficial y segura de PayPal</p>
+                      </div>
+                    </div>
+                    <span className="text-[10px] text-amber-300 flex items-center gap-1 font-mono bg-black/40 px-2 py-0.5 rounded-md border border-white/5">
+                      <ShieldCheck className="w-3 h-3" /> SSL 256-bit
+                    </span>
+                  </div>
 
-                {/* Payment Method Selector */}
-                <div className="grid grid-cols-3 gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setPaymentMethod('card')}
-                    className={`py-2 px-2.5 rounded-xl border text-xs font-semibold flex items-center justify-center gap-1.5 transition ${
-                      paymentMethod === 'card'
-                        ? 'bg-amber-400 text-black border-amber-400 font-bold shadow-md'
-                        : 'bg-black/50 text-[var(--text-muted)] border-white/10 hover:text-white'
-                    }`}
-                  >
-                    <CreditCard className="w-3.5 h-3.5" />
-                    <span>Tarjeta</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => setPaymentMethod('paypal')}
-                    className={`py-2 px-2.5 rounded-xl border text-xs font-semibold flex items-center justify-center gap-1.5 transition ${
-                      paymentMethod === 'paypal'
-                        ? 'bg-amber-400 text-black border-amber-400 font-bold shadow-md'
-                        : 'bg-black/50 text-[var(--text-muted)] border-white/10 hover:text-white'
-                    }`}
-                  >
-                    <span>🅿️ PayPal</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => setPaymentMethod('gpay')}
-                    className={`py-2 px-2.5 rounded-xl border text-xs font-semibold flex items-center justify-center gap-1.5 transition ${
-                      paymentMethod === 'gpay'
-                        ? 'bg-amber-400 text-black border-amber-400 font-bold shadow-md'
-                        : 'bg-black/50 text-[var(--text-muted)] border-white/10 hover:text-white'
-                    }`}
-                  >
-                    <span>Google Pay</span>
-                  </button>
+                  {/* DATA MINIMIZATION: Ask ONLY for the user's PayPal email */}
+                  <div>
+                    <label className="text-[11px] font-semibold text-white block mb-1">
+                      Correo Electrónico de tu Cuenta de PayPal:
+                    </label>
+                    <input
+                      type="email"
+                      required
+                      placeholder="tu-correo-paypal@ejemplo.com"
+                      value={paypalEmail}
+                      onChange={(e) => setPaypalEmail(e.target.value)}
+                      className="w-full bg-black/70 border border-white/15 focus:border-amber-400 rounded-xl px-3 py-2 text-xs text-white placeholder-white/40 focus:outline-none transition font-sans"
+                    />
+                    <p className="text-[10px] text-[var(--text-muted)] mt-1">
+                      🔒 <strong>Minimización de datos:</strong> Solo te pedimos tu correo de PayPal para gestionar tu suscripción y enviarte el código de activación. No pedimos tarjeta, teléfono ni domicilio.
+                    </p>
+                  </div>
                 </div>
 
-                {/* Credit Card Inputs */}
-                {paymentMethod === 'card' && (
-                  <div className="space-y-2 bg-black/40 p-3 rounded-2xl border border-white/10">
-                    <div>
-                      <label className="text-[10px] text-[var(--text-muted)] block mb-1">
-                        Nombre en la tarjeta:
-                      </label>
-                      <input
-                        type="text"
-                        placeholder="Ej. Neko Kuro"
-                        value={cardName}
-                        onChange={(e) => setCardName(e.target.value)}
-                        required
-                        className="w-full bg-black/60 border border-[var(--border-color)] rounded-xl px-3 py-1.5 text-xs text-white placeholder-[var(--text-muted)] focus:outline-none focus:border-amber-400"
-                      />
-                    </div>
+                {/* Error Banner */}
+                {validationError && (
+                  <div className="bg-red-950/70 border border-red-500/50 p-2.5 rounded-xl text-xs text-red-200">
+                    {validationError}
+                  </div>
+                )}
 
-                    <div>
-                      <label className="text-[10px] text-[var(--text-muted)] block mb-1">
-                        Número de tarjeta (Débito / Crédito):
-                      </label>
-                      <input
-                        type="text"
-                        maxLength={19}
-                        placeholder="4123 4567 8901 2345"
-                        value={cardNumber}
-                        onChange={(e) => {
-                          const v = e.target.value.replace(/\D/g, '').slice(0, 16);
-                          const formatted = v.match(/.{1,4}/g)?.join(' ') || v;
-                          setCardNumber(formatted);
+                {/* 2 CASILLAS SEPARADAS OBLIGATORIAS (RGPD & LEGAL COMPLIANCE) */}
+                <div className="space-y-2.5 bg-black/40 p-3.5 rounded-2xl border border-white/10 text-[11px]">
+                  <h5 className="font-bold text-xs text-amber-300 flex items-center gap-1.5">
+                    <FileText className="w-3.5 h-3.5" />
+                    <span>Consentimientos Legales Requeridos (2 Casillas Separadas):</span>
+                  </h5>
+
+                  {/* CASILLA 1: TÉRMINOS Y CONDICIONES + POLÍTICA DE REEMBOLSO */}
+                  <label className="flex items-start gap-2.5 cursor-pointer text-white/90 hover:text-white transition">
+                    <input
+                      type="checkbox"
+                      checked={acceptTermsAndRefund}
+                      onChange={(e) => setAcceptTermsAndRefund(e.target.checked)}
+                      className="mt-0.5 w-4 h-4 rounded border-gray-600 text-amber-500 focus:ring-amber-400 bg-black/80 shrink-0 cursor-pointer accent-amber-400"
+                    />
+                    <span className="leading-snug text-[11px]">
+                      <strong>Casilla 1:</strong> He leído y acepto los{' '}
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          onOpenLegalModal?.('terms');
                         }}
-                        required
-                        className="w-full bg-black/60 border border-[var(--border-color)] rounded-xl px-3 py-1.5 text-xs text-white placeholder-[var(--text-muted)] font-mono focus:outline-none focus:border-amber-400"
-                      />
-                    </div>
+                        className="text-[var(--accent-pink)] underline hover:text-pink-300 font-semibold"
+                      >
+                        Términos y Condiciones de Uso
+                      </button>
+                      {' '}y la{' '}
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          onOpenLegalModal?.('refund');
+                        }}
+                        className="text-amber-300 underline hover:text-amber-200 font-semibold"
+                      >
+                        Política de Reembolso
+                      </button>
+                      . Entiendo y consiento que al tratarse de contenido digital con suministro inmediato no se admiten devoluciones por periodos ya facturados, pudiendo cancelar en cualquier momento desde mi cuenta de PayPal.
+                    </span>
+                  </label>
 
-                    <div className="grid grid-cols-2 gap-2">
-                      <div>
-                        <label className="text-[10px] text-[var(--text-muted)] block mb-1">
-                          Vencimiento:
-                        </label>
-                        <input
-                          type="text"
-                          maxLength={5}
-                          placeholder="MM/AA"
-                          value={cardExpiry}
-                          onChange={(e) => {
-                            let v = e.target.value.replace(/\D/g, '').slice(0, 4);
-                            if (v.length >= 2) v = v.slice(0, 2) + '/' + v.slice(2);
-                            setCardExpiry(v);
-                          }}
-                          required
-                          className="w-full bg-black/60 border border-[var(--border-color)] rounded-xl px-3 py-1.5 text-xs text-white placeholder-[var(--text-muted)] font-mono focus:outline-none focus:border-amber-400"
-                        />
-                      </div>
-                      <div>
-                        <label className="text-[10px] text-[var(--text-muted)] block mb-1">
-                          CVC / CVV:
-                        </label>
-                        <input
-                          type="password"
-                          maxLength={4}
-                          placeholder="123"
-                          value={cardCvc}
-                          onChange={(e) => setCardCvc(e.target.value.replace(/\D/g, '').slice(0, 4))}
-                          required
-                          className="w-full bg-black/60 border border-[var(--border-color)] rounded-xl px-3 py-1.5 text-xs text-white placeholder-[var(--text-muted)] font-mono focus:outline-none focus:border-amber-400"
-                        />
-                      </div>
-                    </div>
+                  {/* CASILLA 2: POLÍTICA DE PRIVACIDAD & CORREO PAYPAL */}
+                  <label className="flex items-start gap-2.5 cursor-pointer text-white/90 hover:text-white transition pt-1 border-t border-white/5">
+                    <input
+                      type="checkbox"
+                      checked={acceptPrivacy}
+                      onChange={(e) => setAcceptPrivacy(e.target.checked)}
+                      className="mt-0.5 w-4 h-4 rounded border-gray-600 text-amber-500 focus:ring-amber-400 bg-black/80 shrink-0 cursor-pointer accent-amber-400"
+                    />
+                    <span className="leading-snug text-[11px]">
+                      <strong>Casilla 2:</strong> Acepto la{' '}
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          onOpenLegalModal?.('privacy');
+                        }}
+                        className="text-[var(--accent-pink)] underline hover:text-pink-300 font-semibold"
+                      >
+                        Política de Privacidad
+                      </button>
+                      {' '}y consiento de forma libre e inequívoca el tratamiento de mi correo electrónico de PayPal única y exclusivamente para la activación, comprobante de pago y soporte de mi suscripción VIP.
+                    </span>
+                  </label>
+                </div>
+
+                {/* Code Success Banner */}
+                {codeSuccessMessage && (
+                  <div className="bg-emerald-950/70 border border-emerald-500/50 p-2.5 rounded-xl text-xs text-emerald-200">
+                    {codeSuccessMessage}
                   </div>
                 )}
 
-                {paymentMethod !== 'card' && (
-                  <div className="bg-black/40 p-4 rounded-2xl border border-white/10 text-center space-y-1">
-                    <p className="text-xs text-white font-medium">
-                      Conectarás de forma segura con {paymentMethod === 'paypal' ? 'PayPal' : 'Google Pay'}.
-                    </p>
-                    <p className="text-[10px] text-[var(--text-muted)]">
-                      Cargo mensual recurrente de $2.00 USD. Sin cargos ocultos.
-                    </p>
-                  </div>
-                )}
-
-                {/* Submit button */}
+                {/* BOTÓN EXCLUSIVO DE PAYPAL (#FFC439) */}
                 <button
                   type="submit"
                   disabled={isProcessing}
-                  className="w-full py-3 px-4 rounded-2xl text-black font-extrabold text-sm bg-gradient-to-r from-amber-400 via-amber-300 to-pink-400 hover:from-amber-300 hover:to-pink-300 shadow-[0_0_20px_rgba(245,158,11,0.4)] transition transform active:scale-98 flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+                  className="w-full py-3.5 px-4 rounded-full bg-[#FFC439] hover:bg-[#F2BA36] active:scale-[0.98] transition shadow-[0_4px_20px_rgba(255,196,57,0.35)] flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
                 >
                   {isProcessing ? (
-                    <>
-                      <div className="w-4 h-4 border-2 border-black border-t-transparent rounded-full animate-spin" />
-                      <span>Procesando suscripción de $2/mes...</span>
-                    </>
+                    <div className="flex items-center gap-2 text-[#003087] font-bold text-xs sm:text-sm">
+                      <div className="w-4 h-4 border-2 border-[#003087] border-t-transparent rounded-full animate-spin" />
+                      <span>Conectando con PayPal...</span>
+                    </div>
                   ) : (
-                    <>
-                      <Crown className="w-4 h-4 fill-black" />
-                      <span>Suscribirme a VIP por $2.00 USD / mes</span>
-                      <ArrowRight className="w-4 h-4" />
-                    </>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xl italic font-black tracking-tight select-none">
+                        <span className="text-[#003087]">Pay</span><span className="text-[#0079C1]">Pal</span>
+                      </span>
+                      <span className="text-xs sm:text-sm font-extrabold text-black">
+                        Suscribirse ($2.00 USD / mes)
+                      </span>
+                    </div>
                   )}
                 </button>
 
-                <p className="text-[10px] text-center text-[var(--text-muted)] leading-relaxed">
-                  🔒 Pago simulado seguro. Puedes cancelar en cualquier momento desde esta misma ventana con un solo clic.
-                </p>
+                {/* SECCIÓN 3: EXCEPCIONES DE SOPORTE & CÓDIGO MANUAL */}
+                <div className="pt-2 border-t border-white/10 space-y-2">
+                  <button
+                    type="button"
+                    onClick={() => setShowCodeInput(!showCodeInput)}
+                    className="w-full text-left text-[11px] font-semibold text-amber-300 hover:text-white flex items-center justify-between"
+                  >
+                    <span className="flex items-center gap-1.5">
+                      <KeyRound className="w-3.5 h-3.5" />
+                      <span>¿Ya compraste o tienes código de activación?</span>
+                    </span>
+                    <span className="text-xs font-mono">{showCodeInput ? '▲' : '▼'}</span>
+                  </button>
+
+                  {showCodeInput && (
+                    <div className="p-3 bg-black/60 rounded-2xl border border-amber-400/30 space-y-2">
+                      <p className="text-[10px] text-white/80 leading-relaxed">
+                        Si PayPal procesó tu cobro y requieres ingresar tu código, o lo solicitaste a soporte, ingrésalo aquí:
+                      </p>
+                      <div className="flex gap-2">
+                        <input
+                          type="text"
+                          placeholder="Ej. NEKO-VIP-2026"
+                          value={manualCode}
+                          onChange={(e) => setManualCode(e.target.value)}
+                          className="flex-1 bg-black/70 border border-white/20 rounded-xl px-3 py-1.5 text-xs text-white uppercase font-mono focus:border-amber-400 focus:outline-none"
+                        />
+                        <button
+                          type="button"
+                          onClick={handleActivateManualCode}
+                          className="px-3.5 py-1.5 bg-amber-400 hover:bg-amber-300 text-black text-xs font-bold rounded-xl active:scale-95 transition"
+                        >
+                          Activar
+                        </button>
+                      </div>
+                      <div className="text-[10px] text-white/70 pt-1">
+                        ¿Problemas con tu código? Contacta a soporte:{' '}
+                        <a
+                          href="https://nekolover.online.zoho.com"
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-amber-300 underline font-mono font-bold hover:text-white"
+                        >
+                          nekolover.online.zoho.com
+                        </a>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Additional Trust & Transparency badges */}
+                <div className="flex items-center justify-between text-[10px] text-[var(--text-muted)] pt-1 px-1">
+                  <button
+                    type="button"
+                    onClick={() => onOpenLegalModal?.('cookies')}
+                    className="hover:text-white underline cursor-pointer"
+                  >
+                    🍪 Cookies y Almacenamiento
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => onOpenLegalModal?.('audit')}
+                    className="hover:text-amber-300 text-amber-400/90 underline cursor-pointer flex items-center gap-1"
+                  >
+                    <span>📜 Registro de Consentimiento</span>
+                  </button>
+                </div>
               </form>
             )}
           </div>

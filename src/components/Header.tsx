@@ -17,8 +17,8 @@ import {
 import { HeaderButtonsConfig } from './SettingsView';
 
 interface HeaderProps {
-  currentView: 'library' | 'quotes' | 'bookmarks' | 'stats' | 'settings';
-  onSwitchView: (view: 'library' | 'quotes' | 'bookmarks' | 'stats' | 'settings') => void;
+  currentView: 'library' | 'quotes' | 'bookmarks' | 'stats' | 'settings' | 'vip';
+  onSwitchView: (view: 'library' | 'quotes' | 'bookmarks' | 'stats' | 'settings' | 'vip') => void;
   onOpenThemeModal: () => void;
   onOpenAudioModal: () => void;
   onFileUpload: (files: FileList) => void;
@@ -183,17 +183,19 @@ export const Header: React.FC<HeaderProps> = ({
           </button>
         )}
 
-        {/* Botón VIP ($2 USD/mes) */}
+        {/* Botón VIP ($2 USD/mes) - Abre la página VIP dedicada */}
         <button
-          onClick={onOpenVipModal}
+          onClick={() => onSwitchView('vip')}
           className={`px-2.5 sm:px-3 py-2 rounded-xl text-xs font-cute font-bold flex items-center gap-1.5 transition active:scale-95 ${
-            isVip
-              ? 'bg-amber-400 text-black border border-amber-300 shadow-[0_0_12px_rgba(251,191,36,0.6)] font-extrabold'
-              : 'bg-gradient-to-r from-amber-500/20 via-pink-500/20 to-amber-500/10 border border-amber-400/70 text-amber-300 hover:bg-amber-400 hover:text-black shadow-sm'
+            currentView === 'vip'
+              ? 'bg-amber-400 text-black border border-amber-300 shadow-[0_0_15px_rgba(251,191,36,0.7)] font-extrabold'
+              : isVip
+                ? 'bg-amber-400 text-black border border-amber-300 shadow-[0_0_12px_rgba(251,191,36,0.6)] font-extrabold'
+                : 'bg-gradient-to-r from-amber-500/20 via-pink-500/20 to-amber-500/10 border border-amber-400/70 text-amber-300 hover:bg-amber-400 hover:text-black shadow-sm'
           }`}
-          title={isVip ? 'Membresía VIP Activa ($2/mes) - Ver detalles' : 'Suscripción VIP ($2 USD/mes): Música, todas las fuentes, fotos de estantería, stickers y notas'}
+          title={isVip ? 'Página VIP Club: Gestionar membresía ($2/mes)' : 'Página VIP Club ($2 USD/mes): Acceso exclusivo por PayPal'}
         >
-          <Crown className={`w-3.5 h-3.5 ${isVip ? 'fill-black' : 'text-amber-400'}`} />
+          <Crown className={`w-3.5 h-3.5 ${isVip || currentView === 'vip' ? 'fill-black' : 'text-amber-400'}`} />
           <span className="hidden sm:inline font-bold">
             {isVip ? 'VIP Activo' : 'VIP $2/m'}
           </span>

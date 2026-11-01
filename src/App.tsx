@@ -17,11 +17,14 @@ import { AddQuoteModal } from './components/AddQuoteModal';
 import { AmbientAudioModal } from './components/AmbientAudioModal';
 import { MusicShelfModal } from './components/MusicShelfModal';
 import { VipSubscriptionModal } from './components/VipSubscriptionModal';
+import { VipClubPage } from './components/VipClubPage';
 import { musicPlayer } from './utils/musicManager';
 import { vipManager } from './utils/vipManager';
 import { BookmarksDrawer } from './components/BookmarksDrawer';
 import { SettingsView, HeaderButtonsConfig } from './components/SettingsView';
 import { DEFAULT_SHELF_BG } from './components/ShelfBackgroundModal';
+import { LegalModal, LegalTab } from './components/LegalModal';
+import { CookieConsentBanner } from './components/CookieConsentBanner';
 import { saveFileToDB, deleteFileFromDB } from './utils/db';
 import { soundscape } from './utils/audio';
 import { loadReadingStats, logReadingSession, resetReadingStatsToZero } from './utils/stats';
@@ -149,7 +152,7 @@ export default function App() {
   };
 
   // Navigation & Active Reading
-  const [currentView, setCurrentView] = useState<'library' | 'quotes' | 'bookmarks' | 'stats' | 'reader' | 'settings'>('library');
+  const [currentView, setCurrentView] = useState<'library' | 'quotes' | 'bookmarks' | 'stats' | 'reader' | 'settings' | 'vip'>('library');
   const [activeBook, setActiveBook] = useState<Book | null>(null);
 
   // Modals & Notifications
@@ -167,6 +170,15 @@ export default function App() {
   const [isVip, setIsVip] = useState<boolean>(() => vipManager.isVip());
   const [isVipModalOpen, setIsVipModalOpen] = useState<boolean>(false);
   const [vipFeatureReason, setVipFeatureReason] = useState<'music' | 'fonts' | 'shelf_bg' | 'stickers' | 'highlights' | 'notes' | null>(null);
+
+  // Legal Modal State (Términos, Privacidad, Cookies, Reembolso, Auditoría)
+  const [isLegalModalOpen, setIsLegalModalOpen] = useState<boolean>(false);
+  const [legalModalTab, setLegalModalTab] = useState<LegalTab>('terms');
+
+  const handleOpenLegalModal = (tab: LegalTab = 'terms') => {
+    setLegalModalTab(tab);
+    setIsLegalModalOpen(true);
+  };
 
   const openVipModal = (reason?: 'music' | 'fonts' | 'shelf_bg' | 'stickers' | 'highlights' | 'notes') => {
     setVipFeatureReason(reason || null);
@@ -617,6 +629,7 @@ export default function App() {
             onUpdateShelfBgConfig={handleUpdateShelfBgConfig}
             isVip={isVip}
             onOpenVipModal={() => openVipModal('shelf_bg')}
+            onOpenVipPage={() => setCurrentView('vip')}
           />
         )}
 
@@ -766,6 +779,18 @@ export default function App() {
               showToast('✨ Estadísticas reiniciadas a cero. Comenzarán con tu primera lectura.');
             }}
             onBack={() => setCurrentView('library')}
+            onOpenLegalModal={handleOpenLegalModal}
+          />
+        )}
+
+        {currentView === 'vip' && (
+          <VipClubPage
+            onBack={() => setCurrentView('library')}
+            onOpenLegalModal={handleOpenLegalModal}
+            onSubscribed={() => {
+              setIsVip(true);
+              showToast('👑 ¡Membresía VIP Activada! Disfruta de música, fotos, tipografías y notas ilimitadas.');
+            }}
           />
         )}
       </main>
@@ -814,7 +839,7 @@ export default function App() {
         onDeleteBookmark={handleDeleteBookmark}
       />
 
-      {/* NekoLover VIP Club Subscription Modal ($2.00 USD/month) */}
+      {/* NekoLover VIP Club Subscription Modal ($2.00 USD/month - Solo PayPal) */}
       <VipSubscriptionModal
         isOpen={isVipModalOpen}
         onClose={() => setIsVipModalOpen(false)}
@@ -822,7 +847,20 @@ export default function App() {
           setIsVip(true);
           showToast('👑 ¡Membresía VIP Activada! Disfruta de música, fotos, tipografías y notas ilimitadas.');
         }}
+        onOpenLegalModal={handleOpenLegalModal}
         featureReason={vipFeatureReason}
+      />
+
+      {/* Centro Legal y Transparencia Modal (Términos, Privacidad, Cookies, Reembolso, Auditoría) */}
+      <LegalModal
+        isOpen={isLegalModalOpen}
+        onClose={() => setIsLegalModalOpen(false)}
+        initialTab={legalModalTab}
+      />
+
+      {/* Banner de Consentimiento de Almacenamiento Local y Cookies */}
+      <CookieConsentBanner
+        onOpenLegalModal={handleOpenLegalModal}
       />
 
       {/* In-App Gothic Delete Book Confirmation Modal */}

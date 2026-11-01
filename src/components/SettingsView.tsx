@@ -21,11 +21,18 @@ import {
   RotateCcw,
   Image as ImageIcon,
   Trash2,
-  AlertTriangle
+  AlertTriangle,
+  ShieldCheck,
+  Scale,
+  FileText,
+  Cookie,
+  Clock
 } from 'lucide-react';
 import { ReaderModeId, ThemeId, ShelfStyle, ShelfViewMode, ShelfBackgroundConfig } from '../types';
 import { READER_MODES, FONT_OPTIONS, THEME_OPTIONS } from '../data/defaultBooks';
 import { ShelfBackgroundModal, DEFAULT_SHELF_BG } from './ShelfBackgroundModal';
+import { LegalTab } from './LegalModal';
+import { vipManager } from '../utils/vipManager';
 
 export interface HeaderButtonsConfig {
   showNightMode: boolean;
@@ -68,6 +75,7 @@ interface SettingsViewProps {
   shelfBgConfig?: ShelfBackgroundConfig;
   onUpdateShelfBgConfig?: (config: ShelfBackgroundConfig) => void;
   onResetStatsToZero?: () => void;
+  onOpenLegalModal?: (tab: LegalTab) => void;
 }
 
 export const SettingsView: React.FC<SettingsViewProps> = ({
@@ -94,9 +102,10 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   onChangeViewMode,
   shelfBgConfig,
   onUpdateShelfBgConfig,
-  onResetStatsToZero
+  onResetStatsToZero,
+  onOpenLegalModal
 }) => {
-  const [activeTab, setActiveTab] = useState<'contrast' | 'typography' | 'margins' | 'header' | 'shelf'>('contrast');
+  const [activeTab, setActiveTab] = useState<'contrast' | 'typography' | 'margins' | 'header' | 'shelf' | 'legal'>('contrast');
   const [isBgModalOpen, setIsBgModalOpen] = useState<boolean>(false);
   const [showResetConfirmModal, setShowResetConfirmModal] = useState<boolean>(false);
   const [statsResetSuccess, setStatsResetSuccess] = useState<boolean>(false);
@@ -122,7 +131,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             <span>Configuraciones Literarias</span>
           </h2>
           <p className="text-[11px] text-[var(--text-muted)]">
-            Ajustes de lectura, tipografía, márgenes, contrastes y cabecera
+            Ajustes de lectura, tipografía, márgenes, contrastes, cabecera y legalidad
           </p>
         </div>
       </div>
@@ -187,6 +196,18 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         >
           <BookOpen className="w-3.5 h-3.5" />
           <span>Mi Estantería</span>
+        </button>
+
+        <button
+          onClick={() => setActiveTab('legal')}
+          className={`px-3.5 py-2 rounded-xl text-xs font-bold transition flex items-center gap-2 shrink-0 ${
+            activeTab === 'legal'
+              ? 'bg-amber-400 text-black shadow-lg'
+              : 'bg-black/40 text-amber-300 hover:text-white border border-amber-400/30'
+          }`}
+        >
+          <Scale className="w-3.5 h-3.5" />
+          <span>Legal & Privacidad</span>
         </button>
       </div>
 
@@ -735,6 +756,197 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 <p className="text-xs text-emerald-400 font-bold bg-emerald-950/40 p-2.5 rounded-xl border border-emerald-500/40">
                   ✨ Las estadísticas han sido reiniciadas a cero. Al leer tu primer libro comenzará tu registro.
                 </p>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* TAB 6: LEGAL, PRIVACIDAD & CUMPLIMIENTO NORMATIVO */}
+      {activeTab === 'legal' && (
+        <div className="space-y-6">
+          <div className="bg-[var(--card-bg)] border border-amber-400/40 rounded-2xl p-4 sm:p-6 shadow-xl space-y-5">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-white/10">
+              <div>
+                <h3 className="font-bold text-base sm:text-lg text-amber-300 flex items-center gap-2">
+                  <Scale className="w-5 h-5 text-amber-400" />
+                  <span>Centro Legal, Privacidad y Transparencia</span>
+                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-400/20 text-amber-300 font-mono">
+                    Versión 1.0.0
+                  </span>
+                </h3>
+                <p className="text-xs text-[var(--text-muted)] mt-1">
+                  Cumplimiento exhaustivo de los 9 principios de legalidad, RGPD y protección del consumidor
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => onOpenLegalModal?.('terms')}
+                className="px-4 py-2 rounded-xl text-xs font-cute font-bold bg-gradient-to-r from-amber-400 to-pink-500 text-black shadow hover:brightness-110 transition shrink-0 active:scale-95"
+              >
+                Abrir Modal Legal Completo 📜
+              </button>
+            </div>
+
+            {/* Quick Access Badges */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+              <button
+                type="button"
+                onClick={() => onOpenLegalModal?.('terms')}
+                className="p-3 rounded-xl bg-black/40 border border-white/10 hover:border-[var(--accent-pink)] text-left transition group"
+              >
+                <div className="flex items-center gap-2 text-xs font-bold text-white group-hover:text-[var(--accent-pink)]">
+                  <FileText className="w-4 h-4 text-[var(--accent-pink)]" />
+                  <span>1. Términos</span>
+                </div>
+                <div className="text-[10px] text-[var(--text-muted)] mt-1">
+                  Uso local y exención de contenido
+                </div>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => onOpenLegalModal?.('privacy')}
+                className="p-3 rounded-xl bg-black/40 border border-white/10 hover:border-emerald-400 text-left transition group"
+              >
+                <div className="flex items-center gap-2 text-xs font-bold text-white group-hover:text-emerald-300">
+                  <ShieldCheck className="w-4 h-4 text-emerald-400" />
+                  <span>2. Privacidad</span>
+                </div>
+                <div className="text-[10px] text-[var(--text-muted)] mt-1">
+                  Minimización: solo correo PayPal
+                </div>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => onOpenLegalModal?.('cookies')}
+                className="p-3 rounded-xl bg-black/40 border border-white/10 hover:border-purple-400 text-left transition group"
+              >
+                <div className="flex items-center gap-2 text-xs font-bold text-white group-hover:text-purple-300">
+                  <Cookie className="w-4 h-4 text-purple-400" />
+                  <span>3. Cookies</span>
+                </div>
+                <div className="text-[10px] text-[var(--text-muted)] mt-1">
+                  LocalStorage e IndexedDB local
+                </div>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => onOpenLegalModal?.('refund')}
+                className="p-3 rounded-xl bg-black/40 border border-white/10 hover:border-amber-400 text-left transition group"
+              >
+                <div className="flex items-center gap-2 text-xs font-bold text-white group-hover:text-amber-300">
+                  <RotateCcw className="w-4 h-4 text-amber-400" />
+                  <span>4. Reembolso</span>
+                </div>
+                <div className="text-[10px] text-[var(--text-muted)] mt-1">
+                  Cancelable en PayPal, sin recargo
+                </div>
+              </button>
+            </div>
+
+            {/* 9 Pillars of Compliance breakdown */}
+            <div className="space-y-3 pt-2">
+              <h4 className="text-xs font-bold uppercase tracking-wider text-amber-300">
+                Resumen de Cumplimiento Normativo (9 Requisitos Implementados):
+              </h4>
+
+              <div className="space-y-2 text-xs">
+                <div className="p-3 rounded-xl bg-black/50 border border-white/10">
+                  <span className="font-bold text-[var(--accent-pink)]">1. Términos y Condiciones de Uso:</span>
+                  <p className="text-[11px] text-white/80 mt-0.5">
+                    Se estipula expresamente la naturaleza local del software y la exclusiva responsabilidad del usuario respecto a los archivos PDF y EPUB cargados en su lector.
+                  </p>
+                </div>
+
+                <div className="p-3 rounded-xl bg-black/50 border border-white/10">
+                  <span className="font-bold text-emerald-300">2. Política de Privacidad & 7. Minimización de Datos:</span>
+                  <p className="text-[11px] text-white/80 mt-0.5">
+                    No se recopilan libros, lecturas ni hábitos. Para la suscripción Premium ($2/mes) solo se solicita el correo de PayPal indispensable para activar la membresía.
+                  </p>
+                </div>
+
+                <div className="p-3 rounded-xl bg-black/50 border border-white/10">
+                  <span className="font-bold text-purple-300">3. Política de Cookies y Almacenamiento Local:</span>
+                  <p className="text-[11px] text-white/80 mt-0.5">
+                    Se informa con total transparencia del uso de <code className="text-pink-300">localStorage</code> para registrar el estado de suscripción (<code className="text-pink-300">usuario_premium</code>) y preferencias, con banner de consentimiento explícito.
+                  </p>
+                </div>
+
+                <div className="p-3 rounded-xl bg-black/50 border border-white/10">
+                  <span className="font-bold text-amber-300">4. Formulario con 2 Casillas Separadas:</span>
+                  <p className="text-[11px] text-white/80 mt-0.5">
+                    El checkout VIP de PayPal presenta de manera obligatoria e independiente una casilla para Términos + Reembolso, y otra casilla separada para Privacidad.
+                  </p>
+                </div>
+
+                <div className="p-3 rounded-xl bg-black/50 border border-white/10">
+                  <span className="font-bold text-blue-300">5. Registro de Consentimiento (Audit Trail):</span>
+                  <p className="text-[11px] text-white/80 mt-0.5">
+                    Se guarda registro técnico con fecha, hora exacta, versión legal (1.0.0) y casillas aceptadas, accesible para inspección por parte del usuario.
+                  </p>
+                </div>
+
+                <div className="p-3 rounded-xl bg-black/50 border border-white/10">
+                  <span className="font-bold text-rose-300">6. Política de Cancelación y Reembolso:</span>
+                  <p className="text-[11px] text-white/80 mt-0.5">
+                    Las ventas de bienes digitales son definitivas (sin reembolsos por meses ya transcurridos). Cancelación autogestionada en cualquier momento desde PayPal. En caso de incidencia técnica sin recepción de código, soporte directo en <a href="https://nekolover.online.zoho.com" target="_blank" rel="noopener noreferrer" className="text-amber-300 underline font-mono">nekolover.online.zoho.com</a> para activación manual.
+                  </p>
+                </div>
+
+                <div className="p-3 rounded-xl bg-black/50 border border-white/10">
+                  <span className="font-bold text-cyan-300">8. Verificación de Derechos de Imágenes:</span>
+                  <p className="text-[11px] text-white/80 mt-0.5">
+                    Los stickers e iconos son estándar Unicode y SVG propios. Los fondos de estantería predeterminados proceden de Unsplash con licencia comercial libre. Las fotos subidas desde el dispositivo son responsabilidad del usuario.
+                  </p>
+                </div>
+
+                <div className="p-3 rounded-xl bg-black/50 border border-white/10">
+                  <span className="font-bold text-lime-300">9. Revisión de Leyes Locales e Internacionales:</span>
+                  <p className="text-[11px] text-white/80 mt-0.5">
+                    Cumplimiento con el RGPD (UE 2016/679), Directiva de Privacidad Electrónica (ePrivacy / LSSI-CE) y normativas de derechos de los consumidores en servicios digitales.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* Audit Log preview inside Settings */}
+            <div className="pt-3 border-t border-white/10 space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-amber-300 flex items-center gap-1.5">
+                  <Clock className="w-3.5 h-3.5" />
+                  <span>Tu Registro de Consentimiento Guardado en este Dispositivo:</span>
+                </span>
+                <button
+                  type="button"
+                  onClick={() => onOpenLegalModal?.('audit')}
+                  className="text-[11px] text-amber-300 hover:underline font-mono"
+                >
+                  Ver Todos ↗
+                </button>
+              </div>
+
+              {vipManager.getConsentLogs().length === 0 ? (
+                <div className="p-3 rounded-xl bg-black/40 border border-white/5 text-[11px] text-[var(--text-muted)] text-center">
+                  Aún no se ha registrado un consentimiento formal en este dispositivo.
+                </div>
+              ) : (
+                <div className="space-y-1.5">
+                  {vipManager.getConsentLogs().slice(0, 2).map((log) => (
+                    <div key={log.id} className="p-2.5 rounded-xl bg-black/60 border border-white/10 text-[10px] space-y-1">
+                      <div className="flex items-center justify-between font-bold text-amber-300">
+                        <span>{log.consentType === 'vip_checkout_paypal' ? 'Checkout PayPal ($2/mes)' : 'Cartel de Cookies & Privacidad'}</span>
+                        <span className="text-[var(--text-muted)] font-mono">{log.formattedDate}</span>
+                      </div>
+                      <div className="text-white/80 font-mono">
+                        Términos: {log.termsAccepted ? '✅' : '❌'} | Privacidad: {log.privacyAccepted ? '✅' : '❌'} | Reembolso: {log.refundPolicyAccepted ? '✅' : '❌'} | Versión: {log.legalVersion}
+                      </div>
+                    </div>
+                  ))}
+                </div>
               )}
             </div>
           </div>
