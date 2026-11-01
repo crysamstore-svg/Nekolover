@@ -2,7 +2,7 @@
 
 # [Nekolover reads] 📚
 
-Un lector de libros digital moderno e inteligente que integra las capacidades de Inteligencia Artificial de la API de Gemini (Google AI Studio) para enriquecer la experiencia de lectura.
+Un lector de libros digital moderno e inteligente para enriquecer la experiencia de lectura.
 
 ## 🚀 Características Principales
 * **Lectura Multi-formato:** Soporte completo para abrir y visualizar archivos de lectura locales.
