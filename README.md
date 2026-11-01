@@ -1,6 +1,6 @@
-(<img width="1264" height="1264" alt="NEKOLOVER APP" src="https://github.com/user-attachments/assets/4cc31b66-3e3e-42e1-bd7d-c831018b8d28" />
+( <img width="1264" height="1264" alt="NEKOLOVER APP" src="https://github.com/user-attachments/assets/4cc31b66-3e3e-42e1-bd7d-c831018b8d28" />
 
-# [Nekolover reads] 📚
+# Nekolover reads 📚
 
 Un lector de libros digital moderno e inteligente para enriquecer la experiencia de lectura.
 
