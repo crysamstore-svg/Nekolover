@@ -1,20 +1,27 @@
-<div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://ai.google.dev/static/site-assets/images/share-ais-513315318.png" />
-</div>
 
-# Run and deploy your AI Studio app
+# [Nekolover reads] 📚
 
-This contains everything you need to run your app locally.
+Un lector de libros digital moderno e inteligente que integra las capacidades de Inteligencia Artificial de la API de Gemini (Google AI Studio) para enriquecer la experiencia de lectura.
 
-View your app in AI Studio: https://ai.studio/apps/7dff9a34-b756-4bf9-855e-8dd40a8a2d14
+## 🚀 Características Principales
+* **Lectura Multi-formato:** Soporte completo para abrir y visualizar archivos de lectura locales.
+* **personalización de estantería** te permite subir imagenes y crear el fondo perfecto para tu estanteria virtual.
+* **permite escuchar tu música favorita** estantería de música que permite escuchar música mientras lee.
+* **personalización de la tipografía de tu libro** estilos dark y kawaii
+* **Interfaz Limpia:** Diseñado exclusivamente para maximizar la concentración del lector.
 
-## Run Locally
+## 💳 Modelo de Monetización (Freemium)
+Esta aplicación utiliza un modelo híbrido para mantener el servicio y cubrir los costos de computación de la IA:
 
-**Prerequisites:**  Node.js
+* **Plan Gratuito:** Acceso completo al lector de libros con un límite.
+* **Suscripción Premium (Mensual):** Acceso ilimitado a todas las funciones y herramientas exclusivas. 
 
+*Los pagos y la administración de suscripciones recurrentes se procesan de forma segura a través de **PayPal**.*
 
-1. Install dependencies:
-   `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. Run the app:
-   `npm run dev`
+## 📲 Distribución e Instalación
+La aplicación se compila de forma independiente en formato **APK** para dispositivos Android utilizando herramientas de empaquetado nativas. 
+
+---
+*Este repositorio sirve como documentación oficial del producto y backend conceptual para la validación de la plataforma de pagos.*
+![Captura de pantalla de la App](<img width="1264" height="1264" alt="WhatsApp Image 2026-10-31 at 11 27 48 PM" src="https://github.com/user-attachments/assets/dcf4b26a-42cc-4b0f-abdb-67b21959f79c" />
+)
