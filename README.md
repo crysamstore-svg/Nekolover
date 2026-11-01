@@ -12,7 +12,7 @@ Un lector de libros digital moderno e inteligente para enriquecer la experiencia
 * **Interfaz Limpia:** Diseñado exclusivamente para maximizar la concentración del lector.
 
 ## 💳 Modelo de Monetización (Freemium)
-Esta aplicación utiliza un modelo híbrido para mantener el servicio y cubrir los costos de computación de la IA:
+Esta aplicación utiliza un modelo híbrido para mantener el servicio.
 
 * **Plan Gratuito:** Acceso completo al lector de libros con un límite.
 * **Suscripción Premium (Mensual):** Acceso ilimitado a todas las funciones y herramientas exclusivas. 
