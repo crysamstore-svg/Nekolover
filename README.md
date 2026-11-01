@@ -1,4 +1,5 @@
-
+(<img width="1264" height="1264" alt="WhatsApp Image 2026-10-31 at 11 27 48 PM" src="https://github.com/user-attachments/assets/dcf4b26a-42cc-4b0f-abdb-67b21959f79c" />
+)
 # [Nekolover reads] 📚
 
 Un lector de libros digital moderno e inteligente que integra las capacidades de Inteligencia Artificial de la API de Gemini (Google AI Studio) para enriquecer la experiencia de lectura.
@@ -23,5 +24,5 @@ La aplicación se compila de forma independiente en formato **APK** para disposi
 
 ---
 *Este repositorio sirve como documentación oficial del producto y backend conceptual para la validación de la plataforma de pagos.*
-![Captura de pantalla de la App](<img width="1264" height="1264" alt="WhatsApp Image 2026-10-31 at 11 27 48 PM" src="https://github.com/user-attachments/assets/dcf4b26a-42cc-4b0f-abdb-67b21959f79c" />
+
 )
