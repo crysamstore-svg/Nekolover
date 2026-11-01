@@ -1,4 +1,4 @@
-<img width="1264" height="1264" alt="WhatsApp Image 2026-10-31 at 11 27 48 PM" src="https://github.com/user-attachments/assets/dcf4b26a-42cc-4b0f-abdb-67b21959f79c" />
+(<img width="1264" height="1264" alt="WhatsApp Image 2026-10-31 at 11 27 48 PM" src="https://github.com/user-attachments/assets/dcf4b26a-42cc-4b0f-abdb-67b21959f79c" />
 
 # [Nekolover reads] 📚
 
