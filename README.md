@@ -24,7 +24,7 @@ La aplicación se compila de forma independiente en formato **APK** para disposi
 
 ## Términos y Condiciones de Uso
 1. Naturaleza del Servicio
-NEKOLOVER] es exclusivamente una herramienta técnica de software diseñada para la visualización, organización y personalización de lectura de archivos digitales locales (como PDF o EPUB). La aplicación se ejecuta de manera local en el dispositivo del usuario.
+**NekoLover Read** es exclusivamente una herramienta técnica de software diseñada para la visualización, organización y personalización de lectura de archivos digitales locales (como PDF o EPUB). La aplicación se ejecuta de manera local en el dispositivo del usuario.
 2. Responsabilidad del Contenido
 El Desarrollador no almacena, no aloja, no distribuye ni provee ningún tipo de libro, texto o material de lectura. Es responsabilidad única y exclusiva del usuario final garantizar que posee los derechos de autor, licencias legítimas o que los archivos cargados desde su almacenamiento son de dominio público. El desarrollador se deslinda de cualquier uso ilegal o infracción de propiedad intelectual cometida por los usuarios.
 3. Privacidad y Datos
@@ -60,4 +60,4 @@ El usuario tiene el control total sobre su suscripción y puede cancelarla en cu
 * **Efecto de la cancelación:** Al cancelar la suscripción en PayPal, el usuario mantendrá el acceso a las funciones Premium de la aplicación hasta que finalice el periodo mensual facturado actual. Una vez terminado dicho periodo, la aplicación volverá automáticamente al modo gratuito.
 
 ### 3. Excepciones de Soporte
-Si el usuario experimenta un problema técnico donde PayPal procesó el cobro pero el sistema de automatización no entregó el código de activación por correo electrónico, el usuario deberá contactar al soporte a través de ` ` adjuntando su comprobante de pago de PayPal para registrar e ingresar su código de acceso manualmente. 
+Si el usuario experimenta un problema técnico donde PayPal procesó el cobro pero el sistema de automatización no entregó el código de activación por correo electrónico, el usuario deberá contactar al soporte a través de `nekolover.online.zoho.com` adjuntando su comprobante de pago de PayPal para registrar e ingresar su código de acceso manualmente. 

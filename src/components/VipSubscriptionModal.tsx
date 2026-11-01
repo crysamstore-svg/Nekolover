@@ -141,9 +141,9 @@ export const VipSubscriptionModal: React.FC<VipSubscriptionModalProps> = ({
       icon: '🖼️'
     },
     stickers: {
-      title: 'Límite de Stickers Gratuitos (Máx 20)',
-      desc: 'La versión gratuita incluye hasta 20 stickers colocados. ¡Pásate a VIP para usar stickers ilimitados!',
-      icon: '🎀'
+      title: 'Stickers Premium Exclusivos VIP',
+      desc: 'En el modo gratuito solo los stickers de gatitos (😸😹😻😼😽🙀😿😾😺🐈‍⬛🐱🐾) son libres. ¡Suscríbete a VIP ($2/mes) para desbloquear la colección completa de stickers góticos, brujiles y mágicos!',
+      icon: '👑'
     },
     highlights: {
       title: 'Subrayador Esmeralda Exclusivo VIP',
@@ -356,8 +356,8 @@ export const VipSubscriptionModal: React.FC<VipSubscriptionModalProps> = ({
                     </div>
                   </div>
                   <div className="text-right">
-                    <span className="text-[10px] text-[var(--text-muted)] block">Gratis: Max 20</span>
-                    <span className="text-[11px] text-amber-300 font-bold">VIP: Ilimitados 👑</span>
+                    <span className="text-[10px] text-[var(--text-muted)] block">Gratis: Solo gatitos 😸</span>
+                    <span className="text-[11px] text-amber-300 font-bold">VIP: Todos los stickers 👑</span>
                   </div>
                 </div>
 

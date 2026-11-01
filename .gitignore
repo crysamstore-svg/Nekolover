@@ -6,3 +6,10 @@ coverage/
 *.log
 .env*
 !.env.example
+*.pem
+*.key
+*.keystore
+secrets/
+private/
+credentials*.json
+api-keys*.json

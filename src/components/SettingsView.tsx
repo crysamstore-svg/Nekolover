@@ -9,7 +9,6 @@ import {
   Layout, 
   Palette, 
   Music, 
-  Download, 
   BarChart3, 
   Quote as QuoteIcon, 
   Bookmark as BookmarkIcon,
@@ -38,7 +37,6 @@ export interface HeaderButtonsConfig {
   showNightMode: boolean;
   showAudio: boolean;
   showTheme: boolean;
-  showZip: boolean;
   showStats: boolean;
   showBookmarks: boolean;
   showQuotes: boolean;
@@ -539,7 +537,6 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 { key: 'showNightMode' as const, label: 'Botón de Modo Noche Rápido (Sol / Luna)', desc: 'Interruptor directo para alternar alto contraste OLED', icon: '🌙' },
                 { key: 'showAudio' as const, label: 'Botón de Sonido Ambiental Lo-Fi', desc: 'Control de lluvia gótica y ronroneo de gato', icon: '🎶' },
                 { key: 'showTheme' as const, label: 'Botón de Selector de Temas', desc: 'Acceso rápido al modal de paletas de color', icon: '🎨' },
-                { key: 'showZip' as const, label: 'Botón de Descarga ZIP', desc: 'Descarga del paquete de código para Android & Web', icon: '📦' },
                 { key: 'showStats' as const, label: 'Pestaña de Estadísticas', desc: 'Acceso a minutos de lectura, rachas y gráficos', icon: '📊' },
                 { key: 'showQuotes' as const, label: 'Pestaña de Notas y Citas', desc: 'Acceso al Baúl de Citas literarias guardadas', icon: '🪶' },
                 { key: 'showBookmarks' as const, label: 'Pestaña de Marcadores', desc: 'Acceso al cajón de páginas marcadas', icon: '🔖' }

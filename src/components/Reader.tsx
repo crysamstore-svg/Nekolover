@@ -25,7 +25,7 @@ import {
   Minus
 } from 'lucide-react';
 import { Book, PageSticker, TextHighlight, ReaderModeId } from '../types';
-import { KAWAII_STICKERS, READER_MODES } from '../data/defaultBooks';
+import { KAWAII_STICKERS, FREE_CAT_STICKERS, READER_MODES } from '../data/defaultBooks';
 import { getFileFromDB } from '../utils/db';
 import { parseEpubFile } from '../utils/epubParser';
 import { ReadingSettingsModal } from './ReadingSettingsModal';
@@ -680,15 +680,13 @@ export const Reader: React.FC<ReaderProps> = ({
   };
 
   // Movable Stickers logic with stick / unstick (pegar y volver a mover)
-  const handleAddSticker = (emoji: string, stickerIndex?: number) => {
-    // Restricción VIP: máximo 20 stickers en la versión gratuita
-    const totalPlaced = Object.values(stickers).reduce((acc, curr) => acc + curr.length, 0);
-    if (!isVip) {
-      if ((stickerIndex !== undefined && stickerIndex >= 20) || totalPlaced >= 20) {
-        onOpenVipModal?.('stickers');
-        setToastHighlight('👑 Límite de 20 stickers alcanzado. Suscríbete a VIP ($2/mes) para stickers ilimitados.');
-        return;
-      }
+  const handleAddSticker = (emoji: string, _stickerIndex?: number) => {
+    // Restricción VIP: solo los stickers de gatitos son gratuitos, los demás requieren VIP
+    const isCatSticker = FREE_CAT_STICKERS.includes(emoji);
+    if (!isVip && !isCatSticker) {
+      onOpenVipModal?.('stickers');
+      setToastHighlight('👑 Este sticker es exclusivo para miembros VIP ($2/mes). ¡Los stickers de gatitos son gratis!');
+      return;
     }
 
     const newSticker: PageSticker = {
@@ -1144,20 +1142,22 @@ export const Reader: React.FC<ReaderProps> = ({
 
           {!isVip && (
             <p className="text-[10px] text-amber-300 font-semibold mb-2 flex items-center justify-between bg-amber-400/10 px-2 py-1 rounded-lg border border-amber-400/20">
-              <span>Gratis: 20 stickers disponibles</span>
+              <span>Gratis: Stickers de gatitos 😸</span>
               <button
                 type="button"
                 onClick={() => onOpenVipModal?.('stickers')}
-                className="underline hover:text-white"
+                className="underline hover:text-white flex items-center gap-1"
               >
-                VIP: Infinitos 👑
+                <span>VIP: Todos los stickers</span>
+                <span>👑</span>
               </button>
             </p>
           )}
 
           <div className="grid grid-cols-6 gap-2 max-h-48 overflow-y-auto p-1 scrollbar-none">
             {KAWAII_STICKERS.map((emoji, idx) => {
-              const isLocked = !isVip && idx >= 20;
+              const isCat = FREE_CAT_STICKERS.includes(emoji);
+              const isLocked = !isVip && !isCat;
               return (
                 <button
                   key={idx}
@@ -1173,7 +1173,7 @@ export const Reader: React.FC<ReaderProps> = ({
                       ? 'bg-black/50 border-amber-400/30 opacity-75 hover:border-amber-400'
                       : 'bg-black/40 hover:bg-white/15 border-transparent hover:border-[var(--accent-pink)]'
                   }`}
-                  title={isLocked ? 'Sticker Exclusivo VIP ($2/mes) 👑' : 'Pegar sticker'}
+                  title={isLocked ? 'Sticker Exclusivo VIP ($2/mes) 👑 (Solo gatitos son gratis)' : 'Pegar sticker'}
                 >
                   <span>{emoji}</span>
                   {isLocked && (

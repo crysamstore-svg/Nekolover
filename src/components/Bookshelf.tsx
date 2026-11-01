@@ -344,6 +344,20 @@ export const Bookshelf: React.FC<BookshelfProps> = ({
               )}
             </button>
 
+            {/* Botón Coronita VIP en la parte principal */}
+            <button
+              onClick={() => onOpenVipModal?.()}
+              className={`p-2 rounded-xl border text-base font-bold flex items-center justify-center transition active:scale-95 shrink-0 shadow-sm ${
+                isVip
+                  ? 'bg-amber-400 text-black border-amber-300 shadow-[0_0_12px_rgba(251,191,36,0.6)]'
+                  : 'bg-black/50 border-amber-400/60 text-amber-300 hover:bg-amber-400 hover:text-black hover:border-amber-300 shadow-[0_0_10px_rgba(251,191,36,0.2)]'
+              }`}
+              title={isVip ? 'Membresía VIP Activa 👑' : 'Acceso VIP ($2 USD/mes) • Solo PayPal 👑'}
+              aria-label="Acceso VIP"
+            >
+              <span>👑</span>
+            </button>
+
             {/* Shortcut to Dedicated Settings Page (3 Dots) */}
             {onOpenSettings && (
               <button
@@ -356,66 +370,6 @@ export const Bookshelf: React.FC<BookshelfProps> = ({
               </button>
             )}
           </div>
-        </div>
-      </div>
-
-      {/* Acceso VIP en la Pantalla Principal (Banner Prominente) */}
-      <div 
-        onClick={() => onOpenVipPage ? onOpenVipPage() : onOpenVipModal?.()}
-        className={`mb-6 p-4 sm:p-5 rounded-3xl border transition cursor-pointer shadow-xl flex flex-col sm:flex-row items-center justify-between gap-4 group ${
-          isVip
-            ? 'bg-gradient-to-r from-emerald-950/70 via-black/80 to-purple-950/50 border-emerald-500/40 hover:border-emerald-400'
-            : 'bg-gradient-to-r from-[#1c152a] via-[#151022] to-[#0e0a17] border-amber-400/50 hover:border-amber-400 hover:shadow-[0_0_30px_rgba(251,191,36,0.2)]'
-        }`}
-      >
-        <div className="flex items-center gap-3.5 text-center sm:text-left">
-          <div className={`w-12 h-12 rounded-2xl flex items-center justify-center text-2xl shrink-0 shadow-lg ${
-            isVip 
-              ? 'bg-emerald-500/20 border border-emerald-400/40 text-emerald-300' 
-              : 'bg-gradient-to-tr from-amber-500 via-pink-500 to-amber-400 text-black shadow-[0_0_15px_rgba(251,191,36,0.4)] group-hover:scale-105 transition-transform'
-          }`}>
-            👑
-          </div>
-          <div>
-            <div className="flex items-center justify-center sm:justify-start gap-2">
-              <h3 className="dark-reborn-font font-bold text-sm sm:text-base text-white flex items-center gap-1.5">
-                <span>NekoLover VIP Club</span>
-                <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-400/20 text-amber-300 font-mono font-bold">
-                  $2.00 USD/mes
-                </span>
-              </h3>
-              {isVip ? (
-                <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/30 text-emerald-300 font-bold border border-emerald-500/40 font-mono">
-                  ACTIVO
-                </span>
-              ) : (
-                <span className="text-[10px] px-2 py-0.5 rounded-full bg-pink-500/20 text-pink-300 font-bold">
-                  Solo PayPal
-                </span>
-              )}
-            </div>
-            <p className="text-xs text-white/80 mt-0.5 leading-relaxed">
-              {isVip
-                ? 'Membresía activa: Música de fondo, fotos de estantería, todas las fuentes, stickers y notas infinitas.'
-                : 'Desbloquea música continua con tus archivos, texturas con fotos, más de 8 tipografías, stickers y notas ilimitadas.'}
-            </p>
-          </div>
-        </div>
-
-        {/* Solo botón oficial de PayPal */}
-        <div className="flex items-center gap-2.5 shrink-0" onClick={(e) => e.stopPropagation()}>
-          <button
-            type="button"
-            onClick={() => onOpenVipPage ? onOpenVipPage() : onOpenVipModal?.()}
-            className="px-5 py-2.5 rounded-full bg-[#FFC439] hover:bg-[#F2BA36] active:scale-95 text-black font-extrabold text-xs sm:text-sm shadow-md transition flex items-center gap-2 cursor-pointer"
-          >
-            <span className="text-base italic font-black tracking-tight select-none">
-              <span className="text-[#003087]">Pay</span><span className="text-[#0079C1]">Pal</span>
-            </span>
-            <span className="font-extrabold text-black">
-              {isVip ? 'Gestionar VIP ($2/mes)' : 'Unirse al VIP ($2 USD)'}
-            </span>
-          </button>
         </div>
       </div>
 

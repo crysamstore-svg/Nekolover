@@ -175,7 +175,7 @@ export const LegalModal: React.FC<LegalModalProps> = ({
                   <span>4.</span> Suscripción Premium y Pagos por PayPal ($2.00 USD/mes)
                 </h4>
                 <p className="text-[11px] text-white/80 mb-2">
-                  El acceso a las funciones avanzadas (uso de más de 4 tipografías, colocación de más de 20 stickers, personalización de estantería desde tus archivos, notas ilimitadas, más de 3 colores de subrayado y reproductor de música con subida de archivos) requiere una suscripción mensual activa procesada de forma segura exclusivamente por <strong>PayPal</strong>.
+                  El acceso a las funciones avanzadas (uso de más de 4 tipografías, colección completa de stickers no felinos, personalización de estantería desde tus archivos, notas ilimitadas, más de 3 colores de subrayado y reproductor de música con subida de archivos) requiere una suscripción mensual activa procesada de forma segura exclusivamente por <strong>PayPal</strong>.
                 </p>
                 <ul className="list-disc list-inside space-y-1 text-[11px] text-white/80 pl-1">
                   <li>El usuario puede cancelar el cobro recurrente en cualquier momento directamente desde su propia cuenta de PayPal.</li>

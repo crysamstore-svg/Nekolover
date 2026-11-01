@@ -235,10 +235,10 @@ export const vipManager = new VipManager();
 
 // Feature limits for Free users
 export const FREE_LIMITS = {
-  MAX_FONTS: 4, // Only first 4 fonts are free
-  MAX_STICKERS_COUNT: 20, // Only first 20 stickers are free
-  MAX_NOTES: 3, // Only 3 quotes/notes in free tier
-  ALLOWED_HIGHLIGHT_COLORS: ['pink', 'purple', 'gold'] as const, // Emerald is VIP only
-  CUSTOM_SHELF_IMAGE: false, // Uploading custom shelf photo requires VIP
-  MUSIC_PLAYER: false // Background music and upload requires VIP
+  MAX_FONTS: 4, // Solo las primeras 4 fuentes son gratuitas
+  ONLY_CAT_STICKERS_FREE: true, // Únicamente los stickers de gatitos (😸😹😻😼😽🙀😿😾😺🐈‍⬛🐱🐾) son gratuitos
+  MAX_NOTES: 3, // Solo 3 notas en el plan gratuito
+  ALLOWED_HIGHLIGHT_COLORS: ['pink', 'purple', 'gold'] as const, // Esmeralda es exclusivo VIP
+  CUSTOM_SHELF_IMAGE: false, // Subir foto personalizada de estantería requiere VIP
+  MUSIC_PLAYER: false // Reproductor de música requiere VIP
 };

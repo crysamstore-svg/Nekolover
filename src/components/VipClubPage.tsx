@@ -235,10 +235,10 @@ export const VipClubPage: React.FC<VipClubPageProps> = ({
               <div className="p-3 rounded-2xl bg-black/40 border border-emerald-500/20 space-y-1">
                 <div className="flex items-center gap-2 text-emerald-300 font-bold">
                   <Smile className="w-4 h-4" />
-                  <span>Stickers Ilimitados</span>
+                  <span>Stickers Premium Exclusivos</span>
                 </div>
                 <p className="text-[11px] text-white/70">
-                  Coloca y personaliza stickers sin el límite de 20 stickers de la versión gratis.
+                  Desbloquea la colección completa de stickers góticos, brujiles y dulces. (Gratis: únicamente stickers de gatitos 😸).
                 </p>
               </div>
 

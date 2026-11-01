@@ -117,7 +117,6 @@ export default function App() {
       showNightMode: true,
       showAudio: true,
       showTheme: true,
-      showZip: true,
       showStats: true,
       showQuotes: true,
       showBookmarks: true,
@@ -529,27 +528,6 @@ export default function App() {
     input?.click();
   };
 
-  // Safe in-browser Blob download for the generated ZIP package
-  const handleDownloadZip = async () => {
-    try {
-      showToast('🐾 Preparando descarga del archivo ZIP...');
-      const response = await fetch('/NekoLoverRead-Android-Package.zip');
-      if (!response.ok) throw new Error('No se pudo descargar el archivo.');
-      const blob = await response.blob();
-      const blobUrl = window.URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = blobUrl;
-      link.download = 'NekoLoverRead-Android-Package.zip';
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      setTimeout(() => window.URL.revokeObjectURL(blobUrl), 10000);
-      showToast('✅ Descarga completada: NekoLoverRead-Android-Package.zip');
-    } catch {
-      window.open('/NekoLoverRead-Android-Package.zip', '_blank');
-    }
-  };
-
   // Check if active book's page is bookmarked
   const isCurrentPageBookmarked =
     activeBook &&
@@ -596,7 +574,6 @@ export default function App() {
         isAudioPlaying={isAudioPlaying}
         isNightMode={isNightMode}
         onToggleNightMode={handleToggleNightMode}
-        onDownloadZip={handleDownloadZip}
         headerConfig={headerConfig}
         isVip={isVip}
         onOpenVipModal={() => openVipModal()}

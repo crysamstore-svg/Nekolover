@@ -145,14 +145,24 @@ export const FONT_OPTIONS: FontOption[] = [
   }
 ];
 
-export const KAWAII_STICKERS: string[] = [
-  // 1-20: Gratuitos
-  '🐈‍⬛', '🐾', '🍓', '🧁', '🦇', '💀', '🖤', '🎀',
+// Stickers de Gatitos: Exclusivamente los únicos stickers gratuitos
+export const FREE_CAT_STICKERS: string[] = [
+  '😸', '😹', '😻', '😼', '😽', '🙀', '😿', '😾', '😺',
+  '🐈‍⬛', '🐱', '🐾'
+];
+
+// Stickers Premium: Exclusivos VIP (Góticos, fantasía, dulces y objetos)
+export const PREMIUM_STICKERS: string[] = [
+  '🍓', '🧁', '🦇', '💀', '🖤', '🎀',
   '🧪', '🕯️', '🔮', '✨', '☕', '🗡️', '🥀', '🌙',
-  '🐱', '🍩', '🩸', '🕸️',
-  // 21+: Exclusivos VIP
-  '🧸', '🪓', '🕷️', '🏰', '👑', '💎', '🍷', '🎭',
-  '🍰', '🪶', '🗝️', '🥞', '🐺', '🪐', '🍬', '⚡'
+  '🍩', '🩸', '🕸️', '🧸', '🪓', '🕷️', '🏰', '👑',
+  '💎', '🍷', '🎭', '🍰', '🪶', '🗝️', '🥞', '🐺',
+  '🪐', '🍬', '⚡'
+];
+
+export const KAWAII_STICKERS: string[] = [
+  ...FREE_CAT_STICKERS,
+  ...PREMIUM_STICKERS
 ];
 
 export const DEFAULT_BOOKS: Book[] = [

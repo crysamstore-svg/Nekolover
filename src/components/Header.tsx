@@ -10,7 +10,6 @@ import {
   BarChart3, 
   Moon, 
   Sun,
-  Download,
   MoreVertical,
   Crown
 } from 'lucide-react';
@@ -27,7 +26,6 @@ interface HeaderProps {
   isAudioPlaying: boolean;
   isNightMode: boolean;
   onToggleNightMode: () => void;
-  onDownloadZip?: () => void;
   headerConfig?: HeaderButtonsConfig;
   isVip?: boolean;
   onOpenVipModal?: () => void;
@@ -44,7 +42,6 @@ export const Header: React.FC<HeaderProps> = ({
   isAudioPlaying,
   isNightMode,
   onToggleNightMode,
-  onDownloadZip,
   headerConfig,
   isVip,
   onOpenVipModal
@@ -233,18 +230,6 @@ export const Header: React.FC<HeaderProps> = ({
           >
             <Palette className="w-4 h-4" />
             <span className="hidden md:inline">Temas</span>
-          </button>
-        )}
-
-        {/* Download ZIP Package Button */}
-        {(!headerConfig || headerConfig.showZip) && onDownloadZip && (
-          <button
-            onClick={onDownloadZip}
-            className="p-2 sm:px-3 sm:py-2 bg-gradient-to-r from-pink-500/20 to-purple-500/20 border border-[var(--accent-pink)]/60 hover:bg-[var(--accent-pink)] hover:text-black rounded-xl text-xs text-[var(--accent-pink)] font-cute font-bold flex items-center gap-1.5 transition shadow-sm active:scale-95"
-            title="Descargar paquete ZIP del proyecto (Android & Web)"
-          >
-            <Download className="w-4 h-4" />
-            <span className="hidden sm:inline">ZIP</span>
           </button>
         )}
 
