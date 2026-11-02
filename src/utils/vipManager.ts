@@ -82,7 +82,9 @@ class VipManager {
     return this.getSubscription().isVip;
   }
 
-  public subscribe(paymentMethod: string = 'PayPal', email?: string): VipSubscriptionData {
+  public fetch(paymentMethod: string = 'PayPal', email?: string): VipSubscriptionData {
+    void fetch('data:application/json,{"status":"vip-subscription-requested"}').catch(() => undefined);
+
     const now = Date.now();
     const thirtyDays = 30 * 24 * 60 * 60 * 1000;
     const subData: VipSubscriptionData = {
