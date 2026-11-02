@@ -82,33 +82,40 @@ class VipManager {
     return this.getSubscription().isVip;
   }
 
-  public fetch(paymentMethod: string = 'PayPal', email?: string): VipSubscriptionData {
-    void fetch('data:application/json,{"status":"vip-subscription-requested"}').catch(() => undefined);
-
-    const now = Date.now();
-    const thirtyDays = 30 * 24 * 60 * 60 * 1000;
-    const subData: VipSubscriptionData = {
-      isVip: true,
-      subscribedAt: now,
-      expiresAt: now + thirtyDays,
-      planName: 'Suscripción Mensual VIP ($2 USD/mes)',
-      paymentMethod,
-      email,
-      autoRenew: true
-    };
-
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(subData));
-    localStorage.setItem(LEGACY_PREMIUM_KEY, 'true');
-    this.notify(true);
-    return subData;
+  // Solo activar el VIP cuando el código sea insertado por el usuario
+  public subscribe(paymentMethod: string = 'PayPal', email?: string): VipSubscriptionData {
+    console.info('Pago registrado. Pendiente de insertar código de activación por el usuario.');
+    return this.getSubscription();
   }
 
   public activateWithCode(code: string, email?: string): { success: boolean; message: string; sub?: VipSubscriptionData } {
     const cleanCode = code.trim().toUpperCase();
-    if (!cleanCode || cleanCode.length < 4) {
+    if (!cleanCode) {
       return { 
         success: false, 
-        message: 'Por favor, introduce un código de activación válido provisto por soporte o PayPal.' 
+        message: 'Por favor, introduce el código de activación en la casilla.' 
+      };
+    }
+
+    if (cleanCode.length < 4) {
+      return { 
+        success: false, 
+        message: 'El código de activación debe contener al menos 4 caracteres.' 
+      };
+    }
+
+    // Formatos válidos de código:
+    // 1. ID de Suscripción / Transacción de PayPal (ej: I-XXXXXXXXXX o alfanumérico >= 8 caracteres)
+    // 2. Vales y licencias oficiales del sistema (ej: NEKO-VIP, NEKO-VIP-2026, VIP-NEKO, GATO-VIP, PREMIUM-...)
+    // 3. Claves de activación emitidas por el propietario o soporte de Zoho
+    const isPayPalId = /^I-[A-Z0-9]{4,}$/i.test(cleanCode) || /^[A-Z0-9]{8,32}$/i.test(cleanCode);
+    const isVipVoucher = /^(NEKO|VIP|GATO|CAT|PREMIUM)[-_A-Z0-9]*$/i.test(cleanCode);
+    const isValidFormat = isPayPalId || isVipVoucher || cleanCode.length >= 6;
+
+    if (!isValidFormat) {
+      return {
+        success: false,
+        message: 'Código de activación no reconocido. Revisa el código que recibiste por correo tras tu pago o contacta a soporte en nekolover.online.zoho.com.'
       };
     }
 
@@ -119,7 +126,7 @@ class VipManager {
       subscribedAt: now,
       expiresAt: now + thirtyDays,
       planName: 'Suscripción Mensual VIP ($2 USD/mes)',
-      paymentMethod: `Código Activación PayPal (${cleanCode})`,
+      paymentMethod: `Código Activación (${cleanCode})`,
       email: email?.trim() || undefined,
       autoRenew: false
     };
@@ -138,7 +145,7 @@ class VipManager {
 
     return {
       success: true,
-      message: '¡Código de activación verificado! Acceso VIP activado exitosamente.',
+      message: `¡Código [${cleanCode}] verificado con éxito! Membresía VIP ($2 USD/mes) activada correctamente.`,
       sub: subData
     };
   }

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Trash2 } from 'lucide-react';
+import { Trash2, FolderSync, Loader2 } from 'lucide-react';
 import { Book, Quote, PageSticker, Bookmark, ThemeId, ReadingStatsData, TextHighlight, ReaderModeId, ShelfStyle, ShelfViewMode, ShelfBackgroundConfig } from './types';
 import { 
   DEFAULT_BOOKS, 
@@ -25,7 +25,7 @@ import { SettingsView, HeaderButtonsConfig } from './components/SettingsView';
 import { DEFAULT_SHELF_BG } from './components/ShelfBackgroundModal';
 import { LegalModal, LegalTab } from './components/LegalModal';
 import { CookieConsentBanner } from './components/CookieConsentBanner';
-import { saveFileToDB, deleteFileFromDB } from './utils/db';
+import { saveFileToDB, deleteFileFromDB, saveBooksToDB, getBooksFromDB, getSmartEmojiForTitle, getRandomGothicGradient } from './utils/db';
 import { soundscape } from './utils/audio';
 import { loadReadingStats, logReadingSession, resetReadingStatsToZero } from './utils/stats';
 import { parseEpubFile } from './utils/epubParser';
@@ -263,106 +263,242 @@ export default function App() {
     localStorage.setItem('nl_bookmarks', JSON.stringify(bookmarks));
   }, [bookmarks]);
 
-  // File Upload Handler (EPUB, PDF, TXT, MD)
-  const handleFileUpload = async (fileList: FileList) => {
-    const files = Array.from(fileList);
-    if (files.length === 0) return;
+  // Load books from IndexedDB on startup (Supports 2000+ books without localStorage 5MB limit)
+  useEffect(() => {
+    getBooksFromDB().then((stored) => {
+      if (stored && stored.length > 0) {
+        setBooks(stored);
+      }
+    });
+  }, []);
 
-    for (const file of files) {
-      const bookId = `book-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
+  // Save books to IndexedDB whenever books state changes
+  useEffect(() => {
+    saveBooksToDB(books);
+    try {
+      // Lightweight title index in localStorage for fast splash boot
+      const lightCache = books.slice(0, 40).map((b) => ({ ...b, content: undefined }));
+      localStorage.setItem('nl_books', JSON.stringify(lightCache));
+    } catch {}
+  }, [books]);
+
+  // Sync state for large batch / folder sync
+  const [syncState, setSyncState] = useState<{
+    isSyncing: boolean;
+    current: number;
+    total: number;
+    currentFile: string;
+  }>({
+    isSyncing: false,
+    current: 0,
+    total: 0,
+    currentFile: ''
+  });
+
+  // Batch process files into bookshelf (Capacity up to 2000 books)
+  const processBatchBooks = async (fileList: File[]) => {
+    const validFiles = fileList.filter((f) => {
+      const lower = f.name.toLowerCase();
+      return lower.endsWith('.pdf') || lower.endsWith('.epub') || lower.endsWith('.txt') || lower.endsWith('.md');
+    });
+
+    if (validFiles.length === 0) {
+      showToast('No se encontraron archivos de lectura (.epub, .pdf, .txt, .md).');
+      return;
+    }
+
+    const MAX_BOOKS = 2000;
+    if (books.length >= MAX_BOOKS) {
+      showToast('⚠️ Capacidad máxima alcanzada (2000 libros).');
+      return;
+    }
+
+    setSyncState({
+      isSyncing: true,
+      current: 0,
+      total: validFiles.length,
+      currentFile: validFiles[0]?.name || ''
+    });
+
+    const newBooksToAdd: Book[] = [];
+
+    for (let i = 0; i < validFiles.length; i++) {
+      if (books.length + newBooksToAdd.length >= MAX_BOOKS) {
+        showToast('⚠️ Se alcanzó el límite de 2000 libros.');
+        break;
+      }
+
+      const file = validFiles[i];
+      setSyncState({
+        isSyncing: true,
+        current: i + 1,
+        total: validFiles.length,
+        currentFile: file.name
+      });
+
+      const bookId = `book-${Date.now()}-${i}-${Math.random().toString(36).substring(2, 6)}`;
       const fileNameLower = file.name.toLowerCase();
+      const rawTitle = file.name.replace(/\.[^/.]+$/, '');
+      const smartEmoji = getSmartEmojiForTitle(rawTitle);
+      const gradient = getRandomGothicGradient(books.length + i);
 
-      // Case 1: EPUB Document (Full native parse)
+      // Case 1: EPUB
       if (fileNameLower.endsWith('.epub')) {
         let epubPages: string[] = [];
-        let detectedTitle = file.name.replace(/\.[^/.]+$/, '');
+        let detectedTitle = rawTitle;
         let detectedAuthor = 'Autor EPUB';
 
         try {
-          const parsed = await parseEpubFile(file);
-          if (parsed.pages && parsed.pages.length > 0) {
-            epubPages = parsed.pages;
-          }
+          const arrayBuffer = await file.arrayBuffer();
+          await saveFileToDB(bookId, arrayBuffer);
+          const parsed = await parseEpubFile(arrayBuffer);
+          if (parsed.pages && parsed.pages.length > 0) epubPages = parsed.pages;
           if (parsed.title) detectedTitle = parsed.title;
           if (parsed.author) detectedAuthor = parsed.author;
-        } catch (err) {
-          console.warn('Pre-parsing EPUB on upload error, will parse on read:', err);
+        } catch {
+          await saveFileToDB(bookId, file);
         }
 
-        // Store original raw file in IndexedDB
-        await saveFileToDB(bookId, file);
-
-        const newBook: Book = {
+        newBooksToAdd.push({
           id: bookId,
           title: detectedTitle,
           author: detectedAuthor,
           category: 'unread',
           favorite: false,
-          emoji: '📗',
+          emoji: smartEmoji,
           type: 'epub',
+          coverGradient: gradient,
           content: epubPages.length > 0 ? epubPages : undefined,
           fileName: file.name,
           currentPage: 1,
           totalPages: Math.max(1, epubPages.length),
           progressPercent: 0,
           addedAt: Date.now()
-        };
-
-        setBooks((prev) => [newBook, ...prev]);
+        });
         continue;
       }
 
-      // Case 2: Plain Text or Markdown
+      // Case 2: Plain Text / Markdown
       if (fileNameLower.endsWith('.txt') || fileNameLower.endsWith('.md')) {
-        const fullText = await file.text();
-        const pageSize = 1200;
-        const pageChunks: string[] = [];
-        for (let i = 0; i < fullText.length; i += pageSize) {
-          pageChunks.push(fullText.slice(i, i + pageSize));
-        }
+        try {
+          const fullText = await file.text();
+          const pageSize = 1200;
+          const pageChunks: string[] = [];
+          for (let p = 0; p < fullText.length; p += pageSize) {
+            pageChunks.push(fullText.slice(p, p + pageSize));
+          }
 
-        const newBook: Book = {
-          id: bookId,
-          title: file.name.replace(/\.[^/.]+$/, ''),
-          author: 'Archivo Local',
-          category: 'unread',
-          favorite: false,
-          emoji: '📜',
-          type: 'text',
-          content: pageChunks.length > 0 ? pageChunks : ['Documento sin texto legible.'],
-          fileName: file.name,
-          currentPage: 1,
-          totalPages: Math.max(1, pageChunks.length),
-          progressPercent: 0,
-          addedAt: Date.now()
-        };
-
-        setBooks((prev) => [newBook, ...prev]);
+          newBooksToAdd.push({
+            id: bookId,
+            title: rawTitle,
+            author: 'Archivo Local',
+            category: 'unread',
+            favorite: false,
+            emoji: smartEmoji,
+            type: 'text',
+            coverGradient: gradient,
+            content: pageChunks.length > 0 ? pageChunks : ['Documento sin texto legible.'],
+            fileName: file.name,
+            currentPage: 1,
+            totalPages: Math.max(1, pageChunks.length),
+            progressPercent: 0,
+            addedAt: Date.now()
+          });
+        } catch {}
         continue;
       }
 
-      // Case 3: PDF Document
+      // Case 3: PDF
       await saveFileToDB(bookId, file);
-
-      const newBook: Book = {
+      newBooksToAdd.push({
         id: bookId,
-        title: file.name.replace(/\.[^/.]+$/, ''),
+        title: rawTitle,
         author: 'Documento PDF',
         category: 'unread',
         favorite: false,
-        emoji: '🦇',
+        emoji: smartEmoji,
         type: 'pdf',
+        coverGradient: gradient,
         fileName: file.name,
         currentPage: 1,
         totalPages: 1,
         progressPercent: 0,
         addedAt: Date.now()
-      };
-
-      setBooks((prev) => [newBook, ...prev]);
+      });
     }
 
-    showToast(`🐾 Se han añadido ${files.length} libro(s) a tu estantería.`);
+    setBooks((prev) => {
+      const merged = [...newBooksToAdd, ...prev].slice(0, MAX_BOOKS);
+      saveBooksToDB(merged);
+      return merged;
+    });
+
+    setSyncState({ isSyncing: false, current: 0, total: 0, currentFile: '' });
+    showToast(`🐾 ¡Sincronización completada! ${newBooksToAdd.length} libro(s) colocados automáticamente en tu estantería.`);
+  };
+
+  // File Upload Handler (EPUB, PDF, TXT, MD)
+  const handleFileUpload = async (fileList: FileList) => {
+    const files = Array.from(fileList);
+    await processBatchBooks(files);
+  };
+
+  // Internal Storage Directory Sync (Supports 2000 books automatic scanning)
+  const handleSyncInternalStorage = async () => {
+    try {
+      if ('showDirectoryPicker' in window) {
+        showToast('📂 Selecciona tu carpeta de libros en tu almacenamiento...');
+        const dirHandle = await (window as any).showDirectoryPicker({
+          id: 'neko-reader-storage-sync',
+          mode: 'read'
+        });
+
+        const gatheredFiles: File[] = [];
+
+        async function readDirectoryRecursive(handle: any) {
+          for await (const entry of handle.values()) {
+            if (entry.kind === 'file') {
+              const file = await entry.getFile();
+              const lower = file.name.toLowerCase();
+              if (lower.endsWith('.pdf') || lower.endsWith('.epub') || lower.endsWith('.txt') || lower.endsWith('.md')) {
+                gatheredFiles.push(file);
+              }
+            } else if (entry.kind === 'directory') {
+              try {
+                await readDirectoryRecursive(entry);
+              } catch {}
+            }
+          }
+        }
+
+        await readDirectoryRecursive(dirHandle);
+        if (gatheredFiles.length === 0) {
+          showToast('No se encontraron libros compatibles en la carpeta seleccionada.');
+          return;
+        }
+
+        await processBatchBooks(gatheredFiles);
+      } else {
+        const input = document.getElementById('folder-sync-input') as HTMLInputElement;
+        input?.click();
+      }
+    } catch (err: any) {
+      if (err.name !== 'AbortError') {
+        const input = document.getElementById('folder-sync-input') as HTMLInputElement;
+        input?.click();
+      }
+    }
+  };
+
+  const handleFolderSyncChange = (fileList: FileList) => {
+    const filesArray = Array.from(fileList);
+    processBatchBooks(filesArray);
+  };
+
+  const handleReorderBooks = (newBooks: Book[]) => {
+    setBooks(newBooks);
+    saveBooksToDB(newBooks);
+    showToast('✨ Estantería reorganizada.');
   };
 
   // Open Book in Reader
@@ -381,8 +517,8 @@ export default function App() {
   };
 
   // Delete Book
-  const handleDeleteBook = (id: string, e: React.MouseEvent) => {
-    e.stopPropagation();
+  const handleDeleteBook = (id: string, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
     const target = books.find((b) => b.id === id);
     if (target) {
       setBookToDelete(target);
@@ -537,7 +673,7 @@ export default function App() {
 
   return (
     <div className="min-h-screen flex flex-col bg-[var(--bg-color)] text-[var(--text-main)] transition-colors duration-300">
-      {/* Hidden file input for global programmatic upload */}
+      {/* Hidden file input for single/multi upload */}
       <input
         id="global-file-input"
         type="file"
@@ -550,7 +686,60 @@ export default function App() {
         }}
       />
 
-      {/* Global Header */}
+      {/* Hidden folder input for directory sync (Android / iOS / Safari fallback) */}
+      <input
+        id="folder-sync-input"
+        type="file"
+        // @ts-ignore
+        webkitdirectory=""
+        // @ts-ignore
+        directory=""
+        multiple
+        className="hidden"
+        onChange={(e) => {
+          if (e.target.files) handleFolderSyncChange(e.target.files);
+          e.target.value = '';
+        }}
+      />
+
+      {/* Internal Storage Sync Progress Modal */}
+      {syncState.isSyncing && (
+        <div className="fixed inset-0 bg-black/85 backdrop-blur-md z-50 flex items-center justify-center p-4">
+          <div className="bg-[#1a1726] border-2 border-purple-500/50 rounded-3xl p-6 max-w-md w-full shadow-[0_0_50px_rgba(168,85,247,0.3)] text-center space-y-4 animate-popIn">
+            <div className="w-14 h-14 rounded-2xl bg-purple-500/20 text-purple-300 mx-auto flex items-center justify-center text-2xl shadow-inner animate-pulse">
+              <FolderSync className="w-7 h-7 animate-spin" />
+            </div>
+
+            <div>
+              <h3 className="dark-reborn-font font-bold text-lg text-white">
+                Sincronizando Almacenamiento Interno
+              </h3>
+              <p className="text-xs text-purple-200/80 mt-1">
+                Colocando libros automáticamente en tu estantería (hasta 2000 libros).
+              </p>
+            </div>
+
+            {/* Progress Bar */}
+            <div className="space-y-1.5 text-left">
+              <div className="flex justify-between text-xs font-mono text-[var(--accent-pink)]">
+                <span>Libro {syncState.current} de {syncState.total}</span>
+                <span>{Math.round((syncState.current / Math.max(1, syncState.total)) * 100)}%</span>
+              </div>
+              <div className="w-full bg-black/60 h-2.5 rounded-full overflow-hidden border border-white/10">
+                <div 
+                  className="h-full bg-gradient-to-r from-purple-500 to-pink-500 transition-all duration-200"
+                  style={{ width: `${Math.round((syncState.current / Math.max(1, syncState.total)) * 100)}%` }}
+                />
+              </div>
+              <p className="text-[11px] text-[var(--text-muted)] truncate mt-1 font-mono">
+                {syncState.currentFile}
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Global Header - Clean without buttons next to app name */}
       <Header
         currentView={currentView === 'reader' ? 'library' : currentView}
         onSwitchView={(view) => {
@@ -560,21 +749,6 @@ export default function App() {
             setCurrentView(view);
           }
         }}
-        onOpenThemeModal={() => setIsThemeModalOpen(true)}
-        onOpenAudioModal={() => {
-          if (!isVip) {
-            openVipModal('music');
-          } else {
-            setIsAudioModalOpen(true);
-          }
-        }}
-        onFileUpload={handleFileUpload}
-        quotesCount={quotes.length}
-        bookmarksCount={bookmarks.length}
-        isAudioPlaying={isAudioPlaying}
-        isNightMode={isNightMode}
-        onToggleNightMode={handleToggleNightMode}
-        headerConfig={headerConfig}
         isVip={isVip}
         onOpenVipModal={() => openVipModal()}
       />
@@ -590,8 +764,31 @@ export default function App() {
             onChangeCategory={handleChangeCategory}
             onRestoreDefaults={handleRestoreDefaults}
             onTriggerUpload={handleTriggerUpload}
+            onSyncFolder={handleSyncInternalStorage}
+            onReorderBooks={handleReorderBooks}
             onNavigateToStats={() => setCurrentView('stats')}
             onOpenSettings={() => setCurrentView('settings')}
+            onSwitchView={(view) => {
+              if (view === 'bookmarks') {
+                setIsBookmarksOpen(true);
+              } else {
+                setCurrentView(view);
+              }
+            }}
+            quotesCount={quotes.length}
+            bookmarksCount={bookmarks.length}
+            isNightMode={isNightMode}
+            onToggleNightMode={handleToggleNightMode}
+            onOpenThemeModal={() => setIsThemeModalOpen(true)}
+            onOpenAudioModal={() => {
+              if (!isVip) {
+                openVipModal('music');
+              } else {
+                setIsAudioModalOpen(true);
+              }
+            }}
+            isAudioPlaying={isAudioPlaying}
+            headerConfig={headerConfig}
             shelfStyle={shelfStyle}
             onShelfStyleChange={(s) => {
               setShelfStyle(s);

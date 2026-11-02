@@ -1,32 +1,9 @@
-import React, { useRef } from 'react';
-import { 
-  BookOpen, 
-  Quote as QuoteIcon, 
-  Bookmark as BookmarkIcon, 
-  Palette, 
-  UploadCloud, 
-  Volume2, 
-  Music, 
-  BarChart3, 
-  Moon, 
-  Sun,
-  MoreVertical,
-  Crown
-} from 'lucide-react';
-import { HeaderButtonsConfig } from './SettingsView';
+import React from 'react';
+import { ArrowLeft, Crown } from 'lucide-react';
 
 interface HeaderProps {
   currentView: 'library' | 'quotes' | 'bookmarks' | 'stats' | 'settings' | 'vip';
   onSwitchView: (view: 'library' | 'quotes' | 'bookmarks' | 'stats' | 'settings' | 'vip') => void;
-  onOpenThemeModal: () => void;
-  onOpenAudioModal: () => void;
-  onFileUpload: (files: FileList) => void;
-  quotesCount: number;
-  bookmarksCount: number;
-  isAudioPlaying: boolean;
-  isNightMode: boolean;
-  onToggleNightMode: () => void;
-  headerConfig?: HeaderButtonsConfig;
   isVip?: boolean;
   onOpenVipModal?: () => void;
 }
@@ -34,30 +11,12 @@ interface HeaderProps {
 export const Header: React.FC<HeaderProps> = ({
   currentView,
   onSwitchView,
-  onOpenThemeModal,
-  onOpenAudioModal,
-  onFileUpload,
-  quotesCount,
-  bookmarksCount,
-  isAudioPlaying,
-  isNightMode,
-  onToggleNightMode,
-  headerConfig,
   isVip,
   onOpenVipModal
 }) => {
-  const fileInputRef = useRef<HTMLInputElement>(null);
-
-  const handleNativeFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files.length > 0) {
-      onFileUpload(e.target.files);
-      e.target.value = '';
-    }
-  };
-
   return (
-    <header className="sticky top-0 z-40 bg-[var(--card-bg)] border-b border-[var(--border-color)] px-3 sm:px-6 py-2.5 flex items-center justify-between shadow-xl transition-colors duration-300">
-      {/* Brand & Logo */}
+    <header className="sticky top-0 z-40 bg-[var(--card-bg)] border-b border-[var(--border-color)] px-4 sm:px-6 py-2.5 flex items-center justify-between shadow-xl transition-colors duration-300">
+      {/* Brand & Logo - Clean header without buttons next to it */}
       <div 
         onClick={() => onSwitchView('library')}
         className="flex items-center space-x-2.5 sm:space-x-3 cursor-pointer group shrink-0"
@@ -76,196 +35,30 @@ export const Header: React.FC<HeaderProps> = ({
         </div>
       </div>
 
-      {/* Navigation & Controls */}
-      <nav className="flex items-center space-x-1 sm:space-x-2">
-        {/* Library Tab */}
-        <button
-          onClick={() => onSwitchView('library')}
-          className={`px-3 sm:px-4 py-2 rounded-xl text-xs sm:text-sm font-semibold flex items-center space-x-1.5 transition ${
-            currentView === 'library'
-              ? 'bg-[var(--accent-pink)] text-black font-bold shadow-md'
-              : 'text-[var(--text-main)] hover:bg-white/10'
-          }`}
-          title="Ver estantería de libros"
-        >
-          <BookOpen className="w-4 h-4" />
-          <span className="hidden sm:inline">Biblioteca</span>
-        </button>
-
-        {/* Quotes Tab */}
-        {(!headerConfig || headerConfig.showQuotes) && (
+      {/* Right side: Clean minimal status & Return to library when in other views */}
+      <div className="flex items-center gap-2">
+        {currentView !== 'library' && (
           <button
-            onClick={() => onSwitchView('quotes')}
-            className={`px-3 sm:px-4 py-2 rounded-xl text-xs sm:text-sm font-semibold flex items-center space-x-1.5 transition relative ${
-              currentView === 'quotes'
-                ? 'bg-[var(--accent-pink)] text-black font-bold shadow-md'
-                : 'text-[var(--text-main)] hover:bg-white/10'
-            }`}
-            title="Ver citas y notas literarias"
+            onClick={() => onSwitchView('library')}
+            className="px-3 py-1.5 rounded-xl text-xs font-cute font-bold bg-black/40 border border-[var(--border-color)] hover:border-[var(--accent-pink)] text-[var(--accent-pink)] transition flex items-center gap-1.5 shadow-sm active:scale-95"
+            title="Volver a la Biblioteca"
           >
-            <QuoteIcon className="w-4 h-4" />
-            <span className="hidden sm:inline">Notas</span>
-            {quotesCount > 0 && (
-              <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-bold ${
-                currentView === 'quotes' ? 'bg-black/80 text-white' : 'bg-[var(--accent-pink)] text-black'
-              }`}>
-                {quotesCount}
-              </span>
-            )}
+            <ArrowLeft className="w-3.5 h-3.5" />
+            <span>Volver a Estantería</span>
           </button>
         )}
 
-        {/* Stats Tab */}
-        {(!headerConfig || headerConfig.showStats) && (
-          <button
-            onClick={() => onSwitchView('stats')}
-            className={`px-3 sm:px-4 py-2 rounded-xl text-xs sm:text-sm font-semibold flex items-center space-x-1.5 transition relative ${
-              currentView === 'stats'
-                ? 'bg-[var(--accent-pink)] text-black font-bold shadow-md'
-                : 'text-[var(--text-main)] hover:bg-white/10'
-            }`}
-            title="Ver panel de estadísticas de lectura y gráficos"
+        {isVip && (
+          <div 
+            onClick={onOpenVipModal}
+            className="px-2.5 py-1 rounded-full bg-amber-400/20 border border-amber-400/40 text-amber-300 text-xs font-bold flex items-center gap-1 cursor-pointer shadow-sm hover:bg-amber-400/30 transition"
+            title="Membresía VIP Activa"
           >
-            <BarChart3 className="w-4 h-4" />
-            <span className="hidden sm:inline">Estadísticas</span>
-          </button>
+            <Crown className="w-3.5 h-3.5 text-amber-400 fill-amber-400" />
+            <span className="hidden sm:inline font-mono">VIP</span>
+          </div>
         )}
-
-        {/* Bookmarks Tab */}
-        {(!headerConfig || headerConfig.showBookmarks) && (
-          <button
-            onClick={() => onSwitchView('bookmarks')}
-            className={`px-3 sm:px-4 py-2 rounded-xl text-xs sm:text-sm font-semibold flex items-center space-x-1.5 transition relative ${
-              currentView === 'bookmarks'
-                ? 'bg-[var(--accent-pink)] text-black font-bold shadow-md'
-                : 'text-[var(--text-main)] hover:bg-white/10'
-            }`}
-            title="Ver marcadores guardados"
-          >
-            <BookmarkIcon className="w-4 h-4" />
-            <span className="hidden md:inline">Marcadores</span>
-            {bookmarksCount > 0 && (
-              <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-bold ${
-                currentView === 'bookmarks' ? 'bg-black/80 text-white' : 'bg-[var(--accent-purple)] text-black'
-              }`}>
-                {bookmarksCount}
-              </span>
-            )}
-          </button>
-        )}
-
-        {/* Global Night Mode Toggle */}
-        {(!headerConfig || headerConfig.showNightMode) && (
-          <button
-            onClick={onToggleNightMode}
-            className={`px-2.5 sm:px-3 py-2 rounded-xl text-xs font-semibold flex items-center gap-1.5 border transition active:scale-95 ${
-              isNightMode
-                ? 'bg-white text-black border-white shadow-[0_0_15px_rgba(255,255,255,0.4)] font-bold'
-                : 'bg-black/40 text-[var(--text-muted)] border-[var(--border-color)] hover:border-white hover:text-white'
-            }`}
-            title={
-              isNightMode
-                ? 'Desactivar Modo Noche (Restaurar colores)'
-                : 'Activar Modo Noche: Negro puro OLED y escala de grises de alto contraste para oscuridad total'
-            }
-          >
-            {isNightMode ? (
-              <Sun className="w-4 h-4 text-black stroke-[2.5]" />
-            ) : (
-              <Moon className="w-4 h-4 text-gray-300" />
-            )}
-            <span className="hidden sm:inline font-cute">
-              {isNightMode ? 'Modo Noche' : 'Noche'}
-            </span>
-          </button>
-        )}
-
-        {/* Botón VIP ($2 USD/mes) - Abre la página VIP dedicada */}
-        <button
-          onClick={() => onSwitchView('vip')}
-          className={`px-2.5 sm:px-3 py-2 rounded-xl text-xs font-cute font-bold flex items-center gap-1.5 transition active:scale-95 ${
-            currentView === 'vip'
-              ? 'bg-amber-400 text-black border border-amber-300 shadow-[0_0_15px_rgba(251,191,36,0.7)] font-extrabold'
-              : isVip
-                ? 'bg-amber-400 text-black border border-amber-300 shadow-[0_0_12px_rgba(251,191,36,0.6)] font-extrabold'
-                : 'bg-gradient-to-r from-amber-500/20 via-pink-500/20 to-amber-500/10 border border-amber-400/70 text-amber-300 hover:bg-amber-400 hover:text-black shadow-sm'
-          }`}
-          title={isVip ? 'Página VIP Club: Gestionar membresía ($2/mes)' : 'Página VIP Club ($2 USD/mes): Acceso exclusivo por PayPal'}
-        >
-          <Crown className={`w-3.5 h-3.5 ${isVip || currentView === 'vip' ? 'fill-black' : 'text-amber-400'}`} />
-          <span className="hidden sm:inline font-bold">
-            {isVip ? 'VIP Activo' : 'VIP $2/m'}
-          </span>
-        </button>
-
-        {/* Estantería de Música (Función VIP) */}
-        {(!headerConfig || headerConfig.showAudio) && (
-          <button
-            onClick={() => {
-              if (!isVip && onOpenVipModal) {
-                onOpenVipModal();
-              } else {
-                onOpenAudioModal();
-              }
-            }}
-            className={`px-2.5 sm:px-3 py-2 rounded-xl text-xs flex items-center gap-1.5 border transition active:scale-95 ${
-              isAudioPlaying
-                ? 'bg-[var(--accent-purple)]/25 text-[var(--accent-purple)] border-[var(--accent-purple)] shadow-[0_0_12px_rgba(189,147,249,0.3)] animate-pulse'
-                : 'bg-black/30 text-[var(--text-muted)] border-[var(--border-color)] hover:text-[var(--accent-purple)] hover:border-[var(--accent-purple)]/60'
-            }`}
-            title={isVip ? 'Estantería de Música: Sube canciones de tus archivos y escucha de fondo' : 'Reproductor de Música: Exclusivo Suscripción VIP ($2/mes)'}
-          >
-            {isAudioPlaying ? <Volume2 className="w-4 h-4 text-[var(--accent-purple)]" /> : <Music className="w-4 h-4" />}
-            <span className="hidden sm:inline font-cute font-medium">Música</span>
-            {!isVip && <span className="text-[10px] text-amber-300 font-bold ml-0.5">👑</span>}
-          </button>
-        )}
-
-        {/* Theme Modal Trigger */}
-        {(!headerConfig || headerConfig.showTheme) && (
-          <button
-            onClick={onOpenThemeModal}
-            className="p-2 sm:px-3 sm:py-2 bg-black/40 border border-[var(--border-color)] hover:border-[var(--accent-pink)] rounded-xl text-xs text-[var(--accent-pink)] font-cute flex items-center gap-1.5 transition shadow-sm"
-            title="Cambiar Paleta & Tema Dark Reborn"
-          >
-            <Palette className="w-4 h-4" />
-            <span className="hidden md:inline">Temas</span>
-          </button>
-        )}
-
-        {/* File Upload Trigger */}
-        <button
-          onClick={() => fileInputRef.current?.click()}
-          className="px-3 sm:px-3.5 py-2 rounded-xl text-xs sm:text-sm font-bold bg-[var(--accent-pink)]/20 text-[var(--accent-pink)] border border-[var(--accent-pink)]/50 hover:bg-[var(--accent-pink)] hover:text-black transition flex items-center space-x-1.5 shadow-sm active:scale-95"
-          title="Subir archivo EPUB, PDF o Texto"
-        >
-          <UploadCloud className="w-4 h-4" />
-          <span className="hidden xs:inline">Subir</span>
-        </button>
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept=".pdf,.epub,.txt,.md"
-          multiple
-          className="hidden"
-          onChange={handleNativeFileChange}
-        />
-
-        {/* Three Dots Button: Settings Page Access */}
-        <button
-          onClick={() => onSwitchView('settings')}
-          className={`p-2 sm:px-2.5 sm:py-2 rounded-xl text-xs sm:text-sm font-semibold flex items-center gap-1 transition ${
-            currentView === 'settings'
-              ? 'bg-[var(--accent-pink)] text-black font-bold shadow-md'
-              : 'text-[var(--text-main)] hover:bg-white/10 hover:text-[var(--accent-pink)]'
-          }`}
-          title="Configuraciones: Modo de Contraste, Tipografía, Márgenes, Botones del Header"
-          aria-label="Configuraciones"
-        >
-          <MoreVertical className="w-4 h-4" />
-          <span className="hidden xl:inline">Ajustes</span>
-        </button>
-      </nav>
+      </div>
     </header>
   );
 };

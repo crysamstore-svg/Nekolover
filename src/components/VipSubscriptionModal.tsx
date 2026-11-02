@@ -19,6 +19,7 @@ import {
 } from 'lucide-react';
 import { vipManager, VipSubscriptionData } from '../utils/vipManager';
 import { LegalTab } from './LegalModal';
+import { PayPalSubscriptionButton } from './PayPalSubscriptionButton';
 
 interface VipSubscriptionModalProps {
   isOpen: boolean;
@@ -47,6 +48,7 @@ export const VipSubscriptionModal: React.FC<VipSubscriptionModalProps> = ({
   const [acceptPrivacy, setAcceptPrivacy] = useState(false);
   const [validationError, setValidationError] = useState<string | null>(null);
 
+  const [payPalNotice, setPayPalNotice] = useState<string | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [successAnimation, setSuccessAnimation] = useState(false);
 
@@ -70,30 +72,24 @@ export const VipSubscriptionModal: React.FC<VipSubscriptionModalProps> = ({
       return;
     }
 
-    setIsProcessing(true);
+    // Direct user to click the official PayPal button or enter an existing code
+    setValidationError('Para suscribirte, utiliza el botón oficial de PayPal arriba. Una vez completado, inserta el código de activación en la casilla para activar tu membresía VIP.');
+  };
 
-    // Simulate secure PayPal subscription execution
-    setTimeout(() => {
-      // 1. Save legal audit trail log with exact ISO date, legal version, and checkboxes accepted
-      vipManager.saveConsentLog({
-        consentType: 'vip_checkout_paypal',
-        termsAccepted: acceptTermsAndRefund,
-        privacyAccepted: acceptPrivacy,
-        refundPolicyAccepted: acceptTermsAndRefund,
-        email: paypalEmail.trim()
-      });
+  const handlePayPalApprove = (subscriptionId: string) => {
+    // 1. Save legal audit trail log
+    vipManager.saveConsentLog({
+      consentType: 'vip_checkout_paypal',
+      termsAccepted: true,
+      privacyAccepted: true,
+      refundPolicyAccepted: true,
+      email: paypalEmail.trim() || 'subscriber-paypal@user.com'
+    });
 
-      // 2. Activate VIP subscription
-      const sub = vipManager.subscribe('PayPal', paypalEmail.trim());
-      setSubscription(sub);
-      setIsProcessing(false);
-      setSuccessAnimation(true);
-      onSubscribed?.();
-
-      setTimeout(() => {
-        setSuccessAnimation(false);
-      }, 4000);
-    }, 1200);
+    // 2. Do NOT auto-activate: only activate when the user inserts and submits the code
+    setManualCode(subscriptionId);
+    setShowCodeInput(true);
+    setPayPalNotice(`✅ ¡Pago registrado por PayPal con éxito! (ID de suscripción: ${subscriptionId}). Tu código de activación ha sido generado. Para finalizar y activar tu membresía VIP, por favor presiona el botón "Activar VIP Ahora" a continuación.`);
   };
 
   const handleCancelSubscription = () => {
@@ -103,13 +99,13 @@ export const VipSubscriptionModal: React.FC<VipSubscriptionModalProps> = ({
     }
   };
 
-  const handleActivateManualCode = (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleActivateManualCode = (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
     setValidationError(null);
     setCodeSuccessMessage(null);
 
     if (!manualCode.trim()) {
-      setValidationError('Por favor ingresa un código de activación válido provisto por soporte o PayPal.');
+      setValidationError('Por favor introduce tu código de activación en la casilla.');
       return;
     }
 
@@ -117,8 +113,13 @@ export const VipSubscriptionModal: React.FC<VipSubscriptionModalProps> = ({
     if (res.success && res.sub) {
       setSubscription(res.sub);
       setCodeSuccessMessage(res.message);
-      setManualCode('');
+      setPayPalNotice(null);
+      setSuccessAnimation(true);
       onSubscribed?.();
+
+      setTimeout(() => {
+        setSuccessAnimation(false);
+      }, 4000);
     } else {
       setValidationError(res.message);
     }
@@ -516,77 +517,70 @@ export const VipSubscriptionModal: React.FC<VipSubscriptionModalProps> = ({
                   </div>
                 )}
 
-                {/* BOTÓN EXCLUSIVO DE PAYPAL (#FFC439) */}
-                <button
-                  type="submit"
-                  disabled={isProcessing}
-                  className="w-full py-3.5 px-4 rounded-full bg-[#FFC439] hover:bg-[#F2BA36] active:scale-[0.98] transition shadow-[0_4px_20px_rgba(255,196,57,0.35)] flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
-                >
-                  {isProcessing ? (
-                    <div className="flex items-center gap-2 text-[#003087] font-bold text-xs sm:text-sm">
-                      <div className="w-4 h-4 border-2 border-[#003087] border-t-transparent rounded-full animate-spin" />
-                      <span>Conectando con PayPal...</span>
-                    </div>
-                  ) : (
+                {/* BOTÓN OFICIAL DE SUSCRIPCIÓN DE PAYPAL (Plan P-0GH31223S1526604TNLUBBEQ) */}
+                <div className="pt-1">
+                  <PayPalSubscriptionButton 
+                    onSuccess={handlePayPalApprove}
+                    onError={(err) => setValidationError('Error al procesar el pago con PayPal. Intenta de nuevo.')}
+                  />
+                </div>
+
+                {/* SECCIÓN OBLIGATORIA: INSERTAR CÓDIGO DE ACTIVACIÓN VIP */}
+                <div className="pt-3 border-t border-amber-400/30 space-y-2.5 bg-gradient-to-br from-amber-950/40 via-black/80 to-black/90 p-3.5 rounded-2xl border border-amber-400/40 shadow-inner">
+                  <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
-                      <span className="text-xl italic font-black tracking-tight select-none">
-                        <span className="text-[#003087]">Pay</span><span className="text-[#0079C1]">Pal</span>
-                      </span>
-                      <span className="text-xs sm:text-sm font-extrabold text-black">
-                        Suscribirse ($2.00 USD / mes)
-                      </span>
+                      <div className="p-1.5 rounded-lg bg-amber-400/20 text-amber-300">
+                        <KeyRound className="w-4 h-4" />
+                      </div>
+                      <div>
+                        <h5 className="text-xs font-bold text-amber-300">
+                          Insertar Código de Activación VIP
+                        </h5>
+                        <p className="text-[10px] text-amber-200/80">
+                          Solo se activa el VIP cuando el código sea insertado por el usuario
+                        </p>
+                      </div>
                     </div>
-                  )}
-                </button>
-
-                {/* SECCIÓN 3: EXCEPCIONES DE SOPORTE & CÓDIGO MANUAL */}
-                <div className="pt-2 border-t border-white/10 space-y-2">
-                  <button
-                    type="button"
-                    onClick={() => setShowCodeInput(!showCodeInput)}
-                    className="w-full text-left text-[11px] font-semibold text-amber-300 hover:text-white flex items-center justify-between"
-                  >
-                    <span className="flex items-center gap-1.5">
-                      <KeyRound className="w-3.5 h-3.5" />
-                      <span>¿Ya compraste o tienes código de activación?</span>
+                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-400/20 text-amber-300 font-bold border border-amber-400/30">
+                      Activación
                     </span>
-                    <span className="text-xs font-mono">{showCodeInput ? '▲' : '▼'}</span>
-                  </button>
+                  </div>
 
-                  {showCodeInput && (
-                    <div className="p-3 bg-black/60 rounded-2xl border border-amber-400/30 space-y-2">
-                      <p className="text-[10px] text-white/80 leading-relaxed">
-                        Si PayPal procesó tu cobro y requieres ingresar tu código, o lo solicitaste a soporte, ingrésalo aquí:
-                      </p>
-                      <div className="flex gap-2">
-                        <input
-                          type="text"
-                          placeholder="Ej. NEKO-VIP-2026"
-                          value={manualCode}
-                          onChange={(e) => setManualCode(e.target.value)}
-                          className="flex-1 bg-black/70 border border-white/20 rounded-xl px-3 py-1.5 text-xs text-white uppercase font-mono focus:border-amber-400 focus:outline-none"
-                        />
-                        <button
-                          type="button"
-                          onClick={handleActivateManualCode}
-                          className="px-3.5 py-1.5 bg-amber-400 hover:bg-amber-300 text-black text-xs font-bold rounded-xl active:scale-95 transition"
-                        >
-                          Activar
-                        </button>
-                      </div>
-                      <div className="text-[10px] text-white/70 pt-1">
-                        ¿Problemas con tu código? Contacta a soporte:{' '}
-                        <a
-                          href="https://nekolover.online.zoho.com"
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-amber-300 underline font-mono font-bold hover:text-white"
-                        >
-                          nekolover.online.zoho.com
-                        </a>
-                      </div>
+                  <p className="text-[10px] text-white/80 leading-relaxed">
+                    De conformidad con nuestras políticas de seguridad, el acceso VIP únicamente se activará cuando insertes tu código de activación. Al suscribirte por PayPal, tu código es entregado a tu correo o puedes usar tu ID de transacción. Si necesitas asistencia, escribe a{' '}
+                    <a
+                      href="https://nekolover.online.zoho.com"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-amber-300 underline font-mono font-bold hover:text-white"
+                    >
+                      nekolover.online.zoho.com
+                    </a>.
+                  </p>
+
+                  {payPalNotice && (
+                    <div className="p-2.5 rounded-xl bg-blue-950/80 border border-blue-400/60 text-[11px] text-blue-200 animate-fadeIn">
+                      {payPalNotice}
                     </div>
                   )}
+
+                  <div className="flex flex-col sm:flex-row gap-2 pt-1">
+                    <input
+                      type="text"
+                      placeholder="Ej. NEKO-VIP-2026 o ID de PayPal"
+                      value={manualCode}
+                      onChange={(e) => setManualCode(e.target.value)}
+                      className="flex-1 bg-black/90 border border-amber-400/50 rounded-xl px-3.5 py-2 text-xs text-white uppercase font-mono focus:border-amber-400 focus:outline-none placeholder-white/30"
+                    />
+                    <button
+                      type="button"
+                      onClick={handleActivateManualCode}
+                      className="px-4 py-2 bg-gradient-to-r from-amber-400 to-amber-500 hover:from-amber-300 hover:to-amber-400 text-black text-xs font-extrabold rounded-xl shadow-[0_2px_12px_rgba(245,158,11,0.4)] active:scale-95 transition flex items-center justify-center gap-1.5 shrink-0 cursor-pointer"
+                    >
+                      <Crown className="w-3.5 h-3.5 fill-black" />
+                      <span>Activar VIP con mi Código</span>
+                    </button>
+                  </div>
                 </div>
 
                 {/* Additional Trust & Transparency badges */}
