@@ -1,5 +1,4 @@
-// VIP Subscription Management for NekoLover Read
-// Price: $2.00 USD / month (Solo PayPal)
+import { verificarCodigo } from './supabase';
 
 export interface VipSubscriptionData {
   isVip: boolean;
@@ -32,6 +31,19 @@ const COOKIE_CONSENT_KEY = 'consentimiento_privacidad';
 
 class VipManager {
   private listeners: Set<(isVip: boolean) => void> = new Set();
+
+  constructor() {
+    if (typeof window !== 'undefined') {
+      window.addEventListener('vip_status_changed', (e: any) => {
+        this.notify(e.detail?.isVip ?? this.isVip());
+      });
+      window.addEventListener('storage', (e: StorageEvent) => {
+        if (e.key === LEGACY_PREMIUM_KEY || e.key === STORAGE_KEY) {
+          this.notify(this.isVip());
+        }
+      });
+    }
+  }
 
   public getSubscription(): VipSubscriptionData {
     try {
@@ -86,6 +98,47 @@ class VipManager {
   public subscribe(paymentMethod: string = 'PayPal', email?: string): VipSubscriptionData {
     console.info('Pago registrado. Pendiente de insertar código de activación por el usuario.');
     return this.getSubscription();
+  }
+
+  /**
+   * Validación asíncrona de código de activación:
+   * Primero consulta en tiempo real la base de datos de Supabase mediante GET fetch en la tabla "suscripciones".
+   * Si es válido y activo, activa "usuario_premium = true" en localStorage y actualiza la app.
+   */
+  public async activateWithCodeAsync(code: string, email?: string): Promise<{ success: boolean; message: string; sub?: VipSubscriptionData }> {
+    const cleanCode = code.trim();
+    if (!cleanCode) {
+      return { 
+        success: false, 
+        message: 'Por favor, introduce el código de activación en la casilla.' 
+      };
+    }
+
+    // 1. Verificación prioritaria en la tabla "suscripciones" de Supabase
+    try {
+      const supRes = await verificarCodigo(cleanCode);
+      if (supRes.success) {
+        const subData = this.getSubscription();
+        this.notify(true);
+        this.saveConsentLog({
+          consentType: 'vip_checkout_paypal',
+          termsAccepted: true,
+          privacyAccepted: true,
+          refundPolicyAccepted: true,
+          email: email?.trim() || supRes.data?.email
+        });
+        return {
+          success: true,
+          message: supRes.message,
+          sub: subData
+        };
+      }
+    } catch (e) {
+      console.warn('Error consultando Supabase, intentando comprobación local:', e);
+    }
+
+    // 2. Respaldo para ID de transacción de PayPal o cupones del sistema
+    return this.activateWithCode(cleanCode, email);
   }
 
   public activateWithCode(code: string, email?: string): { success: boolean; message: string; sub?: VipSubscriptionData } {

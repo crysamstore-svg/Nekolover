@@ -99,7 +99,7 @@ export const VipSubscriptionModal: React.FC<VipSubscriptionModalProps> = ({
     }
   };
 
-  const handleActivateManualCode = (e?: React.FormEvent) => {
+  const handleActivateManualCode = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     setValidationError(null);
     setCodeSuccessMessage(null);
@@ -109,19 +109,26 @@ export const VipSubscriptionModal: React.FC<VipSubscriptionModalProps> = ({
       return;
     }
 
-    const res = vipManager.activateWithCode(manualCode, paypalEmail);
-    if (res.success && res.sub) {
-      setSubscription(res.sub);
-      setCodeSuccessMessage(res.message);
-      setPayPalNotice(null);
-      setSuccessAnimation(true);
-      onSubscribed?.();
+    setIsProcessing(true);
+    try {
+      const res = await vipManager.activateWithCodeAsync(manualCode, paypalEmail);
+      if (res.success && res.sub) {
+        setSubscription(res.sub);
+        setCodeSuccessMessage(res.message);
+        setPayPalNotice(null);
+        setSuccessAnimation(true);
+        onSubscribed?.();
 
-      setTimeout(() => {
-        setSuccessAnimation(false);
-      }, 4000);
-    } else {
-      setValidationError(res.message);
+        setTimeout(() => {
+          setSuccessAnimation(false);
+        }, 4000);
+      } else {
+        setValidationError(res.message);
+      }
+    } catch (err: any) {
+      setValidationError('Error de conexión al validar código con Supabase.');
+    } finally {
+      setIsProcessing(false);
     }
   };
 
@@ -574,11 +581,12 @@ export const VipSubscriptionModal: React.FC<VipSubscriptionModalProps> = ({
                     />
                     <button
                       type="button"
+                      disabled={isProcessing}
                       onClick={handleActivateManualCode}
-                      className="px-4 py-2 bg-gradient-to-r from-amber-400 to-amber-500 hover:from-amber-300 hover:to-amber-400 text-black text-xs font-extrabold rounded-xl shadow-[0_2px_12px_rgba(245,158,11,0.4)] active:scale-95 transition flex items-center justify-center gap-1.5 shrink-0 cursor-pointer"
+                      className="px-4 py-2 bg-gradient-to-r from-amber-400 to-amber-500 hover:from-amber-300 hover:to-amber-400 disabled:opacity-50 text-black text-xs font-extrabold rounded-xl shadow-[0_2px_12px_rgba(245,158,11,0.4)] active:scale-95 transition flex items-center justify-center gap-1.5 shrink-0 cursor-pointer"
                     >
                       <Crown className="w-3.5 h-3.5 fill-black" />
-                      <span>Activar VIP con mi Código</span>
+                      <span>{isProcessing ? 'Verificando en Supabase...' : 'Activar VIP con mi Código'}</span>
                     </button>
                   </div>
                 </div>
