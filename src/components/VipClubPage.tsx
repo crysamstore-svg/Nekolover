@@ -16,11 +16,13 @@ import {
   KeyRound,
   RotateCcw,
   CheckCircle2,
-  Clock
+  Clock,
+  Send
 } from 'lucide-react';
 import { vipManager, VipSubscriptionData } from '../utils/vipManager';
 import { LegalTab } from './LegalModal';
 import { PayPalSubscriptionButton } from './PayPalSubscriptionButton';
+import { enviarCodigoASupabase } from '../utils/supabase';
 
 interface VipClubPageProps {
   onBack: () => void;
@@ -66,7 +68,7 @@ export const VipClubPage: React.FC<VipClubPageProps> = ({
     setErrorMessage('Para suscribirte, utiliza el botón oficial de PayPal situado arriba. Una vez completado, inserta tu código de activación para activar la membresía VIP.');
   };
 
-  const handlePayPalApprove = (subscriptionId: string) => {
+  const handlePayPalApprove = async (subscriptionId: string) => {
     vipManager.saveConsentLog({
       consentType: 'vip_checkout_paypal',
       termsAccepted: true,
@@ -76,7 +78,53 @@ export const VipClubPage: React.FC<VipClubPageProps> = ({
     });
 
     setManualCode(subscriptionId);
-    setSuccessMessage(`✅ ¡Pago oficial de PayPal registrado con éxito! (ID: ${subscriptionId}). Tu código de activación ha sido enviado a tu correo. Para activar tus funciones VIP, por favor presiona el botón "Activar Membresía VIP" en la casilla de abajo.`);
+    setSuccessMessage(`✅ ¡Pago oficial de PayPal registrado con éxito! (ID: ${subscriptionId}). Enviando automáticamente a Supabase...`);
+
+    // Enviar código automáticamente a Supabase
+    try {
+      const supRes = await enviarCodigoASupabase(subscriptionId, paypalEmail.trim());
+      if (supRes.success) {
+        setSuccessMessage(`✅ ¡Pago registrado y código [${subscriptionId}] guardado en Supabase! Membresía VIP activada.`);
+        setSubscription(vipManager.getSubscription());
+        onSubscribed?.();
+      } else {
+        // Si Supabase devuelve aviso de RLS u otro detalle, activar membresía local
+        vipManager.activateWithCode(subscriptionId, paypalEmail.trim());
+        setSubscription(vipManager.getSubscription());
+        setSuccessMessage(`✅ Pago de PayPal registrado (ID: ${subscriptionId}). Nota Supabase: ${supRes.message}`);
+        onSubscribed?.();
+      }
+    } catch (e) {
+      vipManager.activateWithCode(subscriptionId, paypalEmail.trim());
+      setSubscription(vipManager.getSubscription());
+      onSubscribed?.();
+    }
+  };
+
+  const handleSendCodeToSupabase = async () => {
+    if (!manualCode.trim()) {
+      setErrorMessage('Por favor introduce un código en la casilla antes de enviarlo a Supabase.');
+      return;
+    }
+
+    setErrorMessage(null);
+    setSuccessMessage(null);
+    setIsProcessing(true);
+
+    try {
+      const res = await enviarCodigoASupabase(manualCode.trim(), paypalEmail.trim());
+      if (res.success) {
+        setSuccessMessage(res.message);
+        setSubscription(vipManager.getSubscription());
+        onSubscribed?.();
+      } else {
+        setErrorMessage(res.message);
+      }
+    } catch (err) {
+      setErrorMessage('Error al enviar el código a Supabase.');
+    } finally {
+      setIsProcessing(false);
+    }
   };
 
   const handleActivateManualCode = async (e?: React.FormEvent) => {
@@ -420,22 +468,35 @@ export const VipClubPage: React.FC<VipClubPageProps> = ({
                 </a>.
               </p>
 
-              <form onSubmit={handleActivateManualCode} className="flex flex-col sm:flex-row gap-2 pt-1">
+              <form onSubmit={handleActivateManualCode} className="flex flex-col gap-2 pt-1">
                 <input
                   type="text"
                   placeholder="Ej. NEKO-VIP-2026 o ID de PayPal"
                   value={manualCode}
                   onChange={(e) => setManualCode(e.target.value)}
-                  className="flex-1 bg-black/90 border border-amber-400/50 rounded-xl px-3.5 py-2 text-xs text-white uppercase font-mono focus:border-amber-400 focus:outline-none placeholder-white/30"
+                  className="w-full bg-black/90 border border-amber-400/50 rounded-xl px-3.5 py-2 text-xs text-white uppercase font-mono focus:border-amber-400 focus:outline-none placeholder-white/30"
                 />
-                <button
-                  type="submit"
-                  disabled={isProcessing}
-                  className="px-4 py-2 bg-gradient-to-r from-amber-400 to-amber-500 hover:from-amber-300 hover:to-amber-400 disabled:opacity-50 text-black text-xs font-extrabold rounded-xl shadow-[0_2px_12px_rgba(245,158,11,0.4)] active:scale-95 transition flex items-center justify-center gap-1.5 shrink-0 cursor-pointer"
-                >
-                  <Crown className="w-3.5 h-3.5 fill-black" />
-                  <span>{isProcessing ? 'Verificando en Supabase...' : 'Activar Membresía VIP'}</span>
-                </button>
+                <div className="flex flex-col sm:flex-row gap-2">
+                  <button
+                    type="submit"
+                    disabled={isProcessing}
+                    className="flex-1 px-4 py-2 bg-gradient-to-r from-amber-400 to-amber-500 hover:from-amber-300 hover:to-amber-400 disabled:opacity-50 text-black text-xs font-extrabold rounded-xl shadow-[0_2px_12px_rgba(245,158,11,0.4)] active:scale-95 transition flex items-center justify-center gap-1.5 cursor-pointer"
+                  >
+                    <Crown className="w-3.5 h-3.5 fill-black" />
+                    <span>{isProcessing ? 'Verificando en Supabase...' : 'Activar Membresía VIP'}</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    disabled={isProcessing}
+                    onClick={handleSendCodeToSupabase}
+                    className="px-4 py-2 bg-purple-950/80 hover:bg-purple-900 border border-purple-400/50 hover:border-purple-300 disabled:opacity-50 text-purple-200 text-xs font-bold rounded-xl shadow-sm active:scale-95 transition flex items-center justify-center gap-1.5 cursor-pointer shrink-0"
+                    title="Enviar e insertar este código directamente en la tabla suscripciones de Supabase"
+                  >
+                    <Send className="w-3.5 h-3.5 text-purple-300" />
+                    <span>Enviar a Supabase</span>
+                  </button>
+                </div>
               </form>
             </div>
           </div>
