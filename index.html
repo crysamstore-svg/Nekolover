@@ -154,30 +154,7 @@
                 };
                 localStorage.setItem("nl_vip_subscription", JSON.stringify(subData));
 
-                // Disparar evento para actualizar la interfaz al instante
-                if (window.dispatchEvent) {
-                  window.dispatchEvent(new CustomEvent("vip_status_changed", { detail: { isVip: true, code: cleanCode } }));
-                }
-
-                console.log("¡Código válido! usuario_premium = true guardado en localStorage.");
-                return true;
-              }
-            }
-          } catch (error) {
-            console.error("Error al verificar código con Supabase:", error);
-          }
-        }
-
-        console.warn("Código no encontrado o inactivo en Supabase.");
-        return false;
-      }
-
-      // Exponer globalmente para App Mint y la app
-      window.SUPABASE_URL = SUPABASE_URL;
-      window.SUPABASE_ANON_KEY = SUPABASE_ANON_KEY;
-      window.verificarCodigo = verificarCodigo;
-      window.enviarCodigoASupabase = enviarCodigoASupabase;
-    </script>
+                 
   </body>
 </html>
 
