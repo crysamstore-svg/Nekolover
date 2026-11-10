@@ -24,7 +24,7 @@ import {
   Plus,
   Minus
 } from 'lucide-react';
-import { Book, PageSticker, TextHighlight, ReaderModeId } from '../types';
+import { Book, PageSticker, TextHighlight, HighlightColor, ReaderModeId } from '../types';
 import { KAWAII_STICKERS, FREE_CAT_STICKERS, READER_MODES } from '../data/defaultBooks';
 import { getFileFromDB } from '../utils/db';
 import { parseEpubFile } from '../utils/epubParser';
@@ -286,10 +286,11 @@ export const Reader: React.FC<ReaderProps> = ({
     }
   };
 
-  const handleAddHighlight = (color: 'pink' | 'purple' | 'gold' | 'emerald') => {
-    if (color === 'emerald' && !isVip) {
+  const handleAddHighlight = (color: HighlightColor) => {
+    const isFreeColor = color === 'gold' || color === 'gris';
+    if (!isFreeColor && !isVip) {
       onOpenVipModal?.('highlights');
-      setToastHighlight('👑 Resaltador Esmeralda exclusivo VIP ($2/mes). Tienes 3 colores gratuitos.');
+      setToastHighlight('👑 Este color es exclusivo VIP ($2/mes). En el plan gratuito tienes amarillo y gris.');
       return;
     }
     if (!selectedText) return;
@@ -328,7 +329,7 @@ export const Reader: React.FC<ReaderProps> = ({
     interface MatchRange {
       start: number;
       end: number;
-      color: 'pink' | 'purple' | 'gold' | 'emerald';
+      color: HighlightColor;
       id: string;
       text: string;
     }
@@ -372,9 +373,13 @@ export const Reader: React.FC<ReaderProps> = ({
     const elements: React.ReactNode[] = [];
     let lastIndex = 0;
 
-    const colorClasses = {
+    const colorClasses: Record<HighlightColor, string> = {
       pink: 'bg-pink-500/40 border-b-2 border-pink-400 text-pink-100 px-1 py-0.5 rounded shadow-[0_0_10px_rgba(255,105,180,0.4)] font-medium',
       purple: 'bg-purple-500/40 border-b-2 border-purple-400 text-purple-100 px-1 py-0.5 rounded shadow-[0_0_10px_rgba(168,85,247,0.4)] font-medium',
+      lila: 'bg-purple-300/40 border-b-2 border-purple-300 text-purple-100 px-1 py-0.5 rounded shadow-[0_0_10px_rgba(216,180,254,0.4)] font-medium',
+      gris: 'bg-slate-400/40 border-b-2 border-slate-300 text-slate-100 px-1 py-0.5 rounded shadow-[0_0_10px_rgba(148,163,184,0.4)] font-medium',
+      'rosa-pastel': 'bg-pink-300/40 border-b-2 border-pink-300 text-pink-50 px-1 py-0.5 rounded shadow-[0_0_10px_rgba(244,114,182,0.4)] font-medium',
+      rojo: 'bg-red-500/40 border-b-2 border-red-500 text-red-100 px-1 py-0.5 rounded shadow-[0_0_10px_rgba(239,68,68,0.4)] font-medium',
       gold: 'bg-amber-500/40 border-b-2 border-amber-400 text-amber-100 px-1 py-0.5 rounded shadow-[0_0_10px_rgba(245,158,11,0.4)] font-medium',
       emerald: 'bg-emerald-500/40 border-b-2 border-emerald-400 text-emerald-100 px-1 py-0.5 rounded shadow-[0_0_10px_rgba(16,185,129,0.4)] font-medium'
     };
@@ -410,9 +415,13 @@ export const Reader: React.FC<ReaderProps> = ({
   const highlightHtmlContent = (html: string, pageHighlights: TextHighlight[]) => {
     if (!pageHighlights || pageHighlights.length === 0 || !html) return html;
     let result = html;
-    const colorStyles = {
+    const colorStyles: Record<HighlightColor, string> = {
       pink: 'background-color: rgba(244, 63, 94, 0.4); border-bottom: 2px solid #f43f5e; color: inherit; padding: 1px 4px; border-radius: 4px; font-weight: 600;',
       purple: 'background-color: rgba(168, 85, 247, 0.4); border-bottom: 2px solid #a855f7; color: inherit; padding: 1px 4px; border-radius: 4px; font-weight: 600;',
+      lila: 'background-color: rgba(192, 132, 252, 0.4); border-bottom: 2px solid #c084fc; color: inherit; padding: 1px 4px; border-radius: 4px; font-weight: 600;',
+      gris: 'background-color: rgba(148, 163, 184, 0.4); border-bottom: 2px solid #94a3b8; color: inherit; padding: 1px 4px; border-radius: 4px; font-weight: 600;',
+      'rosa-pastel': 'background-color: rgba(244, 114, 182, 0.4); border-bottom: 2px solid #f472b6; color: inherit; padding: 1px 4px; border-radius: 4px; font-weight: 600;',
+      rojo: 'background-color: rgba(239, 68, 68, 0.4); border-bottom: 2px solid #ef4444; color: inherit; padding: 1px 4px; border-radius: 4px; font-weight: 600;',
       gold: 'background-color: rgba(245, 158, 11, 0.4); border-bottom: 2px solid #f59e0b; color: inherit; padding: 1px 4px; border-radius: 4px; font-weight: 600;',
       emerald: 'background-color: rgba(16, 185, 129, 0.4); border-bottom: 2px solid #10b981; color: inherit; padding: 1px 4px; border-radius: 4px; font-weight: 600;'
     };
@@ -489,8 +498,20 @@ export const Reader: React.FC<ReaderProps> = ({
         if (isCancelled) return;
 
         if (book.type === 'pdf') {
-          const pdfjs = (window as any).pdfjsLib;
-          if (!pdfjs) throw new Error('Librería PDF.js no disponible.');
+          let pdfjs = (window as any).pdfjsLib;
+          if (!pdfjs) {
+            for (let i = 0; i < 15; i++) {
+              await new Promise((r) => setTimeout(r, 100));
+              if (isCancelled) return;
+              pdfjs = (window as any).pdfjsLib;
+              if (pdfjs) break;
+            }
+          }
+          if (!pdfjs) throw new Error('Librería PDF.js no disponible. Por favor recarga la página.');
+
+          if (pdfjs.GlobalWorkerOptions && !pdfjs.GlobalWorkerOptions.workerSrc) {
+            pdfjs.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+          }
 
           const pdf = await pdfjs.getDocument({ data: arrayBuffer }).promise;
           if (isCancelled) return;
@@ -1211,29 +1232,74 @@ export const Reader: React.FC<ReaderProps> = ({
         >
           {showColorPicker ? (
             <div className="flex items-center gap-1.5 px-1 py-0.5">
-              <button
-                onClick={() => handleAddHighlight('pink')}
-                className="w-5 h-5 rounded-full bg-pink-400 hover:scale-125 transition border border-white/20"
-                title="Rosa Neón"
-              />
-              <button
-                onClick={() => handleAddHighlight('purple')}
-                className="w-5 h-5 rounded-full bg-purple-400 hover:scale-125 transition border border-white/20"
-                title="Púrpura Amatista"
-              />
+              {/* Gratis: Amarillo */}
               <button
                 onClick={() => handleAddHighlight('gold')}
-                className="w-5 h-5 rounded-full bg-amber-400 hover:scale-125 transition border border-white/20"
-                title="Dorado Sepia"
+                className="w-5 h-5 rounded-full bg-amber-400 hover:scale-125 transition border border-white/40 shadow-sm"
+                title="Amarillo / Dorado Sepia (Gratis)"
               />
+              {/* Gratis: Gris */}
+              <button
+                onClick={() => handleAddHighlight('gris')}
+                className="w-5 h-5 rounded-full bg-[#94a3b8] hover:scale-125 transition border border-white/40 shadow-sm"
+                title="Gris Plata (Gratis)"
+              />
+
+              {/* Separador */}
+              <div className="h-3.5 w-px bg-white/20 mx-0.5" />
+
+              {/* VIP: Rosa Neón */}
+              <button
+                onClick={() => handleAddHighlight('pink')}
+                className={`w-5 h-5 rounded-full bg-pink-400 hover:scale-125 transition border border-white/20 relative flex items-center justify-center ${!isVip ? 'opacity-80' : ''}`}
+                title={!isVip ? 'Rosa Neón (👑 Exclusivo VIP $2/mes)' : 'Rosa Neón'}
+              >
+                {!isVip && <span className="text-[8px] leading-none">👑</span>}
+              </button>
+
+              {/* VIP: Rosa Pastel */}
+              <button
+                onClick={() => handleAddHighlight('rosa-pastel')}
+                className={`w-5 h-5 rounded-full bg-[#fbcfe8] hover:scale-125 transition border border-pink-300 relative flex items-center justify-center ${!isVip ? 'opacity-80' : ''}`}
+                title={!isVip ? 'Rosa Pastel (👑 Exclusivo VIP $2/mes)' : 'Rosa Pastel'}
+              >
+                {!isVip && <span className="text-[8px] leading-none">👑</span>}
+              </button>
+
+              {/* VIP: Púrpura */}
+              <button
+                onClick={() => handleAddHighlight('purple')}
+                className={`w-5 h-5 rounded-full bg-purple-400 hover:scale-125 transition border border-white/20 relative flex items-center justify-center ${!isVip ? 'opacity-80' : ''}`}
+                title={!isVip ? 'Púrpura Amatista (👑 Exclusivo VIP $2/mes)' : 'Púrpura Amatista'}
+              >
+                {!isVip && <span className="text-[8px] leading-none">👑</span>}
+              </button>
+
+              {/* VIP: Lila */}
+              <button
+                onClick={() => handleAddHighlight('lila')}
+                className={`w-5 h-5 rounded-full bg-[#d8b4fe] hover:scale-125 transition border border-purple-300 relative flex items-center justify-center ${!isVip ? 'opacity-80' : ''}`}
+                title={!isVip ? 'Lila Mágico (👑 Exclusivo VIP $2/mes)' : 'Lila Mágico'}
+              >
+                {!isVip && <span className="text-[8px] leading-none">👑</span>}
+              </button>
+
+              {/* VIP: Rojo */}
+              <button
+                onClick={() => handleAddHighlight('rojo')}
+                className={`w-5 h-5 rounded-full bg-red-500 hover:scale-125 transition border border-white/20 relative flex items-center justify-center ${!isVip ? 'opacity-80' : ''}`}
+                title={!isVip ? 'Rojo Carmesí (👑 Exclusivo VIP $2/mes)' : 'Rojo Carmesí'}
+              >
+                {!isVip && <span className="text-[8px] leading-none">👑</span>}
+              </button>
+
+              {/* VIP: Esmeralda */}
               <button
                 onClick={() => handleAddHighlight('emerald')}
-                className={`w-5 h-5 rounded-full bg-emerald-400 hover:scale-125 transition border border-white/20 relative flex items-center justify-center ${
-                  !isVip ? 'opacity-80' : ''
-                }`}
+                className={`w-5 h-5 rounded-full bg-emerald-400 hover:scale-125 transition border border-white/20 relative flex items-center justify-center ${!isVip ? 'opacity-80' : ''}`}
                 title={!isVip ? 'Esmeralda Místico (👑 Exclusivo VIP $2/mes)' : 'Esmeralda'}
               >
-                {!isVip && <span className="text-[9px] leading-none">👑</span>}
+                {!isVip && <span className="text-[8px] leading-none">👑</span>}
               </button>
               <button
                 onClick={() => setShowColorPicker(false)}
@@ -1247,7 +1313,7 @@ export const Reader: React.FC<ReaderProps> = ({
               <button
                 onClick={() => setShowColorPicker(true)}
                 className="px-2 py-1 rounded-xl bg-pink-500/20 text-[var(--accent-pink)] hover:bg-pink-500 hover:text-black transition text-xs font-semibold flex items-center gap-1"
-                title="Subrayar texto (3 colores gratis, Esmeralda VIP)"
+                title="Subrayar texto (Amarillo y Gris gratis, 6 colores VIP 👑)"
               >
                 <Highlighter className="w-3.5 h-3.5" />
                 <span>Subrayar</span>
@@ -1329,29 +1395,74 @@ export const Reader: React.FC<ReaderProps> = ({
 
             {/* Subrayadores de Colores */}
             <div className="flex items-center gap-1.5 bg-black/50 p-1 rounded-xl border border-white/10">
-              <button
-                onClick={() => handleAddHighlight('pink')}
-                className="w-5 h-5 rounded-full bg-pink-400 hover:scale-125 active:scale-95 transition border border-white/30"
-                title="Rosa Neón"
-              />
-              <button
-                onClick={() => handleAddHighlight('purple')}
-                className="w-5 h-5 rounded-full bg-purple-400 hover:scale-125 active:scale-95 transition border border-white/30"
-                title="Púrpura Amatista"
-              />
+              {/* Gratis: Amarillo */}
               <button
                 onClick={() => handleAddHighlight('gold')}
-                className="w-5 h-5 rounded-full bg-amber-400 hover:scale-125 active:scale-95 transition border border-white/30"
-                title="Dorado Sepia"
+                className="w-5 h-5 rounded-full bg-amber-400 hover:scale-125 active:scale-95 transition border border-white/40 shadow-sm"
+                title="Amarillo / Dorado Sepia (Gratis)"
               />
+              {/* Gratis: Gris */}
+              <button
+                onClick={() => handleAddHighlight('gris')}
+                className="w-5 h-5 rounded-full bg-[#94a3b8] hover:scale-125 active:scale-95 transition border border-white/40 shadow-sm"
+                title="Gris Plata (Gratis)"
+              />
+
+              {/* Separador */}
+              <div className="h-3.5 w-px bg-white/20 mx-0.5" />
+
+              {/* VIP: Rosa Neón */}
+              <button
+                onClick={() => handleAddHighlight('pink')}
+                className={`w-5 h-5 rounded-full bg-pink-400 hover:scale-125 active:scale-95 transition border border-white/30 relative flex items-center justify-center ${!isVip ? 'opacity-80' : ''}`}
+                title={!isVip ? 'Rosa Neón (👑 Exclusivo VIP $2/mes)' : 'Rosa Neón'}
+              >
+                {!isVip && <span className="text-[8px] leading-none">👑</span>}
+              </button>
+
+              {/* VIP: Rosa Pastel */}
+              <button
+                onClick={() => handleAddHighlight('rosa-pastel')}
+                className={`w-5 h-5 rounded-full bg-[#fbcfe8] hover:scale-125 active:scale-95 transition border border-pink-300 relative flex items-center justify-center ${!isVip ? 'opacity-80' : ''}`}
+                title={!isVip ? 'Rosa Pastel (👑 Exclusivo VIP $2/mes)' : 'Rosa Pastel'}
+              >
+                {!isVip && <span className="text-[8px] leading-none">👑</span>}
+              </button>
+
+              {/* VIP: Púrpura */}
+              <button
+                onClick={() => handleAddHighlight('purple')}
+                className={`w-5 h-5 rounded-full bg-purple-400 hover:scale-125 active:scale-95 transition border border-white/30 relative flex items-center justify-center ${!isVip ? 'opacity-80' : ''}`}
+                title={!isVip ? 'Púrpura Amatista (👑 Exclusivo VIP $2/mes)' : 'Púrpura Amatista'}
+              >
+                {!isVip && <span className="text-[8px] leading-none">👑</span>}
+              </button>
+
+              {/* VIP: Lila */}
+              <button
+                onClick={() => handleAddHighlight('lila')}
+                className={`w-5 h-5 rounded-full bg-[#d8b4fe] hover:scale-125 active:scale-95 transition border border-purple-300 relative flex items-center justify-center ${!isVip ? 'opacity-80' : ''}`}
+                title={!isVip ? 'Lila Mágico (👑 Exclusivo VIP $2/mes)' : 'Lila Mágico'}
+              >
+                {!isVip && <span className="text-[8px] leading-none">👑</span>}
+              </button>
+
+              {/* VIP: Rojo */}
+              <button
+                onClick={() => handleAddHighlight('rojo')}
+                className={`w-5 h-5 rounded-full bg-red-500 hover:scale-125 active:scale-95 transition border border-white/30 relative flex items-center justify-center ${!isVip ? 'opacity-80' : ''}`}
+                title={!isVip ? 'Rojo Carmesí (👑 Exclusivo VIP $2/mes)' : 'Rojo Carmesí'}
+              >
+                {!isVip && <span className="text-[8px] leading-none">👑</span>}
+              </button>
+
+              {/* VIP: Esmeralda */}
               <button
                 onClick={() => handleAddHighlight('emerald')}
-                className={`w-5 h-5 rounded-full bg-emerald-400 hover:scale-125 active:scale-95 transition border border-white/30 relative flex items-center justify-center ${
-                  !isVip ? 'opacity-80' : ''
-                }`}
+                className={`w-5 h-5 rounded-full bg-emerald-400 hover:scale-125 active:scale-95 transition border border-white/30 relative flex items-center justify-center ${!isVip ? 'opacity-80' : ''}`}
                 title={!isVip ? 'Esmeralda Místico (👑 Exclusivo VIP $2/mes)' : 'Esmeralda'}
               >
-                {!isVip && <span className="text-[9px] leading-none">👑</span>}
+                {!isVip && <span className="text-[8px] leading-none">👑</span>}
               </button>
             </div>
 
@@ -1542,9 +1653,13 @@ export const Reader: React.FC<ReaderProps> = ({
                           return cleanQuote.includes(itemStr) || itemStr.includes(cleanQuote);
                         });
 
-                        const highlightColors = {
+                        const highlightColors: Record<HighlightColor, string> = {
                           pink: 'bg-pink-500/35 border-b-2 border-pink-400 shadow-[0_0_8px_rgba(244,63,94,0.5)]',
                           purple: 'bg-purple-500/35 border-b-2 border-purple-400 shadow-[0_0_8px_rgba(168,85,247,0.5)]',
+                          lila: 'bg-purple-300/35 border-b-2 border-purple-300 shadow-[0_0_8px_rgba(216,180,254,0.5)]',
+                          gris: 'bg-slate-400/35 border-b-2 border-slate-300 shadow-[0_0_8px_rgba(148,163,184,0.5)]',
+                          'rosa-pastel': 'bg-pink-300/35 border-b-2 border-pink-300 shadow-[0_0_8px_rgba(244,114,182,0.5)]',
+                          rojo: 'bg-red-500/35 border-b-2 border-red-500 shadow-[0_0_8px_rgba(239,68,68,0.5)]',
                           gold: 'bg-amber-500/35 border-b-2 border-amber-400 shadow-[0_0_8px_rgba(245,158,11,0.5)]',
                           emerald: 'bg-emerald-500/35 border-b-2 border-emerald-400 shadow-[0_0_8px_rgba(16,185,129,0.5)]'
                         };
@@ -1643,9 +1758,13 @@ export const Reader: React.FC<ReaderProps> = ({
                 </div>
                 <div className="space-y-1.5">
                   {currentPageHighlights.map((hl) => {
-                    const bgColors = {
+                    const bgColors: Record<HighlightColor, string> = {
                       pink: 'bg-pink-500/20 border-pink-500/50 text-pink-200',
                       purple: 'bg-purple-500/20 border-purple-500/50 text-purple-200',
+                      lila: 'bg-purple-400/20 border-purple-400/50 text-purple-200',
+                      gris: 'bg-slate-400/20 border-slate-400/50 text-slate-200',
+                      'rosa-pastel': 'bg-pink-300/20 border-pink-300/50 text-pink-200',
+                      rojo: 'bg-red-500/20 border-red-500/50 text-red-200',
                       gold: 'bg-amber-500/20 border-amber-500/50 text-amber-200',
                       emerald: 'bg-emerald-500/20 border-emerald-500/50 text-emerald-200'
                     };

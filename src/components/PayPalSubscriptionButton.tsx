@@ -1,5 +1,5 @@
 import React, { useEffect, useId, useRef, useState } from 'react';
-import { Loader2, ShieldCheck, ExternalLink, Sparkles } from 'lucide-react';
+import { Loader2, ShieldCheck } from 'lucide-react';
 
 interface PayPalSubscriptionButtonProps {
   onSuccess: (subscriptionID: string) => void;
@@ -9,7 +9,6 @@ interface PayPalSubscriptionButtonProps {
 
 const PLAN_ID = 'P-0GH31223S1526604TNLUBBEQ';
 const CLIENT_ID = 'BAAuKNjCuRd3S-EKKHcqsiBBy8FkOQeHr7JKb2ZQ0XH0Akb6BFJ4XCN9wBfInqG54NClBy4LRls3FUC7jY';
-const DIRECT_PAYPAL_URL = `https://www.paypal.com/webapps/billing/plans/subscribe?plan_id=${PLAN_ID}`;
 
 declare global {
   interface Window {
@@ -44,34 +43,34 @@ export const PayPalSubscriptionButton: React.FC<PayPalSubscriptionButtonProps> =
 
     if (checkPayPal()) return;
 
-    let attempts = 0;
+    // Cargar SDK oficial de PayPal bajo demanda inmediatamente
+    if (!document.querySelector('script[src*="paypal.com/sdk/js"]')) {
+      const script = document.createElement('script');
+      script.src = `https://www.paypal.com/sdk/js?client-id=${CLIENT_ID}&vault=true&intent=subscription`;
+      script.setAttribute('data-sdk-integration-source', 'button-factory');
+      script.onload = () => {
+        if (window.paypal && window.paypal.Buttons) {
+          setSdkReady(true);
+        }
+      };
+      script.onerror = () => {
+        setLoadError('No se pudo conectar con los servidores de PayPal.');
+      };
+      document.head.appendChild(script);
+    }
+
     checkInterval = setInterval(() => {
-      attempts++;
       if (checkPayPal()) {
         clearInterval(checkInterval);
-      } else if (attempts > 15) {
-        clearInterval(checkInterval);
-        if (!document.querySelector('script[src*="paypal.com/sdk/js"]')) {
-          const script = document.createElement('script');
-          script.src = `https://www.paypal.com/sdk/js?client-id=${CLIENT_ID}&vault=true&intent=subscription`;
-          script.setAttribute('data-sdk-integration-source', 'button-factory');
-          script.onload = () => {
-            if (window.paypal) setSdkReady(true);
-          };
-          script.onerror = () => {
-            setLoadError('No se pudo cargar el SDK interactivo. Usa el botón directo abajo.');
-          };
-          document.head.appendChild(script);
-        }
       }
-    }, 300);
+    }, 200);
 
     return () => {
       if (checkInterval) clearInterval(checkInterval);
     };
   }, []);
 
-  // Renderizar botones inteligentes de PayPal en el contenedor único
+  // Renderizar botones de PayPal en el contenedor
   useEffect(() => {
     if (!sdkReady || !containerRef.current) return;
 
@@ -115,22 +114,7 @@ export const PayPalSubscriptionButton: React.FC<PayPalSubscriptionButtonProps> =
   }, [sdkReady, containerId]);
 
   return (
-    <div className="w-full flex flex-col items-center justify-center my-2 space-y-3">
-      {/* 1. BOTÓN DIRECTO QUE NUNCA SE BLOQUEA EN IFRAMES NI NAVEGADORES */}
-      <a
-        href={DIRECT_PAYPAL_URL}
-        target="_blank"
-        rel="noopener noreferrer"
-        className="w-full py-2.5 px-4 rounded-xl bg-[#FFC439] hover:bg-[#F2BA36] text-[#003087] font-extrabold text-xs sm:text-sm shadow-md flex items-center justify-center gap-2 transition active:scale-95 cursor-pointer border border-[#e0a824]"
-        title="Abrir pasarela de suscripción de PayPal en pestaña nueva ($2.00 USD/mes)"
-      >
-        <span>Pagar Suscripción en</span>
-        <span className="italic font-black text-sm text-[#003087]">Pay<span className="text-[#0079C1]">Pal</span></span>
-        <span className="text-black text-xs font-semibold">($2.00 USD/mes)</span>
-        <ExternalLink className="w-4 h-4 text-[#003087] shrink-0" />
-      </a>
-
-      {/* 2. BOTONES INTELIGENTES DE PAYPAL (Smart Buttons) */}
+    <div className="w-full flex flex-col items-center justify-center my-2 space-y-2">
       <div className="w-full relative min-h-[46px] flex flex-col items-center justify-center">
         <div 
           ref={containerRef} 
@@ -141,7 +125,13 @@ export const PayPalSubscriptionButton: React.FC<PayPalSubscriptionButtonProps> =
         {!sdkReady && !loadError && (
           <div className="flex items-center justify-center gap-2 py-1.5 px-3 rounded-full bg-white/5 text-[11px] text-amber-200">
             <Loader2 className="w-3.5 h-3.5 animate-spin text-amber-300" />
-            <span>Cargando botón interactivo de PayPal...</span>
+            <span>Cargando botón de PayPal...</span>
+          </div>
+        )}
+
+        {loadError && (
+          <div className="text-xs text-red-300 bg-red-950/60 border border-red-500/40 px-3 py-1.5 rounded-xl">
+            {loadError}
           </div>
         )}
       </div>
@@ -152,11 +142,6 @@ export const PayPalSubscriptionButton: React.FC<PayPalSubscriptionButtonProps> =
           <span>Conectando de forma segura con PayPal...</span>
         </div>
       )}
-
-      {/* Nota de ayuda para popups y WebViews */}
-      <p className="text-[10px] text-white/60 text-center leading-tight">
-        💡 <em>Si la ventana de PayPal no se abre al presionar el botón interactivo, usa el botón amarillo directo de arriba. Tras pagar, tu código de activación o ID de PayPal se enviará a Supabase para activar tu VIP.</em>
-      </p>
 
       <div className="flex items-center gap-1.5 text-[10px] text-[var(--text-muted)] font-mono">
         <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />

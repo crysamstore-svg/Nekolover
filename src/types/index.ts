@@ -55,12 +55,22 @@ export interface Bookmark {
   createdAt: number;
 }
 
+export type HighlightColor = 
+  | 'pink' 
+  | 'purple' 
+  | 'gold' 
+  | 'emerald' 
+  | 'lila' 
+  | 'gris' 
+  | 'rosa-pastel' 
+  | 'rojo';
+
 export interface TextHighlight {
   id: string;
   bookId: string;
   page: number;
   text: string;
-  color: 'pink' | 'purple' | 'gold' | 'emerald';
+  color: HighlightColor;
   createdAt: number;
 }
 

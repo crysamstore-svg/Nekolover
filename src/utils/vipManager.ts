@@ -114,7 +114,7 @@ class VipManager {
       };
     }
 
-    // 1. Verificación prioritaria en la tabla "suscripciones" de Supabase
+    // 1. Verificación en la tabla "suscripciones" de Supabase
     try {
       const supRes = await verificarCodigo(cleanCode);
       if (supRes.success) {
@@ -132,12 +132,25 @@ class VipManager {
           message: supRes.message,
           sub: subData
         };
+      } else {
+        // Si Supabase respondió que el código no existe o no está activo,
+        // solo permitir si es un cupón maestro oficial o ID de PayPal válido
+        const upper = cleanCode.toUpperCase();
+        const isMasterVoucher = /^(NEKO-VIP|NEKO-VIP-2026|VIP-NEKO|GATO-VIP|PREMIUM-NEKO)$/i.test(upper);
+        const isPayPalId = /^(I|P)-[A-Z0-9]{8,}$/i.test(upper);
+        
+        if (!isMasterVoucher && !isPayPalId) {
+          return {
+            success: false,
+            message: supRes.message || 'El código ingresado no existe o no tiene estado "activo" en la base de datos de suscripciones.'
+          };
+        }
       }
     } catch (e) {
       console.warn('Error consultando Supabase, intentando comprobación local:', e);
     }
 
-    // 2. Respaldo para ID de transacción de PayPal o cupones del sistema
+    // 2. Respaldo para ID de suscripción de PayPal o cupones maestros
     return this.activateWithCode(cleanCode, email);
   }
 
@@ -157,18 +170,17 @@ class VipManager {
       };
     }
 
-    // Formatos válidos de código:
-    // 1. ID de Suscripción / Transacción de PayPal (ej: I-XXXXXXXXXX o alfanumérico >= 8 caracteres)
-    // 2. Vales y licencias oficiales del sistema (ej: NEKO-VIP, NEKO-VIP-2026, VIP-NEKO, GATO-VIP, PREMIUM-...)
-    // 3. Claves de activación emitidas por el propietario o soporte de Zoho
-    const isPayPalId = /^I-[A-Z0-9]{4,}$/i.test(cleanCode) || /^[A-Z0-9]{8,32}$/i.test(cleanCode);
-    const isVipVoucher = /^(NEKO|VIP|GATO|CAT|PREMIUM)[-_A-Z0-9]*$/i.test(cleanCode);
-    const isValidFormat = isPayPalId || isVipVoucher || cleanCode.length >= 6;
+    // Formatos válidos de respaldo:
+    // 1. ID de Suscripción oficial de PayPal (ej: P-0GH31223S1526604TNLUBBEQ o I-...)
+    const isPayPalId = /^(I|P)-[A-Z0-9]{8,}$/i.test(cleanCode);
+    // 2. Vales de cortesía del sistema
+    const isVipVoucher = /^(NEKO-VIP|NEKO-VIP-2026|VIP-NEKO|GATO-VIP|PREMIUM-NEKO)$/i.test(cleanCode);
+    const isValidFormat = isPayPalId || isVipVoucher;
 
     if (!isValidFormat) {
       return {
         success: false,
-        message: 'Código de activación no reconocido. Revisa el código que recibiste por correo tras tu pago o contacta a soporte en nekolover.online.zoho.com.'
+        message: 'Código de activación no reconocido o inactivo en la base de datos. Revisa el código que recibiste por correo tras tu pago o contacta a soporte en nekolover.online.zoho.com.'
       };
     }
 
@@ -300,7 +312,7 @@ export const FREE_LIMITS = {
   MAX_FONTS: 4, // Solo las primeras 4 fuentes son gratuitas
   ONLY_CAT_STICKERS_FREE: true, // Únicamente los stickers de gatitos (😸😹😻😼😽🙀😿😾😺🐈‍⬛🐱🐾) son gratuitos
   MAX_NOTES: 3, // Solo 3 notas en el plan gratuito
-  ALLOWED_HIGHLIGHT_COLORS: ['pink', 'purple', 'gold'] as const, // Esmeralda es exclusivo VIP
+  ALLOWED_HIGHLIGHT_COLORS: ['gold', 'gris'] as const, // Solo amarillo y gris son gratuitos; los demás requieren VIP
   CUSTOM_SHELF_IMAGE: false, // Subir foto personalizada de estantería requiere VIP
   MUSIC_PLAYER: false // Reproductor de música requiere VIP
 };

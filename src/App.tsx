@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Trash2, FolderSync, Loader2 } from 'lucide-react';
 import { Book, Quote, PageSticker, Bookmark, ThemeId, ReadingStatsData, TextHighlight, ReaderModeId, ShelfStyle, ShelfViewMode, ShelfBackgroundConfig } from './types';
 import { 
@@ -238,11 +238,6 @@ export default function App() {
     localStorage.setItem('nl_font', currentFont);
   }, [currentFont]);
 
-  // Sync books
-  useEffect(() => {
-    localStorage.setItem('nl_books', JSON.stringify(books));
-  }, [books]);
-
   // Sync quotes
   useEffect(() => {
     localStorage.setItem('nl_quotes', JSON.stringify(quotes));
@@ -263,20 +258,35 @@ export default function App() {
     localStorage.setItem('nl_bookmarks', JSON.stringify(bookmarks));
   }, [bookmarks]);
 
+  const isDbInitializedRef = useRef(false);
+
   // Load books from IndexedDB on startup (Supports 2000+ books without localStorage 5MB limit)
   useEffect(() => {
-    getBooksFromDB().then((stored) => {
-      if (stored && stored.length > 0) {
-        setBooks(stored);
-      }
-    });
+    let isMounted = true;
+    getBooksFromDB()
+      .then((stored) => {
+        if (isMounted && stored && stored.length > 0) {
+          setBooks(stored);
+        }
+        isDbInitializedRef.current = true;
+      })
+      .catch((err) => {
+        console.warn('Error loading books from IndexedDB:', err);
+        isDbInitializedRef.current = true;
+      });
+
+    return () => {
+      isMounted = false;
+    };
   }, []);
 
-  // Save books to IndexedDB whenever books state changes
+  // Save books to IndexedDB only AFTER initial load completes, updating lightweight cache
   useEffect(() => {
+    if (!isDbInitializedRef.current) return;
+
     saveBooksToDB(books);
     try {
-      // Lightweight title index in localStorage for fast splash boot
+      // Lightweight title index in localStorage for fast splash boot (first 40 items without content)
       const lightCache = books.slice(0, 40).map((b) => ({ ...b, content: undefined }));
       localStorage.setItem('nl_books', JSON.stringify(lightCache));
     } catch {}

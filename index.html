@@ -25,92 +25,58 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Cinzel+Decorative:wght@700;900&family=Pirata+One&family=UnifrakturMaguntia&family=Creepster&family=Quicksand:wght@400;500;600;700&family=Fredoka:wght@400;500;600;700&family=Playfair+Display:ital,wght@0,400;0,700;1,400&family=Lora:ital,wght@0,400;0,600;1,400&display=swap" rel="stylesheet">
 
-    <!-- PDF.js library -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+    <!-- PDF.js library (deferred for fast startup) -->
+    <script defer src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 
-    <!-- ePub.js & JSZip libraries -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/epub.js/0.3.88/epub.min.js"></script>
+    <!-- ePub.js & JSZip libraries (deferred for fast startup) -->
+    <script defer src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <script defer src="https://cdnjs.cloudflare.com/ajax/libs/epub.js/0.3.88/epub.min.js"></script>
 
-    <!-- PayPal JS SDK for NekoLover Read Subscriptions -->
-    <script src="https://www.paypal.com/sdk/js?client-id=BAAuKNjCuRd3S-EKKHcqsiBBy8FkOQeHr7JKb2ZQ0XH0Akb6BFJ4XCN9wBfInqG54NClBy4LRls3FUC7jY&vault=true&intent=subscription" data-sdk-integration-source="button-factory"></script>
+    <!-- Supabase Library via CDN (deferred for fast startup) -->
+    <script defer src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
     <script>
-      if (window.pdfjsLib) {
-        window.pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
-      }
+      window.addEventListener('DOMContentLoaded', function() {
+        if (window.pdfjsLib) {
+          window.pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+        }
+      });
     </script>
-    <!-- Supabase Library via CDN -->
-    <script src="https://jsdelivr.net"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   </head>
   <body class="h-full bg-[#121019] text-[#e2d6ff] font-sans antialiased selection:bg-pink-500 selection:text-black">
-    <div id="root" class="h-full"></div>
+    <div id="root" class="h-full">
+      <!-- Instant Splash Screen while React initializes -->
+      <div style="min-height: 100vh; width: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; background: radial-gradient(circle at center, #1e1830 0%, #121019 100%); color: #ff79c6; font-family: 'Quicksand', system-ui, -apple-system, sans-serif; text-align: center; padding: 20px; box-sizing: border-box;">
+        <div style="position: relative; margin-bottom: 16px;">
+          <div style="font-size: 3.5rem; filter: drop-shadow(0 0 20px rgba(255, 121, 198, 0.4)); animation: nekoPulse 1.6s ease-in-out infinite alternate;">🐾🖤</div>
+        </div>
+        <h1 style="font-size: 1.5rem; font-weight: 800; margin: 0 0 6px 0; background: linear-gradient(135deg, #f59e0b, #ec4899, #a855f7); -webkit-background-clip: text; -webkit-text-fill-color: transparent; letter-spacing: 0.05em;">
+          NekoLover Read
+        </h1>
+        <p style="font-size: 0.82rem; color: #a78bfa; margin: 0 0 20px 0; font-weight: 500;">
+          Abriendo tu biblioteca Kawaii Dark...
+        </p>
+        <div style="width: 140px; height: 3px; background: rgba(255, 255, 255, 0.08); border-radius: 999px; overflow: hidden; position: relative;">
+          <div style="width: 50%; height: 100%; background: linear-gradient(90deg, #ec4899, #f59e0b); border-radius: 999px; animation: nekoBar 1.2s infinite ease-in-out;"></div>
+        </div>
+        <style>
+          @keyframes nekoPulse {
+            0% { transform: scale(0.96); opacity: 0.85; }
+            100% { transform: scale(1.06); opacity: 1; }
+          }
+          @keyframes nekoBar {
+            0% { transform: translateX(-100%); }
+            100% { transform: translateX(250%); }
+          }
+        </style>
+      </div>
+    </div>
     <script type="module" src="/src/main.tsx"></script>
 
-    <!-- Bloque de Integración Supabase: Validación y Envío de Código Premium -->
+    <!-- Bloque de Integración Supabase: Validación de Código Premium -->
     <script>
       const SUPABASE_URL = "https://abdqmclgskoigquivvxk.supabase.co/rest/v1/";
       const SUPABASE_ANON_KEY = "sb_publishable_X3sG7aK12tYNJ0T92AAdZQ_2LK4ijiz";
-
-      // Función para enviar e insertar código en la tabla suscripciones de Supabase
-      async function enviarCodigoASupabase(codigo, email) {
-        if (!codigo || typeof codigo !== "string" || !codigo.trim()) {
-          console.warn("Código no proporcionado para enviar a Supabase");
-          return { success: false, message: "Por favor proporciona un código válido." };
-        }
-
-        const cleanCode = codigo.trim();
-        const url = `${SUPABASE_URL}suscripciones`;
-
-        try {
-          const response = await fetch(url, {
-            method: "POST",
-            headers: {
-              "apikey": SUPABASE_ANON_KEY,
-              "Authorization": "Bearer " + SUPABASE_ANON_KEY,
-              "Content-Type": "application/json",
-              "Prefer": "return=representation"
-            },
-            body: JSON.stringify({
-              codigo_activacion: cleanCode,
-              estado: "activo"
-            })
-          });
-
-          const data = await response.json().catch(() => null);
-
-          if (response.ok) {
-            localStorage.setItem("usuario_premium", "true");
-            const subData = {
-              isVip: true,
-              subscribedAt: Date.now(),
-              expiresAt: Date.now() + 30 * 24 * 60 * 60 * 1000,
-              planName: "Suscripción Mensual VIP ($2 USD/mes)",
-              paymentMethod: `Supabase [${cleanCode}]`,
-              autoRenew: true
-            };
-            localStorage.setItem("nl_vip_subscription", JSON.stringify(subData));
-
-            if (window.dispatchEvent) {
-              window.dispatchEvent(new CustomEvent("vip_status_changed", { detail: { isVip: true, code: cleanCode } }));
-            }
-
-            console.log("¡Código enviado con éxito a Supabase!", cleanCode);
-            return { success: true, message: `Código [${cleanCode}] guardado y activado en Supabase.` };
-          } else {
-            console.warn("Respuesta de Supabase al insertar código:", data);
-            return {
-              success: false,
-              message: data?.message || "No se pudo insertar el código en Supabase (revisa las políticas RLS en Supabase).",
-              error: data
-            };
-          }
-        } catch (error) {
-          console.error("Error al enviar código a Supabase:", error);
-          return { success: false, message: "Error de red al conectar con Supabase.", error };
-        }
-      }
 
       // Función para verificar código en la tabla suscripciones de Supabase mediante GET fetch
       async function verificarCodigo(codigo) {
@@ -154,7 +120,29 @@
                 };
                 localStorage.setItem("nl_vip_subscription", JSON.stringify(subData));
 
-                 
+                // Disparar evento para actualizar la interfaz al instante
+                if (window.dispatchEvent) {
+                  window.dispatchEvent(new CustomEvent("vip_status_changed", { detail: { isVip: true, code: cleanCode } }));
+                }
+
+                console.log("¡Código válido! usuario_premium = true guardado en localStorage.");
+                return true;
+              }
+            }
+          } catch (error) {
+            console.error("Error al verificar código con Supabase:", error);
+          }
+        }
+
+        console.warn("Código no encontrado o inactivo en Supabase.");
+        return false;
+      }
+
+      // Exponer globalmente para App Mint y la app
+      window.SUPABASE_URL = SUPABASE_URL;
+      window.SUPABASE_ANON_KEY = SUPABASE_ANON_KEY;
+      window.verificarCodigo = verificarCodigo;
+    </script>
   </body>
 </html>
 
