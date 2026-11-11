@@ -11,15 +11,17 @@ Un lector de libros digital moderno e inteligente para enriquecer la experiencia
 * **personalización de la tipografía de tu libro** estilos dark y kawaii
 * **Interfaz Limpia:** Diseñado exclusivamente para maximizar la concentración del lector.
 
-* <img width="580" height="1280" alt="imagen" src="https://github.com/user-attachments/assets/b6d56637-f609-4dfe-8c22-facc05ed894c" />
-<img width="580" height="1280" alt="imagen" src="https://github.com/user-attachments/assets/e329ddd2-bb75-47bb-9bcd-051e72ea21ce" 
+<div align="center">
+  <img width="580" height="1280" alt="imagen" src="https://github.com/user-attachments/assets/b6d56637-f609-4dfe-8c22-facc05ed894c" />
+  <img width="580" height="1280" alt="imagen" src="https://github.com/user-attachments/assets/e329ddd2-bb75-47bb-9bcd-051e72ea21ce" />
   <img width="580" height="1280" alt="imagen" src="https://github.com/user-attachments/assets/8b12e0fc-d3da-43ee-8ffd-3de33be631d2" />
   <img width="580" height="1280" alt="imagen" src="https://github.com/user-attachments/assets/d26af742-ee28-43bd-8538-e455c933f04f" />
-<img width="580" height="1280" alt="imagen" src="https://github.com/user-attachments/assets/7b38e569-6de3-47c7-b1f8-cf796ae56747" />
-<img width="580" height="1280" alt="imagen" src="https://github.com/user-attachments/assets/f76bf0fa-35ba-4da8-b59f-a6c9f4051d2d" />
-<img width="580" height="1280" alt="imagen" src="https://github.com/user-attachments/assets/c40dcb24-8d45-4250-a796-fd493805de0c" />
-<img width="580" height="1280" alt="imagen" src="https://github.com/user-attachments/assets/43f8a86e-8b23-4ab5-a83b-3f54c537956a" />
-<img width="580" height="1280" alt="imagen" src="https://github.com/user-attachments/assets/f4542194-8937-4bec-95d0-bfcff382dfc8" />
+  <img width="580" height="1280" alt="imagen" src="https://github.com/user-attachments/assets/7b38e569-6de3-47c7-b1f8-cf796ae56747" />
+  <img width="580" height="1280" alt="imagen" src="https://github.com/user-attachments/assets/f76bf0fa-35ba-4da8-b59f-a6c9f4051d2d" />
+  <img width="580" height="1280" alt="imagen" src="https://github.com/user-attachments/assets/c40dcb24-8d45-4250-a796-fd493805de0c" />
+  <img width="580" height="1280" alt="imagen" src="https://github.com/user-attachments/assets/43f8a86e-8b23-4ab5-a83b-3f54c537956a" />
+  <img width="580" height="1280" alt="imagen" src="https://github.com/user-attachments/assets/f4542194-8937-4bec-95d0-bfcff382dfc8" />
+</div>
 
 
 

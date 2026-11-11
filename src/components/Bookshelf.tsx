@@ -138,6 +138,7 @@ export const Bookshelf: React.FC<BookshelfProps> = ({
   const [draggedBookId, setDraggedBookId] = useState<string | null>(null);
   const [dragOverBookId, setDragOverBookId] = useState<string | null>(null);
   const longPressTimerRef = useRef<any>(null);
+  const suppressClickRef = useRef<boolean>(false);
 
   const isBookMarked = (id: string) => markedForDeleteIds.includes(id);
 
@@ -190,7 +191,11 @@ export const Bookshelf: React.FC<BookshelfProps> = ({
       clearTimeout(longPressTimerRef.current);
     }
     longPressTimerRef.current = setTimeout(() => {
+      suppressClickRef.current = true;
       toggleMarkForDelete(bookId);
+      setTimeout(() => {
+        suppressClickRef.current = false;
+      }, 450);
     }, 450);
   };
 
@@ -348,7 +353,15 @@ export const Bookshelf: React.FC<BookshelfProps> = ({
   const handleBookTouchEnd = (bookId: string) => {
     handlePressEnd();
 
-    if (isTouchDragging.current && touchActiveBookId && touchOverBookId && touchActiveBookId !== touchOverBookId) {
+    const wasDragging = isTouchDragging.current;
+    if (wasDragging) {
+      suppressClickRef.current = true;
+      setTimeout(() => {
+        suppressClickRef.current = false;
+      }, 350);
+    }
+
+    if (wasDragging && touchActiveBookId && touchOverBookId && touchActiveBookId !== touchOverBookId) {
       const fromIndex = books.findIndex((b) => b.id === touchActiveBookId);
       const toIndex = books.findIndex((b) => b.id === touchOverBookId);
 
@@ -373,6 +386,12 @@ export const Bookshelf: React.FC<BookshelfProps> = ({
 
   const handleBookTouchCancel = () => {
     handlePressEnd();
+    if (isTouchDragging.current) {
+      suppressClickRef.current = true;
+      setTimeout(() => {
+        suppressClickRef.current = false;
+      }, 350);
+    }
     isTouchDragging.current = false;
     touchStartPos.current = null;
     setTouchActiveBookId(null);
@@ -1007,6 +1026,7 @@ export const Bookshelf: React.FC<BookshelfProps> = ({
                           onMouseUp={handlePressEnd}
                           onMouseLeave={handlePressEnd}
                           onClick={() => {
+                            if (suppressClickRef.current) return;
                             if (markedForDeleteIds.length > 0) {
                               toggleMarkForDelete(book.id);
                             } else if (!isTouchDragging.current) {
@@ -1221,6 +1241,7 @@ export const Bookshelf: React.FC<BookshelfProps> = ({
                           onMouseUp={handlePressEnd}
                           onMouseLeave={handlePressEnd}
                           onClick={() => {
+                            if (suppressClickRef.current) return;
                             if (markedForDeleteIds.length > 0) {
                               toggleMarkForDelete(book.id);
                             } else if (!isTouchDragging.current) {
@@ -1325,6 +1346,7 @@ export const Bookshelf: React.FC<BookshelfProps> = ({
                           onMouseUp={handlePressEnd}
                           onMouseLeave={handlePressEnd}
                           onClick={() => {
+                            if (suppressClickRef.current) return;
                             if (markedForDeleteIds.length > 0) {
                               toggleMarkForDelete(book.id);
                             } else if (!isTouchDragging.current) {
