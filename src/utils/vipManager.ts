@@ -28,12 +28,22 @@ const STORAGE_KEY = 'nl_vip_subscription';
 const LEGACY_PREMIUM_KEY = 'usuario_premium';
 const CONSENT_LOGS_KEY = 'nl_legal_consent_logs';
 const COOKIE_CONSENT_KEY = 'consentimiento_privacidad';
+const SUPABASE_TEST_RESET_KEY = 'nl_supabase_test_reset_v1';
 
 class VipManager {
   private listeners: Set<(isVip: boolean) => void> = new Set();
 
   constructor() {
     if (typeof window !== 'undefined') {
+      try {
+        if (!localStorage.getItem(SUPABASE_TEST_RESET_KEY)) {
+          this.cancel();
+          localStorage.setItem(SUPABASE_TEST_RESET_KEY, '1');
+        }
+      } catch (e) {
+        console.warn('Error resetting VIP for Supabase test:', e);
+      }
+
       window.addEventListener('vip_status_changed', (e: any) => {
         this.notify(e.detail?.isVip ?? this.isVip());
       });

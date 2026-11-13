@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   X, 
   Crown, 
@@ -51,6 +51,18 @@ export const VipSubscriptionModal: React.FC<VipSubscriptionModalProps> = ({
   const [payPalNotice, setPayPalNotice] = useState<string | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [successAnimation, setSuccessAnimation] = useState(false);
+  const [confirmingCancel, setConfirmingCancel] = useState(false);
+
+  useEffect(() => {
+    if (isOpen) {
+      setSubscription(vipManager.getSubscription());
+      setConfirmingCancel(false);
+    }
+    const unsub = vipManager.onVipChange(() => {
+      setSubscription(vipManager.getSubscription());
+    });
+    return unsub;
+  }, [isOpen]);
 
   if (!isOpen) return null;
 
@@ -92,10 +104,11 @@ export const VipSubscriptionModal: React.FC<VipSubscriptionModalProps> = ({
   };
 
   const handleCancelSubscription = () => {
-    if (window.confirm('¿Seguro que deseas cancelar tu suscripción VIP? Mantendrás tu acceso hasta que termine tu periodo y luego volverás al plan gratuito.')) {
-      vipManager.cancel();
-      setSubscription(vipManager.getSubscription());
-    }
+    vipManager.cancel();
+    setSubscription(vipManager.getSubscription());
+    setConfirmingCancel(false);
+    setCodeSuccessMessage(null);
+    setValidationError(null);
   };
 
   const handleActivateManualCode = async (e?: React.FormEvent) => {
@@ -275,12 +288,37 @@ export const VipSubscriptionModal: React.FC<VipSubscriptionModalProps> = ({
                     : 'Indefinido'}
                 </p>
                 <div className="pt-2 flex flex-col items-center gap-2">
-                  <button
-                    onClick={handleCancelSubscription}
-                    className="text-xs text-red-400 hover:text-red-300 underline font-medium"
-                  >
-                    Cancelar renovación en PayPal (volver al plan gratuito al vencer)
-                  </button>
+                  {confirmingCancel ? (
+                    <div className="flex flex-col items-center gap-2 bg-red-950/50 border border-red-500/40 rounded-xl p-2.5 w-full">
+                      <span className="text-[11px] text-red-200 font-semibold">
+                        ¿Confirmas volver al Plan Gratuito ahora?
+                      </span>
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={handleCancelSubscription}
+                          className="px-3 py-1 rounded-lg bg-red-500 hover:bg-red-400 text-white text-xs font-bold transition cursor-pointer"
+                        >
+                          Sí, cancelar VIP
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setConfirmingCancel(false)}
+                          className="px-3 py-1 rounded-lg bg-white/10 hover:bg-white/20 text-white text-xs font-medium transition cursor-pointer"
+                        >
+                          No, mantener
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => setConfirmingCancel(true)}
+                      className="text-xs text-red-400 hover:text-red-300 underline font-medium cursor-pointer"
+                    >
+                      Cancelar VIP y volver al plan gratuito
+                    </button>
+                  )}
                   <button
                     type="button"
                     onClick={() => onOpenLegalModal?.('audit')}
@@ -575,7 +613,7 @@ export const VipSubscriptionModal: React.FC<VipSubscriptionModalProps> = ({
                       type="text"
                       placeholder="Ej. NEKO-VIP-2026 o ID de PayPal"
                       value={manualCode}
-                      onChange={(e) => setManualCode(e.target.value)}
+                      onChange={(e) => setManualCode(e.target.value.toUpperCase())}
                       className="w-full bg-black/90 border border-amber-400/50 rounded-xl px-3.5 py-2.5 text-xs text-white uppercase font-mono focus:border-amber-400 focus:outline-none placeholder-white/30"
                     />
                     <button

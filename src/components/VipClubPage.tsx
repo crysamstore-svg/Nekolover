@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   ArrowLeft, 
   Crown, 
@@ -45,6 +45,14 @@ export const VipClubPage: React.FC<VipClubPageProps> = ({
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [confirmingCancel, setConfirmingCancel] = useState(false);
+
+  useEffect(() => {
+    const unsub = vipManager.onVipChange(() => {
+      setSubscription(vipManager.getSubscription());
+    });
+    return unsub;
+  }, []);
 
   const isVip = subscription.isVip;
 
@@ -107,11 +115,10 @@ export const VipClubPage: React.FC<VipClubPageProps> = ({
   };
 
   const handleCancelSubscription = () => {
-    if (window.confirm('¿Seguro que deseas cancelar tu suscripción VIP? Mantendrás tus beneficios hasta que finalice el ciclo de 30 días pagado.')) {
-      vipManager.cancel();
-      setSubscription(vipManager.getSubscription());
-      setSuccessMessage('Suscripción cancelada. Volverás al plan gratuito al expirar tu ciclo.');
-    }
+    vipManager.cancel();
+    setSubscription(vipManager.getSubscription());
+    setConfirmingCancel(false);
+    setSuccessMessage('Suscripción VIP cancelada. Has vuelto al plan gratuito.');
   };
 
   return (
@@ -167,12 +174,33 @@ export const VipClubPage: React.FC<VipClubPageProps> = ({
             >
               📜 Ver Auditoría Legal
             </button>
-            <button
-              onClick={handleCancelSubscription}
-              className="px-3 py-1.5 rounded-xl bg-red-950/40 border border-red-500/30 hover:border-red-400 text-red-300 text-xs font-medium transition"
-            >
-              Cancelar Renovación en PayPal
-            </button>
+            {confirmingCancel ? (
+              <div className="flex items-center gap-1.5 bg-red-950/70 border border-red-500/50 rounded-xl px-2.5 py-1">
+                <span className="text-[11px] text-red-200 font-semibold">¿Confirmar?</span>
+                <button
+                  type="button"
+                  onClick={handleCancelSubscription}
+                  className="px-2.5 py-1 rounded-lg bg-red-500 hover:bg-red-400 text-white text-xs font-bold transition cursor-pointer"
+                >
+                  Sí, cancelar VIP
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setConfirmingCancel(false)}
+                  className="px-2 py-1 rounded-lg bg-white/10 hover:bg-white/20 text-white text-xs transition cursor-pointer"
+                >
+                  No
+                </button>
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setConfirmingCancel(true)}
+                className="px-3 py-1.5 rounded-xl bg-red-950/40 border border-red-500/30 hover:border-red-400 text-red-300 text-xs font-medium transition cursor-pointer"
+              >
+                Cancelar VIP (Volver a Gratis)
+              </button>
+            )}
           </div>
         </div>
       )}
@@ -425,7 +453,7 @@ export const VipClubPage: React.FC<VipClubPageProps> = ({
                   type="text"
                   placeholder="Ej. NEKO-VIP-2026 o ID de PayPal"
                   value={manualCode}
-                  onChange={(e) => setManualCode(e.target.value)}
+                  onChange={(e) => setManualCode(e.target.value.toUpperCase())}
                   className="flex-1 bg-black/90 border border-amber-400/50 rounded-xl px-3.5 py-2 text-xs text-white uppercase font-mono focus:border-amber-400 focus:outline-none placeholder-white/30"
                 />
                 <button

@@ -75,8 +75,8 @@
 
     <!-- Bloque de Integración Supabase: Validación de Código Premium -->
     <script>
-      const SUPABASE_URL = "https://abdqmclgskoigquivvxk.supabase.co/rest/v1/";
-      const SUPABASE_ANON_KEY = "sb_publishable_X3sG7aK12tYNJ0T92AAdZQ_2LK4ijiz";
+      const SUPABASE_URL = "https://jeplkoloixbkvgqwxkez.supabase.co/rest/v1/";
+      const SUPABASE_ANON_KEY = "sb_publishable_7P6iF17OzgWWgWfbc3rg9Q_LXP_Gp1v";
 
       // Función para verificar código en la tabla suscripciones de Supabase mediante GET fetch
       async function verificarCodigo(codigo) {
@@ -86,9 +86,12 @@
         }
 
         const cleanCode = codigo.trim();
+        const upperCode = cleanCode.toUpperCase();
+        const candidateCodes = cleanCode === upperCode ? [cleanCode] : [upperCode, cleanCode];
         const urls = [
-          `${SUPABASE_URL}suscripciones?codigo_activacion=eq.${encodeURIComponent(cleanCode)}&estado=eq.activo`,
-          `${SUPABASE_URL}suscripciones?codigo=eq.${encodeURIComponent(cleanCode)}&estado=eq.activo`
+          ...candidateCodes.map((c) => `${SUPABASE_URL}suscripciones?codigo=eq.${encodeURIComponent(c)}`),
+          `${SUPABASE_URL}suscripciones?codigo=ilike.${encodeURIComponent(cleanCode)}`,
+          `${SUPABASE_URL}suscripciones?codigo_activacion=eq.${encodeURIComponent(cleanCode)}`
         ];
 
         for (const url of urls) {
@@ -98,7 +101,7 @@
               headers: {
                 "apikey": SUPABASE_ANON_KEY,
                 "Authorization": "Bearer " + SUPABASE_ANON_KEY,
-                "Content-Type": "application/json"
+                "Accept": "application/json"
               }
             });
 
@@ -106,27 +109,34 @@
               const data = await response.json();
 
               if (Array.isArray(data) && data.length > 0) {
-                // Guardar usuario_premium = true en el localStorage de la app
-                localStorage.setItem("usuario_premium", "true");
+                const activeMatch = data.find((row) => {
+                  const est = String(row.estado || "").trim().toLowerCase();
+                  return est === "activo" || est === "active";
+                });
+                if (activeMatch) {
+                  const matchedCode = String(activeMatch.codigo || activeMatch.codigo_activacion || cleanCode).trim();
+                  // Guardar usuario_premium = true en el localStorage de la app
+                  localStorage.setItem("usuario_premium", "true");
 
-                // Sincronizar datos de suscripción para el lector
-                const subData = {
-                  isVip: true,
-                  subscribedAt: Date.now(),
-                  expiresAt: Date.now() + 30 * 24 * 60 * 60 * 1000,
-                  planName: "Suscripción Mensual VIP ($2 USD/mes)",
-                  paymentMethod: `Supabase [${cleanCode}]`,
-                  autoRenew: true
-                };
-                localStorage.setItem("nl_vip_subscription", JSON.stringify(subData));
+                  // Sincronizar datos de suscripción para el lector
+                  const subData = {
+                    isVip: true,
+                    subscribedAt: Date.now(),
+                    expiresAt: Date.now() + 30 * 24 * 60 * 60 * 1000,
+                    planName: "Suscripción Mensual VIP ($2 USD/mes)",
+                    paymentMethod: `Supabase [${matchedCode}]`,
+                    autoRenew: true
+                  };
+                  localStorage.setItem("nl_vip_subscription", JSON.stringify(subData));
 
-                // Disparar evento para actualizar la interfaz al instante
-                if (window.dispatchEvent) {
-                  window.dispatchEvent(new CustomEvent("vip_status_changed", { detail: { isVip: true, code: cleanCode } }));
+                  // Disparar evento para actualizar la interfaz al instante
+                  if (window.dispatchEvent) {
+                    window.dispatchEvent(new CustomEvent("vip_status_changed", { detail: { isVip: true, code: matchedCode } }));
+                  }
+
+                  console.log("¡Código válido! usuario_premium = true guardado en localStorage.");
+                  return true;
                 }
-
-                console.log("¡Código válido! usuario_premium = true guardado en localStorage.");
-                return true;
               }
             }
           } catch (error) {

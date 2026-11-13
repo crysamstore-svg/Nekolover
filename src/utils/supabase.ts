@@ -1,8 +1,8 @@
 // Supabase REST Integration for NekoLover Read
 // Validación de código de suscripción Premium mediante Supabase REST API (GET fetch)
 
-export const SUPABASE_URL = "https://abdqmclgskoigquivvxk.supabase.co/rest/v1/";
-export const SUPABASE_ANON_KEY = "sb_publishable_X3sG7aK12tYNJ0T92AAdZQ_2LK4ijiz";
+export const SUPABASE_URL = "https://jeplkoloixbkvgqwxkez.supabase.co/rest/v1/";
+export const SUPABASE_ANON_KEY = "sb_publishable_7P6iF17OzgWWgWfbc3rg9Q_LXP_Gp1v";
 
 export interface SupabaseSuscripcion {
   id?: string | number;
@@ -36,13 +36,17 @@ export async function verificarCodigo(codigo: string): Promise<VerificarCodigoRe
   }
 
   const cleanCode = codigo.trim();
+  const upperCode = cleanCode.toUpperCase();
 
-  // 1. Intentar con columna 'codigo_activacion' (columna real detectada en la base de datos)
-  let foundRecord: SupabaseSuscripcion | null = null;
-  const urlsToTry = [
-    `${SUPABASE_URL}suscripciones?codigo_activacion=eq.${encodeURIComponent(cleanCode)}&estado=eq.activo`,
-    `${SUPABASE_URL}suscripciones?codigo=eq.${encodeURIComponent(cleanCode)}&estado=eq.activo`
+  const candidateCodes = cleanCode === upperCode ? [cleanCode] : [upperCode, cleanCode];
+  const urlsToTry: string[] = [
+    ...candidateCodes.map((c) => `${SUPABASE_URL}suscripciones?codigo=eq.${encodeURIComponent(c)}`),
+    `${SUPABASE_URL}suscripciones?codigo=ilike.${encodeURIComponent(cleanCode)}`,
+    `${SUPABASE_URL}suscripciones?codigo_activacion=eq.${encodeURIComponent(cleanCode)}`
   ];
+
+  let foundRecord: SupabaseSuscripcion | null = null;
+  let inactiveRecord: SupabaseSuscripcion | null = null;
 
   for (const url of urlsToTry) {
     try {
@@ -51,15 +55,23 @@ export async function verificarCodigo(codigo: string): Promise<VerificarCodigoRe
         headers: {
           'apikey': SUPABASE_ANON_KEY,
           'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
-          'Content-Type': 'application/json'
+          'Accept': 'application/json'
         }
       });
 
       if (response.ok) {
         const data: SupabaseSuscripcion[] = await response.json();
         if (Array.isArray(data) && data.length > 0) {
-          foundRecord = data[0];
-          break;
+          const activeMatch = data.find((row) => {
+            const est = String(row.estado ?? '').trim().toLowerCase();
+            return est === 'activo' || est === 'active';
+          });
+          if (activeMatch) {
+            foundRecord = activeMatch;
+            break;
+          } else if (!inactiveRecord) {
+            inactiveRecord = data[0];
+          }
         }
       }
     } catch (e) {
@@ -68,6 +80,7 @@ export async function verificarCodigo(codigo: string): Promise<VerificarCodigoRe
   }
 
   if (foundRecord) {
+    const matchedCode = String(foundRecord.codigo || foundRecord.codigo_activacion || cleanCode).trim();
     // Guardar usuario_premium = true en el localStorage de la app
     localStorage.setItem('usuario_premium', 'true');
 
@@ -79,7 +92,7 @@ export async function verificarCodigo(codigo: string): Promise<VerificarCodigoRe
       subscribedAt: now,
       expiresAt: now + thirtyDays,
       planName: 'Suscripción Mensual VIP ($2 USD/mes)',
-      paymentMethod: `Supabase [${cleanCode}]`,
+      paymentMethod: `Supabase [${matchedCode}]`,
       autoRenew: true
     };
     localStorage.setItem('nl_vip_subscription', JSON.stringify(subData));
@@ -88,15 +101,20 @@ export async function verificarCodigo(codigo: string): Promise<VerificarCodigoRe
     if (typeof window !== 'undefined') {
       window.dispatchEvent(
         new CustomEvent('vip_status_changed', {
-          detail: { isVip: true, code: cleanCode, sub: subData }
+          detail: { isVip: true, code: matchedCode, sub: subData }
         })
       );
     }
 
     return {
       success: true,
-      message: `¡Código [${cleanCode}] verificado en Supabase con éxito! Membresía VIP activada.`,
+      message: `¡Código [${matchedCode}] verificado en Supabase con éxito! Membresía VIP activada.`,
       data: foundRecord
+    };
+  } else if (inactiveRecord) {
+    return {
+      success: false,
+      message: `El código existe en Supabase, pero su estado actual es "${inactiveRecord.estado}" (no está "activo").`
     };
   } else {
     return {
