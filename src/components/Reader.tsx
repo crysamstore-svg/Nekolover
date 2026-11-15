@@ -316,10 +316,6 @@ export const Reader: React.FC<ReaderProps> = ({
     setTimeout(() => setToastHighlight(null), 2500);
   };
 
-  const handleDeleteHighlight = (id: string) => {
-    const nextList = (highlights[pageKey] || []).filter(h => h.id !== id);
-    onSaveHighlights(pageKey, nextList);
-  };
 
   // Subrayar citas y frases directamente en el cuerpo del texto
   const renderHighlightedContent = (rawText: string, pageHighlights: TextHighlight[]) => {
@@ -1027,6 +1023,17 @@ export const Reader: React.FC<ReaderProps> = ({
           >
             <span className="text-sm">🌸</span>
             <span className="hidden sm:inline">Ajustes</span>
+          </button>
+
+          {/* Sonido Ambiental Lo-Fi */}
+          <button
+            type="button"
+            onClick={onOpenAudioModal}
+            className="px-2 sm:px-2.5 py-1.5 rounded-xl text-xs font-cute font-bold bg-black/40 border border-[var(--border-color)] text-[var(--text-muted)] hover:text-[var(--accent-pink)] hover:border-[var(--accent-pink)] transition flex items-center gap-1 shadow-md active:scale-95"
+            title="Sonido Ambiental Lo-Fi: Lluvia Gótica y Ronroneo Neko"
+          >
+            <span className="text-sm">🌧️</span>
+            <span className="hidden md:inline">Sonido</span>
           </button>
 
           {/* Estantería de Música (Función VIP) */}
@@ -1781,53 +1788,6 @@ export const Reader: React.FC<ReaderProps> = ({
               </div>
             )}
 
-            {/* Subrayados y Citas de Color Guardados en esta Página (Válido para PDF, EPUB y Libros) */}
-            {currentPageHighlights.length > 0 && (
-              <div className="mt-8 pt-4 border-t border-white/10 space-y-2 select-text">
-                <div className="flex items-center gap-1.5 text-xs font-bold text-[var(--accent-pink)]">
-                  <Highlighter className="w-3.5 h-3.5" />
-                  <span>Subrayados guardados ({currentPageHighlights.length}):</span>
-                </div>
-                <div className="space-y-1.5">
-                  {currentPageHighlights.map((hl) => {
-                    const bgColors: Record<HighlightColor, string> = {
-                      pink: 'bg-pink-500/20 border-pink-500/50 text-pink-200',
-                      purple: 'bg-purple-500/20 border-purple-500/50 text-purple-200',
-                      lila: 'bg-purple-400/20 border-purple-400/50 text-purple-200',
-                      gris: 'bg-slate-400/20 border-slate-400/50 text-slate-200',
-                      'rosa-pastel': 'bg-pink-300/20 border-pink-300/50 text-pink-200',
-                      rojo: 'bg-red-500/20 border-red-500/50 text-red-200',
-                      gold: 'bg-amber-500/20 border-amber-500/50 text-amber-200',
-                      emerald: 'bg-emerald-500/20 border-emerald-500/50 text-emerald-200'
-                    };
-                    return (
-                      <div
-                        key={hl.id}
-                        className={`p-2.5 rounded-xl border text-xs flex items-center justify-between gap-2 italic leading-relaxed ${bgColors[hl.color]}`}
-                      >
-                        <span className="line-clamp-2">"{hl.text}"</span>
-                        <div className="flex items-center gap-1 shrink-0 not-italic">
-                          <button
-                            onClick={() => onOpenAddQuote(hl.text)}
-                            className="p-1 hover:text-white rounded bg-black/30"
-                            title="Guardar como Cita en el Baúl"
-                          >
-                            <Feather className="w-3 h-3" />
-                          </button>
-                          <button
-                            onClick={() => handleDeleteHighlight(hl.id)}
-                            className="p-1 text-red-400 hover:text-red-300 rounded bg-black/30"
-                            title="Eliminar subrayado"
-                          >
-                            <Trash2 className="w-3 h-3" />
-                          </button>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
 
             {/* 4. Movable Sticker Layer (Con tamaño pequeño/grande, fijado y desbloqueo) */}
             <div className="absolute inset-0 pointer-events-none z-20">

@@ -61,6 +61,8 @@ interface BookshelfProps {
   onOpenThemeModal?: () => void;
   onOpenAudioModal?: () => void;
   isAudioPlaying?: boolean;
+  onOpenAmbientAudioModal?: () => void;
+  isAmbientPlaying?: boolean;
   headerConfig?: HeaderButtonsConfig;
   // Shelf config
   shelfStyle?: ShelfStyle;
@@ -94,6 +96,8 @@ export const Bookshelf: React.FC<BookshelfProps> = ({
   onOpenThemeModal,
   onOpenAudioModal,
   isAudioPlaying = false,
+  onOpenAmbientAudioModal,
+  isAmbientPlaying = false,
   headerConfig,
   shelfStyle: propShelfStyle,
   onShelfStyleChange,
@@ -569,29 +573,67 @@ export const Bookshelf: React.FC<BookshelfProps> = ({
 
   return (
     <div className="p-3 sm:p-6 max-w-7xl mx-auto w-full flex-1 flex flex-col select-none">
-      {/* Barra de acción flotante cuando hay libros marcados para eliminar */}
+      {/* Barra de acción flotante cuando hay libros seleccionados al mantener presionado */}
       {markedForDeleteIds.length > 0 && (
-        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-2.5 sm:gap-3.5 bg-[#1a0a10]/95 border-2 border-rose-500/80 px-4 py-2.5 sm:px-6 sm:py-3 rounded-2xl shadow-[0_10px_35px_rgba(244,63,94,0.5)] backdrop-blur-md animate-popIn">
-          <div className="flex items-center gap-1.5 text-rose-200 text-xs sm:text-sm font-cute font-medium">
-            <Trash2 className="w-4 h-4 text-rose-400 shrink-0" />
+        <div className="fixed bottom-4 sm:bottom-6 left-1/2 -translate-x-1/2 z-50 w-[94vw] max-w-xl flex flex-wrap items-center justify-center gap-2 sm:gap-2.5 bg-[#1a0a10]/95 border-2 border-[var(--accent-pink)]/70 px-3.5 py-2.5 sm:px-5 sm:py-3 rounded-2xl shadow-[0_10px_35px_rgba(0,0,0,0.8)] backdrop-blur-md animate-popIn">
+          <div className="flex items-center gap-1.5 text-pink-200 text-xs sm:text-sm font-cute font-medium">
+            <span>📚</span>
             <span>
-              {markedForDeleteIds.length} {markedForDeleteIds.length === 1 ? 'libro marcado para eliminar' : 'libros marcados para eliminar'}
+              {markedForDeleteIds.length} {markedForDeleteIds.length === 1 ? 'libro seleccionado' : 'libros seleccionados'}
             </span>
           </div>
 
           <button
             type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              markedForDeleteIds.forEach((id) => {
+                const target = books.find((b) => b.id === id);
+                if (target) {
+                  onChangeCategory(id, target.category === 'completed' ? 'reading' : 'completed', e);
+                }
+              });
+              setMarkedForDeleteIds([]);
+            }}
+            className="px-2.5 py-1.5 rounded-xl bg-purple-600/80 hover:bg-purple-600 text-white font-bold text-xs shadow-sm transition active:scale-95 flex items-center gap-1 cursor-pointer"
+            title="Marcar como leído / en lectura"
+          >
+            <CheckCircle2 className="w-3.5 h-3.5" />
+            <span>Leído</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              markedForDeleteIds.forEach((id) => {
+                const target = books.find((b) => b.id === id);
+                if (target) {
+                  onChangeCategory(id, target.category === 'abandoned' ? 'reading' : 'abandoned', e);
+                }
+              });
+              setMarkedForDeleteIds([]);
+            }}
+            className="px-2.5 py-1.5 rounded-xl bg-rose-950/90 hover:bg-rose-900 text-rose-200 border border-rose-400/40 font-bold text-xs shadow-sm transition active:scale-95 flex items-center gap-1 cursor-pointer"
+            title="Marcar como pausado / reanudar"
+          >
+            <span>🥀</span>
+            <span>Pausar</span>
+          </button>
+
+          <button
+            type="button"
             onClick={handleDeleteMarkedBooks}
-            className="px-3.5 py-1.5 sm:px-4 sm:py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-extrabold text-xs shadow-md transition active:scale-95 flex items-center gap-1.5 cursor-pointer"
+            className="px-3 py-1.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-extrabold text-xs shadow-md transition active:scale-95 flex items-center gap-1 cursor-pointer"
           >
             <Trash2 className="w-3.5 h-3.5" />
-            <span>Eliminar {markedForDeleteIds.length === 1 ? 'libro' : `(${markedForDeleteIds.length})`}</span>
+            <span>Eliminar {markedForDeleteIds.length === 1 ? '' : `(${markedForDeleteIds.length})`}</span>
           </button>
 
           <button
             type="button"
             onClick={handleClearMarked}
-            className="px-3 py-1.5 sm:px-3.5 sm:py-2 rounded-xl bg-black/60 hover:bg-white/10 text-gray-300 hover:text-white text-xs border border-white/20 transition active:scale-95 cursor-pointer"
+            className="px-2.5 py-1.5 rounded-xl bg-black/60 hover:bg-white/10 text-gray-300 hover:text-white text-xs border border-white/20 transition active:scale-95 cursor-pointer"
             title="Desmarcar todos y cancelar (o pulsa Escape)"
           >
             Cancelar
@@ -711,11 +753,11 @@ export const Bookshelf: React.FC<BookshelfProps> = ({
             )}
           </div>
 
-          {/* 2. Botones del Header reubicados abajo junto al buscador */}
+          {/* 2. Botones del Header en la pantalla principal (solo visibles cuando están activados en Configuración) */}
           <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
             
             {/* Notas y Citas */}
-            {(!headerConfig || headerConfig.showQuotes) && onSwitchView && (
+            {Boolean(headerConfig?.showQuotes) && onSwitchView && (
               <button
                 onClick={() => onSwitchView('quotes')}
                 className="px-2.5 py-1.5 rounded-xl bg-black/40 border border-[var(--border-color)] hover:border-[var(--accent-pink)] text-xs text-[var(--text-main)] hover:text-white flex items-center gap-1.5 transition active:scale-95 shrink-0 shadow-sm"
@@ -732,7 +774,7 @@ export const Bookshelf: React.FC<BookshelfProps> = ({
             )}
 
             {/* Estadísticas */}
-            {(!headerConfig || headerConfig.showStats) && onSwitchView && (
+            {Boolean(headerConfig?.showStats) && onSwitchView && (
               <button
                 onClick={() => onSwitchView('stats')}
                 className="px-2.5 py-1.5 rounded-xl bg-black/40 border border-[var(--border-color)] hover:border-[var(--accent-purple)] text-xs text-[var(--text-main)] hover:text-white flex items-center gap-1.5 transition active:scale-95 shrink-0 shadow-sm"
@@ -744,7 +786,7 @@ export const Bookshelf: React.FC<BookshelfProps> = ({
             )}
 
             {/* Marcadores */}
-            {(!headerConfig || headerConfig.showBookmarks) && onSwitchView && (
+            {Boolean(headerConfig?.showBookmarks) && onSwitchView && (
               <button
                 onClick={() => onSwitchView('bookmarks')}
                 className="px-2.5 py-1.5 rounded-xl bg-black/40 border border-[var(--border-color)] hover:border-amber-400 text-xs text-[var(--text-main)] hover:text-white flex items-center gap-1.5 transition active:scale-95 shrink-0 shadow-sm"
@@ -761,7 +803,7 @@ export const Bookshelf: React.FC<BookshelfProps> = ({
             )}
 
             {/* Modo Noche Rápido (OLED) */}
-            {(!headerConfig || headerConfig.showNightMode) && onToggleNightMode && (
+            {Boolean(headerConfig?.showNightMode) && onToggleNightMode && (
               <button
                 onClick={onToggleNightMode}
                 className={`px-2.5 py-1.5 rounded-xl text-xs flex items-center gap-1 border transition active:scale-95 shrink-0 shadow-sm ${
@@ -776,22 +818,27 @@ export const Bookshelf: React.FC<BookshelfProps> = ({
               </button>
             )}
 
-            {/* Coronita VIP ($2 USD/mes) */}
-            <button
-              onClick={() => onOpenVipModal?.()}
-              className={`px-2.5 py-1.5 rounded-xl border text-xs font-cute font-bold flex items-center gap-1 transition active:scale-95 shrink-0 shadow-sm ${
-                isVip
-                  ? 'bg-amber-400 text-black border-amber-300 shadow-[0_0_12px_rgba(251,191,36,0.6)]'
-                  : 'bg-black/50 border-amber-400/60 text-amber-300 hover:bg-amber-400 hover:text-black hover:border-amber-300 shadow-[0_0_10px_rgba(251,191,36,0.2)]'
-              }`}
-              title={isVip ? 'Membresía VIP Activa 👑' : 'Acceso VIP ($2 USD/mes) • Solo PayPal 👑'}
-            >
-              <Crown className={`w-3.5 h-3.5 ${isVip ? 'fill-black' : 'text-amber-400'}`} />
-              <span>{isVip ? 'VIP' : 'VIP'}</span>
-            </button>
+            {/* Sonido Ambiental Lo-Fi (Lluvia Gótica & Ronroneo Neko) */}
+            {Boolean(headerConfig?.showAudio) && onOpenAmbientAudioModal && (
+              <button
+                onClick={onOpenAmbientAudioModal}
+                className={`px-2.5 py-1.5 rounded-xl text-xs flex items-center gap-1.5 border transition active:scale-95 shrink-0 shadow-sm ${
+                  isAmbientPlaying
+                    ? 'bg-[var(--accent-pink)]/25 text-[var(--accent-pink)] border-[var(--accent-pink)] animate-pulse'
+                    : 'bg-black/40 text-[var(--text-muted)] border-[var(--border-color)] hover:text-white hover:border-[var(--accent-pink)]'
+                }`}
+                title="Sonido Ambiental Lo-Fi: Lluvia Gótica y Ronroneo Neko"
+              >
+                <span className="text-sm leading-none">🌧️</span>
+                <span className="font-cute">Sonido</span>
+                {isAmbientPlaying && (
+                  <span className="w-1.5 h-1.5 rounded-full bg-[var(--accent-pink)]" />
+                )}
+              </button>
+            )}
 
-            {/* Música Lo-Fi / Subir Canciones */}
-            {(!headerConfig || headerConfig.showAudio) && onOpenAudioModal && (
+            {/* Música MP3 / VIP (Solo si el usuario activa el botón en Configuración) */}
+            {Boolean(headerConfig?.showMusic) && onOpenAudioModal && (
               <button
                 onClick={() => {
                   if (!isVip && onOpenVipModal) {
@@ -814,7 +861,7 @@ export const Bookshelf: React.FC<BookshelfProps> = ({
             )}
 
             {/* Temas Visuales */}
-            {(!headerConfig || headerConfig.showTheme) && onOpenThemeModal && (
+            {Boolean(headerConfig?.showTheme) && onOpenThemeModal && (
               <button
                 onClick={onOpenThemeModal}
                 className="p-1.5 sm:px-2.5 sm:py-1.5 bg-black/40 border border-[var(--border-color)] hover:border-[var(--accent-pink)] rounded-xl text-xs text-[var(--accent-pink)] font-cute flex items-center gap-1 transition shrink-0 shadow-sm"
@@ -824,6 +871,20 @@ export const Bookshelf: React.FC<BookshelfProps> = ({
                 <span className="hidden md:inline">Temas</span>
               </button>
             )}
+
+            {/* Coronita VIP ($2 USD/mes) */}
+            <button
+              onClick={() => onOpenVipModal?.()}
+              className={`px-2.5 py-1.5 rounded-xl border text-xs font-cute font-bold flex items-center gap-1 transition active:scale-95 shrink-0 shadow-sm ${
+                isVip
+                  ? 'bg-amber-400 text-black border-amber-300 shadow-[0_0_12px_rgba(251,191,36,0.6)]'
+                  : 'bg-black/50 border-amber-400/60 text-amber-300 hover:bg-amber-400 hover:text-black hover:border-amber-300 shadow-[0_0_10px_rgba(251,191,36,0.2)]'
+              }`}
+              title={isVip ? 'Membresía VIP Activa 👑' : 'Acceso VIP ($2 USD/mes) • Solo PayPal 👑'}
+            >
+              <Crown className={`w-3.5 h-3.5 ${isVip ? 'fill-black' : 'text-amber-400'}`} />
+              <span>VIP</span>
+            </button>
 
             {/* Subir Archivo Individual */}
             <button
@@ -1093,9 +1154,9 @@ export const Bookshelf: React.FC<BookshelfProps> = ({
                 }
               >
                 <div className="bookcase-books-layer">
-                {/* MODE 1: COVERS VIEW (Portadas frontales) */}
+                {/* MODE 1: COVERS VIEW (Portadas frontales descansando sobre la repisa) */}
                 {viewMode === 'covers' && (
-                  <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-2.5 sm:gap-4 px-1.5 sm:px-3 pb-1 items-end">
+                  <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-2.5 sm:gap-4 px-1.5 sm:px-3 pb-0 items-end">
                     {shelfBooks.map((book) => {
                       const percent = book.progressPercent || 0;
                       const isMarked = isBookMarked(book.id);
@@ -1176,15 +1237,15 @@ export const Bookshelf: React.FC<BookshelfProps> = ({
                             </button>
                           )}
 
-                          {/* Conventional Book Cover Container */}
-                          <div className={`relative w-full max-w-[115px] sm:max-w-[130px] aspect-[2/3] rounded-r-lg rounded-l-sm shadow-md overflow-hidden border border-white/10 group-hover:border-[var(--accent-pink)]/50 group-hover:shadow-[0_8px_18px_rgba(0,0,0,0.5)] transition-all flex flex-col justify-between p-2 sm:p-2.5 text-left book-cover-shadow ${
+                          {/* Conventional Book Cover Container - Descansa directamente sobre la repisa */}
+                          <div className={`relative w-full max-w-[115px] sm:max-w-[130px] aspect-[2/3] rounded-r-lg rounded-l-sm shadow-[0_4px_10px_rgba(0,0,0,0.85)] overflow-hidden border border-white/10 group-hover:border-[var(--accent-pink)]/50 group-hover:shadow-[0_8px_18px_rgba(0,0,0,0.65)] transition-all flex flex-col justify-between p-2 sm:p-2.5 text-left book-cover-shadow ${
                             isMarked ? 'border-rose-500' : ''
                           }`}>
                             {/* Marked badge inside top right */}
                             {isMarked && (
                               <div className="absolute top-1.5 right-1.5 z-30 bg-rose-600 text-white text-[9px] font-bold px-1.5 py-0.5 rounded-full shadow-md border border-white flex items-center gap-0.5 animate-fadeIn">
                                 <Trash2 className="w-2.5 h-2.5" />
-                                <span>Eliminar</span>
+                                <span>Opciones</span>
                               </div>
                             )}
                             {/* Background cover gradient */}
@@ -1253,53 +1314,66 @@ export const Bookshelf: React.FC<BookshelfProps> = ({
                                 />
                               </div>
                             </div>
-                          </div>
 
-                          {/* Quick Action Overlay (Visibles en móvil táctil y al pasar el cursor en escritorio) */}
-                          <div className="flex items-center space-x-1.5 mt-2.5 opacity-90 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity z-20">
-                            <button
-                              onClick={(e) =>
-                                onChangeCategory(
-                                  book.id,
-                                  book.category === 'completed' ? 'reading' : 'completed',
-                                  e
-                                )
-                              }
-                              className="p-1 rounded-lg bg-black/60 hover:bg-black/90 text-xs text-[var(--accent-purple)] transition border border-[var(--border-color)]"
-                              title={
-                                book.category === 'completed'
-                                  ? 'Marcar como en lectura'
-                                  : 'Marcar como leído'
-                              }
-                            >
-                              <CheckCircle2 className="w-3.5 h-3.5" />
-                            </button>
+                            {/* Quick Action Overlay - Solo aparece al mantener presionado el libro */}
+                            {isMarked && (
+                              <div
+                                onClick={(e) => e.stopPropagation()}
+                                className="absolute bottom-1.5 inset-x-1.5 z-40 flex items-center justify-around gap-1 bg-black/90 backdrop-blur-md border border-[var(--accent-pink)]/60 rounded-lg py-1 px-1 shadow-xl animate-popIn"
+                              >
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    onChangeCategory(
+                                      book.id,
+                                      book.category === 'completed' ? 'reading' : 'completed',
+                                      e
+                                    );
+                                    setMarkedForDeleteIds((prev) => prev.filter((id) => id !== book.id));
+                                  }}
+                                  className="p-1 rounded-md bg-white/5 hover:bg-white/15 text-xs text-[var(--accent-purple)] transition"
+                                  title={
+                                    book.category === 'completed'
+                                      ? 'Marcar como en lectura'
+                                      : 'Marcar como leído'
+                                  }
+                                >
+                                  <CheckCircle2 className="w-3.5 h-3.5" />
+                                </button>
 
-                            <button
-                              onClick={(e) =>
-                                onChangeCategory(
-                                  book.id,
-                                  book.category === 'abandoned' ? 'reading' : 'abandoned',
-                                  e
-                                )
-                              }
-                              className="p-1 rounded-lg bg-black/60 hover:bg-black/90 text-xs text-rose-300 transition border border-[var(--border-color)]"
-                              title={
-                                book.category === 'abandoned'
-                                  ? 'Reanudar lectura'
-                                  : 'Marcar como pausado'
-                              }
-                            >
-                              🥀
-                            </button>
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    onChangeCategory(
+                                      book.id,
+                                      book.category === 'abandoned' ? 'reading' : 'abandoned',
+                                      e
+                                    );
+                                    setMarkedForDeleteIds((prev) => prev.filter((id) => id !== book.id));
+                                  }}
+                                  className="p-1 rounded-md bg-white/5 hover:bg-white/15 text-xs text-rose-300 transition"
+                                  title={
+                                    book.category === 'abandoned'
+                                      ? 'Reanudar lectura'
+                                      : 'Marcar como pausado'
+                                  }
+                                >
+                                  🥀
+                                </button>
 
-                            <button
-                              onClick={(e) => onDeleteBook(book.id, e)}
-                              className="p-1 rounded-lg bg-black/60 hover:bg-red-950 text-xs text-red-400 transition border border-[var(--border-color)]"
-                              title="Eliminar libro"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    onDeleteBook(book.id, e);
+                                    setMarkedForDeleteIds((prev) => prev.filter((id) => id !== book.id));
+                                  }}
+                                  className="p-1 rounded-md bg-rose-600/20 hover:bg-rose-600 text-xs text-rose-300 hover:text-white transition"
+                                  title="Eliminar libro"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
+                            )}
                           </div>
                         </div>
                       );
@@ -1307,9 +1381,9 @@ export const Bookshelf: React.FC<BookshelfProps> = ({
                   </div>
                 )}
 
-                {/* MODE 2: SPINES VIEW (Lomos verticales alineados en estantería) */}
+                {/* MODE 2: SPINES VIEW (Lomos verticales alineados descansando en estantería) */}
                 {viewMode === 'spines' && (
-                  <div className="flex items-end justify-center gap-1.5 sm:gap-2.5 px-3 pb-2 overflow-x-auto min-h-[190px]">
+                  <div className="flex items-end justify-center gap-1.5 sm:gap-2.5 px-3 pt-2 pb-0 overflow-x-auto min-h-[185px]">
                     {shelfBooks.map((book) => {
                       const isMarked = isBookMarked(book.id);
                       const isTouchingCurrent = touchActiveBookId === book.id;
@@ -1410,9 +1484,9 @@ export const Bookshelf: React.FC<BookshelfProps> = ({
                   </div>
                 )}
 
-                {/* MODE 3: STACKS VIEW (Libros acostados / apilados horizontalmente) */}
+                {/* MODE 3: STACKS VIEW (Libros acostados descansando en estantería) */}
                 {viewMode === 'stacks' && (
-                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2 sm:gap-3 px-2 sm:px-4 pb-2 items-end">
+                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2 sm:gap-3 px-2 sm:px-4 pb-0 items-end">
                     {shelfBooks.map((book) => {
                       const isMarked = isBookMarked(book.id);
                       const isTouchingCurrent = touchActiveBookId === book.id;
@@ -1510,7 +1584,7 @@ export const Bookshelf: React.FC<BookshelfProps> = ({
 
                 {/* The Physical 3D Shelf Ledge / Plank with Brackets & Niche Shadow */}
                 <div
-                  className="bookcase-plank-wrap mt-1"
+                  className="bookcase-plank-wrap"
                   aria-hidden="true"
                   style={
                     isDepthTransitioning

@@ -3,44 +3,57 @@
 class SoundscapeManager {
   private ctx: AudioContext | null = null;
   private rainGain: GainNode | null = null;
+  private rainFilter: BiquadFilterNode | null = null;
   private rainSource: AudioBufferSourceNode | null = null;
   private purrGain: GainNode | null = null;
+  private purrFilter: BiquadFilterNode | null = null;
+  private purrTremoloGain: GainNode | null = null;
+  private purrModDepth: GainNode | null = null;
   private purrOsc1: OscillatorNode | null = null;
   private purrOsc2: OscillatorNode | null = null;
+  private purrOsc3: OscillatorNode | null = null;
   private purrMod: OscillatorNode | null = null;
   private masterGain: GainNode | null = null;
 
   public isRainActive = false;
   public isPurrActive = false;
-  public rainVolume = 0.4;
-  public purrVolume = 0.35;
+  public rainVolume = 0.45;
+  public purrVolume = 0.45;
 
-  private initContext() {
+  private ensureContext(): AudioContext | null {
+    if (typeof window === 'undefined') return null;
     if (!this.ctx) {
-      const AudioCtx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+      const AudioCtx =
+        window.AudioContext ||
+        (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+      if (!AudioCtx) return null;
       this.ctx = new AudioCtx();
       this.masterGain = this.ctx.createGain();
-      this.masterGain.gain.setValueAtTime(0.8, this.ctx.currentTime);
+      this.masterGain.gain.setValueAtTime(1.0, this.ctx.currentTime);
       this.masterGain.connect(this.ctx.destination);
     }
     if (this.ctx.state === 'suspended') {
-      this.ctx.resume();
+      void this.ctx.resume().catch(() => {});
     }
+    return this.ctx;
   }
 
-  // Generate pink/brown gentle rain noise
+  public isAnyActive(): boolean {
+    return this.isRainActive || this.isPurrActive;
+  }
+
+  // Generate soothing rain noise audible on both mobile and desktop speakers
   public toggleRain(enable?: boolean): boolean {
-    this.initContext();
-    if (!this.ctx || !this.masterGain) return false;
+    const ctx = this.ensureContext();
+    if (!ctx || !this.masterGain) return false;
 
     const shouldEnable = enable !== undefined ? enable : !this.isRainActive;
 
     if (shouldEnable) {
       if (this.isRainActive) return true;
 
-      // Create 5-second looped buffer of smoothed rain noise
-      const bufferSize = this.ctx.sampleRate * 5;
-      const buffer = this.ctx.createBuffer(2, bufferSize, this.ctx.sampleRate);
+      const bufferSize = ctx.sampleRate * 4;
+      const buffer = ctx.createBuffer(2, bufferSize, ctx.sampleRate);
 
       for (let channel = 0; channel < 2; channel++) {
         const data = buffer.getChannelData(channel);
@@ -53,29 +66,31 @@ class SoundscapeManager {
           b3 = 0.86650 * b3 + white * 0.3104856;
           b4 = 0.55000 * b4 + white * 0.5329522;
           b5 = -0.7616 * b5 - white * 0.0168980;
-          const pink = (b0 + b1 + b2 + b3 + b4 + b5 + b6 + white * 0.5362) * 0.08;
+          const pink = (b0 + b1 + b2 + b3 + b4 + b5 + b6 + white * 0.5362) * 0.2;
           b6 = white * 0.115926;
-          data[i] = pink;
+          data[i] = Math.max(-0.95, Math.min(0.95, pink));
         }
       }
 
-      this.rainSource = this.ctx.createBufferSource();
+      const now = ctx.currentTime;
+      this.rainSource = ctx.createBufferSource();
       this.rainSource.buffer = buffer;
       this.rainSource.loop = true;
 
-      // Filter to simulate soft raindrops hitting window glass
-      const filter = this.ctx.createBiquadFilter();
-      filter.type = 'lowpass';
-      filter.frequency.setValueAtTime(850, this.ctx.currentTime);
+      this.rainFilter = ctx.createBiquadFilter();
+      this.rainFilter.type = 'lowpass';
+      this.rainFilter.frequency.setValueAtTime(1400, now);
+      this.rainFilter.Q.setValueAtTime(0.7, now);
 
-      this.rainGain = this.ctx.createGain();
-      this.rainGain.gain.setValueAtTime(this.rainVolume, this.ctx.currentTime);
+      this.rainGain = ctx.createGain();
+      this.rainGain.gain.setValueAtTime(0.01, now);
+      this.rainGain.gain.linearRampToValueAtTime(this.rainVolume, now + 0.25);
 
-      this.rainSource.connect(filter);
-      filter.connect(this.rainGain);
+      this.rainSource.connect(this.rainFilter);
+      this.rainFilter.connect(this.rainGain);
       this.rainGain.connect(this.masterGain);
 
-      this.rainSource.start();
+      this.rainSource.start(now);
       this.isRainActive = true;
     } else {
       if (this.rainSource) {
@@ -85,78 +100,106 @@ class SoundscapeManager {
         } catch {}
         this.rainSource = null;
       }
+      if (this.rainFilter) {
+        try {
+          this.rainFilter.disconnect();
+        } catch {}
+        this.rainFilter = null;
+      }
+      if (this.rainGain) {
+        try {
+          this.rainGain.disconnect();
+        } catch {}
+        this.rainGain = null;
+      }
       this.isRainActive = false;
     }
 
     return this.isRainActive;
   }
 
-  // Generate realistic rhythmic cat purring
+  // Generate warm, rhythmic cat purring with harmonics audible on mobile speakers
   public togglePurr(enable?: boolean): boolean {
-    this.initContext();
-    if (!this.ctx || !this.masterGain) return false;
+    const ctx = this.ensureContext();
+    if (!ctx || !this.masterGain) return false;
 
     const shouldEnable = enable !== undefined ? enable : !this.isPurrActive;
 
     if (shouldEnable) {
       if (this.isPurrActive) return true;
 
-      const now = this.ctx.currentTime;
-      this.purrGain = this.ctx.createGain();
-      this.purrGain.gain.setValueAtTime(this.purrVolume, now);
+      const now = ctx.currentTime;
+      this.purrGain = ctx.createGain();
+      this.purrGain.gain.setValueAtTime(0.01, now);
+      this.purrGain.gain.linearRampToValueAtTime(this.purrVolume * 0.75, now + 0.25);
 
-      // Low frequency rumble oscillators
-      this.purrOsc1 = this.ctx.createOscillator();
+      // Sub-bass rumble + speaker-audible purr harmonics
+      this.purrOsc1 = ctx.createOscillator();
       this.purrOsc1.type = 'triangle';
-      this.purrOsc1.frequency.setValueAtTime(28, now); // Cat purr fundamental frequency
+      this.purrOsc1.frequency.setValueAtTime(32, now);
 
-      this.purrOsc2 = this.ctx.createOscillator();
-      this.purrOsc2.type = 'sine';
-      this.purrOsc2.frequency.setValueAtTime(56, now); // First harmonic
+      this.purrOsc2 = ctx.createOscillator();
+      this.purrOsc2.type = 'sawtooth';
+      this.purrOsc2.frequency.setValueAtTime(64, now);
 
-      // Tremolo / breathing modulator (~1.8Hz purr rhythm)
-      const tremoloGain = this.ctx.createGain();
-      tremoloGain.gain.setValueAtTime(0.5, now);
+      this.purrOsc3 = ctx.createOscillator();
+      this.purrOsc3.type = 'triangle';
+      this.purrOsc3.frequency.setValueAtTime(128, now);
 
-      this.purrMod = this.ctx.createOscillator();
+      // Rhythmic breathing / purr cadence (~1.85Hz)
+      this.purrTremoloGain = ctx.createGain();
+      this.purrTremoloGain.gain.setValueAtTime(0.55, now);
+
+      this.purrMod = ctx.createOscillator();
       this.purrMod.type = 'sine';
-      this.purrMod.frequency.setValueAtTime(1.8, now);
+      this.purrMod.frequency.setValueAtTime(1.85, now);
 
-      const modDepth = this.ctx.createGain();
-      modDepth.gain.setValueAtTime(0.4, now);
-      this.purrMod.connect(modDepth);
-      modDepth.connect(tremoloGain.gain);
+      this.purrModDepth = ctx.createGain();
+      this.purrModDepth.gain.setValueAtTime(0.42, now);
+      this.purrMod.connect(this.purrModDepth);
+      this.purrModDepth.connect(this.purrTremoloGain.gain);
 
-      // Subdued low-pass filter
-      const filter = this.ctx.createBiquadFilter();
-      filter.type = 'lowpass';
-      filter.frequency.setValueAtTime(180, now);
+      this.purrFilter = ctx.createBiquadFilter();
+      this.purrFilter.type = 'lowpass';
+      this.purrFilter.frequency.setValueAtTime(320, now);
+      this.purrFilter.Q.setValueAtTime(1.2, now);
 
-      this.purrOsc1.connect(tremoloGain);
-      this.purrOsc2.connect(tremoloGain);
-      tremoloGain.connect(filter);
-      filter.connect(this.purrGain);
+      this.purrOsc1.connect(this.purrTremoloGain);
+      this.purrOsc2.connect(this.purrTremoloGain);
+      this.purrOsc3.connect(this.purrTremoloGain);
+      this.purrTremoloGain.connect(this.purrFilter);
+      this.purrFilter.connect(this.purrGain);
       this.purrGain.connect(this.masterGain);
 
-      this.purrOsc1.start();
-      this.purrOsc2.start();
-      this.purrMod.start();
+      this.purrOsc1.start(now);
+      this.purrOsc2.start(now);
+      this.purrOsc3.start(now);
+      this.purrMod.start(now);
 
       this.isPurrActive = true;
     } else {
-      if (this.purrOsc1) {
-        try {
-          this.purrOsc1.stop();
-          this.purrOsc2?.stop();
-          this.purrMod?.stop();
-          this.purrOsc1.disconnect();
-          this.purrOsc2?.disconnect();
-          this.purrMod?.disconnect();
-        } catch {}
-        this.purrOsc1 = null;
-        this.purrOsc2 = null;
-        this.purrMod = null;
-      }
+      try {
+        this.purrOsc1?.stop();
+        this.purrOsc2?.stop();
+        this.purrOsc3?.stop();
+        this.purrMod?.stop();
+        this.purrOsc1?.disconnect();
+        this.purrOsc2?.disconnect();
+        this.purrOsc3?.disconnect();
+        this.purrMod?.disconnect();
+        this.purrModDepth?.disconnect();
+        this.purrTremoloGain?.disconnect();
+        this.purrFilter?.disconnect();
+        this.purrGain?.disconnect();
+      } catch {}
+      this.purrOsc1 = null;
+      this.purrOsc2 = null;
+      this.purrOsc3 = null;
+      this.purrMod = null;
+      this.purrModDepth = null;
+      this.purrTremoloGain = null;
+      this.purrFilter = null;
+      this.purrGain = null;
       this.isPurrActive = false;
     }
 
@@ -166,14 +209,14 @@ class SoundscapeManager {
   public setRainVolume(vol: number) {
     this.rainVolume = vol;
     if (this.rainGain && this.ctx) {
-      this.rainGain.gain.setValueAtTime(vol, this.ctx.currentTime);
+      this.rainGain.gain.setTargetAtTime(vol, this.ctx.currentTime, 0.05);
     }
   }
 
   public setPurrVolume(vol: number) {
     this.purrVolume = vol;
     if (this.purrGain && this.ctx) {
-      this.purrGain.gain.setValueAtTime(vol, this.ctx.currentTime);
+      this.purrGain.gain.setTargetAtTime(vol * 0.75, this.ctx.currentTime, 0.05);
     }
   }
 

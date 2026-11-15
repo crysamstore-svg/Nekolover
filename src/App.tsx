@@ -108,19 +108,22 @@ export default function App() {
     return saved ? Number(saved) : 18;
   });
 
+  const DEFAULT_HEADER_CONFIG: HeaderButtonsConfig = {
+    showNightMode: false,
+    showAudio: false,
+    showMusic: false,
+    showTheme: false,
+    showStats: false,
+    showQuotes: false,
+    showBookmarks: false,
+  };
+
   const [headerConfig, setHeaderConfig] = useState<HeaderButtonsConfig>(() => {
     try {
       const saved = localStorage.getItem('nl_header_config');
-      if (saved) return JSON.parse(saved);
+      if (saved) return { ...DEFAULT_HEADER_CONFIG, ...JSON.parse(saved) };
     } catch {}
-    return {
-      showNightMode: true,
-      showAudio: true,
-      showTheme: true,
-      showStats: true,
-      showQuotes: true,
-      showBookmarks: true,
-    };
+    return DEFAULT_HEADER_CONFIG;
   });
 
   const [shelfStyle, setShelfStyle] = useState<ShelfStyle>(() => {
@@ -159,9 +162,11 @@ export default function App() {
   const [isFontModalOpen, setIsFontModalOpen] = useState(false);
   const [isAddQuoteOpen, setIsAddQuoteOpen] = useState(false);
   const [isAudioModalOpen, setIsAudioModalOpen] = useState(false);
+  const [isAmbientModalOpen, setIsAmbientModalOpen] = useState(false);
   const [isBookmarksOpen, setIsBookmarksOpen] = useState(false);
   const [quoteSelectedText, setQuoteSelectedText] = useState<string | undefined>(undefined);
   const [isAudioPlaying, setIsAudioPlaying] = useState(false);
+  const [isAmbientPlaying, setIsAmbientPlaying] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [bookToDelete, setBookToDelete] = useState<Book | null>(null);
 
@@ -798,6 +803,8 @@ export default function App() {
               }
             }}
             isAudioPlaying={isAudioPlaying}
+            onOpenAmbientAudioModal={() => setIsAmbientModalOpen(true)}
+            isAmbientPlaying={isAmbientPlaying}
             headerConfig={headerConfig}
             shelfStyle={shelfStyle}
             onShelfStyleChange={(s) => {
@@ -841,13 +848,7 @@ export default function App() {
             onUpdateBookProgress={handleUpdateBookProgress}
             currentFont={currentFont}
             onSelectFont={setCurrentFont}
-            onOpenAudioModal={() => {
-              if (!isVip) {
-                openVipModal('music');
-              } else {
-                setIsAudioModalOpen(true);
-              }
-            }}
+            onOpenAudioModal={() => setIsAmbientModalOpen(true)}
             onOpenMusicShelf={() => {
               if (!isVip) {
                 openVipModal('music');
@@ -885,16 +886,30 @@ export default function App() {
         {currentView === 'quotes' && (
           <QuotesVault
             quotes={quotes}
-            onOpenAddQuote={() => {
+            highlights={highlights}
+            books={books}
+            onOpenAddQuote={(defaultText?: string) => {
               if (!isVip && quotes.length >= 3) {
                 openVipModal('notes');
                 showToast('👑 Límite de 3 notas alcanzado. Pásate a VIP ($2/mes) para notas infinitas.');
                 return;
               }
-              setQuoteSelectedText(undefined);
+              setQuoteSelectedText(defaultText);
               setIsAddQuoteOpen(true);
             }}
             onDeleteQuote={handleDeleteQuote}
+            onDeleteHighlight={(pageKey, id) => {
+              setHighlights((prev) => {
+                const next = (prev[pageKey] || []).filter((h) => h.id !== id);
+                if (next.length === 0) {
+                  const copy = { ...prev };
+                  delete copy[pageKey];
+                  return copy;
+                }
+                return { ...prev, [pageKey]: next };
+              });
+              showToast('Subrayado eliminado.');
+            }}
             isVip={isVip}
             onOpenVipModal={() => openVipModal('notes')}
           />
@@ -964,6 +979,10 @@ export default function App() {
             }}
             onBack={() => setCurrentView('library')}
             onOpenLegalModal={handleOpenLegalModal}
+            onOpenStats={() => setCurrentView('stats')}
+            onOpenQuotes={() => setCurrentView('quotes')}
+            quotesCount={quotes.length}
+            highlightsCount={Object.values(highlights).reduce((acc, list) => acc + (list?.length || 0), 0)}
           />
         )}
 
@@ -1012,6 +1031,12 @@ export default function App() {
         isOpen={isAudioModalOpen}
         onClose={() => setIsAudioModalOpen(false)}
         onToast={showToast}
+      />
+
+      <AmbientAudioModal
+        isOpen={isAmbientModalOpen}
+        onClose={() => setIsAmbientModalOpen(false)}
+        onAudioStateChange={(playing) => setIsAmbientPlaying(playing)}
       />
 
       <BookmarksDrawer

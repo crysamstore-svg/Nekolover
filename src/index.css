@@ -407,7 +407,8 @@ body {
 
 .bookcase-books-layer {
   position: relative;
-  z-index: 5;
+  z-index: 14;
+  margin-bottom: -3px;
   will-change: transform;
   transform: translate3d(0, var(--shelf-books-parallax-y, 0px), 0);
   transition: transform 0.12s cubic-bezier(0.22, 1, 0.36, 1);
@@ -415,7 +416,7 @@ body {
 
 .bookcase-plank-wrap {
   position: relative;
-  z-index: 12;
+  z-index: 10;
   margin-left: -4px;
   margin-right: -4px;
   will-change: transform;

@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { X, CloudRain, Volume2, VolumeX, Sparkles, Sliders } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { X, Volume2 } from 'lucide-react';
 import { soundscape } from '../utils/audio';
 
 interface AmbientAudioModalProps {
@@ -18,18 +18,27 @@ export const AmbientAudioModal: React.FC<AmbientAudioModalProps> = ({
   const [rainVolume, setRainVolume] = useState(soundscape.rainVolume);
   const [purrVolume, setPurrVolume] = useState(soundscape.purrVolume);
 
+  useEffect(() => {
+    if (isOpen) {
+      setRainActive(soundscape.isRainActive);
+      setPurrActive(soundscape.isPurrActive);
+      setRainVolume(soundscape.rainVolume);
+      setPurrVolume(soundscape.purrVolume);
+    }
+  }, [isOpen]);
+
   if (!isOpen) return null;
 
   const handleToggleRain = () => {
     const nextState = soundscape.toggleRain();
     setRainActive(nextState);
-    onAudioStateChange(nextState || purrActive);
+    onAudioStateChange(soundscape.isAnyActive());
   };
 
   const handleTogglePurr = () => {
     const nextState = soundscape.togglePurr();
     setPurrActive(nextState);
-    onAudioStateChange(rainActive || nextState);
+    onAudioStateChange(soundscape.isAnyActive());
   };
 
   const handleChangeRainVol = (val: number) => {
@@ -56,6 +65,7 @@ export const AmbientAudioModal: React.FC<AmbientAudioModalProps> = ({
         <button
           onClick={onClose}
           className="absolute top-4 right-4 p-1 rounded-lg text-[var(--text-muted)] hover:text-[var(--accent-pink)] transition"
+          aria-label="Cerrar sonido ambiental"
         >
           <X className="w-5 h-5" />
         </button>
@@ -84,9 +94,9 @@ export const AmbientAudioModal: React.FC<AmbientAudioModalProps> = ({
               </div>
               <button
                 onClick={handleToggleRain}
-                className={`px-3 py-1 rounded-xl text-xs font-bold transition ${
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition ${
                   rainActive
-                    ? 'bg-[var(--accent-pink)] text-black'
+                    ? 'bg-[var(--accent-pink)] text-black shadow-md'
                     : 'bg-black/60 border border-[var(--border-color)] text-[var(--text-muted)] hover:text-white'
                 }`}
               >
@@ -113,7 +123,7 @@ export const AmbientAudioModal: React.FC<AmbientAudioModalProps> = ({
           <div className="bg-black/40 border border-[var(--border-color)] p-3.5 rounded-2xl">
             <div className="flex items-center justify-between mb-2">
               <div className="flex items-center gap-2">
-                <span className="text-xl">🐈‍⬛</span>
+                <span className="text-xl">🐱</span>
                 <div>
                   <h4 className="font-bold text-xs text-white">Ronroneo Neko</h4>
                   <p className="text-[10px] text-[var(--text-muted)]">Vibración cálida felina</p>

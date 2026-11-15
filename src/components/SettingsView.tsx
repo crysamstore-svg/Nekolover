@@ -36,6 +36,7 @@ import { vipManager } from '../utils/vipManager';
 export interface HeaderButtonsConfig {
   showNightMode: boolean;
   showAudio: boolean;
+  showMusic: boolean;
   showTheme: boolean;
   showStats: boolean;
   showBookmarks: boolean;
@@ -74,6 +75,10 @@ interface SettingsViewProps {
   onUpdateShelfBgConfig?: (config: ShelfBackgroundConfig) => void;
   onResetStatsToZero?: () => void;
   onOpenLegalModal?: (tab: LegalTab) => void;
+  onOpenStats?: () => void;
+  onOpenQuotes?: () => void;
+  quotesCount?: number;
+  highlightsCount?: number;
 }
 
 export const SettingsView: React.FC<SettingsViewProps> = ({
@@ -101,7 +106,11 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   shelfBgConfig,
   onUpdateShelfBgConfig,
   onResetStatsToZero,
-  onOpenLegalModal
+  onOpenLegalModal,
+  onOpenStats,
+  onOpenQuotes,
+  quotesCount = 0,
+  highlightsCount = 0
 }) => {
   const [activeTab, setActiveTab] = useState<'contrast' | 'typography' | 'margins' | 'header' | 'shelf' | 'legal'>('contrast');
   const [isBgModalOpen, setIsBgModalOpen] = useState<boolean>(false);
@@ -112,24 +121,55 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
   return (
     <div className="flex-1 max-w-5xl mx-auto w-full p-4 sm:p-8 animate-fadeIn">
-      {/* Top Bar with Back Button */}
-      <div className="flex items-center justify-between gap-4 mb-6 pb-4 border-b border-[var(--border-color)]">
-        <button
-          onClick={onBack}
-          className="px-3.5 py-2 rounded-xl text-xs font-cute font-bold bg-black/40 border border-[var(--border-color)] hover:border-[var(--accent-pink)] text-[var(--accent-pink)] transition flex items-center gap-2 active:scale-95 shadow-md"
-          title="Regresar a la estantería de libros"
-        >
-          <ArrowLeft className="w-4 h-4" />
-          <span>Volver a la Biblioteca</span>
-        </button>
+      {/* Top Bar with Back Button + Direct Shortcuts for Stats & Quotes Vault */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-6 pb-4 border-b border-[var(--border-color)]">
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            onClick={onBack}
+            className="px-3.5 py-2 rounded-xl text-xs font-cute font-bold bg-black/40 border border-[var(--border-color)] hover:border-[var(--accent-pink)] text-[var(--accent-pink)] transition flex items-center gap-2 active:scale-95 shadow-md"
+            title="Regresar a la estantería de libros"
+          >
+            <ArrowLeft className="w-4 h-4" />
+            <span>Volver a la Biblioteca</span>
+          </button>
 
-        <div className="text-right">
-          <h2 className="dark-reborn-font font-bold text-lg sm:text-xl text-[var(--accent-pink)] flex items-center justify-end gap-2">
+          {onOpenStats && (
+            <button
+              type="button"
+              onClick={onOpenStats}
+              className="px-3 py-2 rounded-xl text-xs font-cute font-bold bg-black/40 border border-[var(--border-color)] hover:border-[var(--accent-purple)] text-[var(--text-main)] hover:text-white transition flex items-center gap-1.5 active:scale-95 shadow-md"
+              title="Ver gráficos y estadísticas de lectura"
+            >
+              <BarChart3 className="w-3.5 h-3.5 text-[var(--accent-purple)]" />
+              <span>Estadísticas</span>
+            </button>
+          )}
+
+          {onOpenQuotes && (
+            <button
+              type="button"
+              onClick={onOpenQuotes}
+              className="px-3 py-2 rounded-xl text-xs font-cute font-bold bg-black/40 border border-[var(--border-color)] hover:border-[var(--accent-pink)] text-[var(--text-main)] hover:text-white transition flex items-center gap-1.5 active:scale-95 shadow-md"
+              title="Ver Baúl de Citas, Subrayados y Notas del Libro"
+            >
+              <QuoteIcon className="w-3.5 h-3.5 text-[var(--accent-pink)]" />
+              <span>Citas y Notas</span>
+              {quotesCount + highlightsCount > 0 && (
+                <span className="text-[10px] px-1.5 py-0.2 rounded-md font-bold bg-[var(--accent-pink)] text-black">
+                  {quotesCount + highlightsCount}
+                </span>
+              )}
+            </button>
+          )}
+        </div>
+
+        <div className="sm:text-right">
+          <h2 className="dark-reborn-font font-bold text-lg sm:text-xl text-[var(--accent-pink)] flex items-center sm:justify-end gap-2">
             <span>⚙️</span>
             <span>Configuraciones Literarias</span>
           </h2>
           <p className="text-[11px] text-[var(--text-muted)]">
-            Ajustes de lectura, tipografía, márgenes, contrastes, cabecera y legalidad
+            Ajustes de lectura, estadísticas, citas del libro, cabecera y legalidad
           </p>
         </div>
       </div>
@@ -528,14 +568,15 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 <span>Personalización de Botones del Header</span>
               </h3>
               <p className="text-xs text-[var(--text-muted)] mt-1">
-                Elige qué accesos directos y botones se muestran en la barra superior de la aplicación:
+                Activa qué accesos directos y botones se muestran en la pantalla principal (solo aparecen los que actives aquí):
               </p>
             </div>
 
             <div className="space-y-3 pt-2">
               {[
                 { key: 'showNightMode' as const, label: 'Botón de Modo Noche Rápido (Sol / Luna)', desc: 'Interruptor directo para alternar alto contraste OLED', icon: '🌙' },
-                { key: 'showAudio' as const, label: 'Botón de Sonido Ambiental Lo-Fi', desc: 'Control de lluvia gótica y ronroneo de gato', icon: '🎶' },
+                { key: 'showAudio' as const, label: 'Botón de Sonido Ambiental Lo-Fi', desc: 'Control de lluvia gótica y ronroneo de gato', icon: '🌧️' },
+                { key: 'showMusic' as const, label: 'Botón de Reproductor de Música (VIP)', desc: 'Acceso rápido a tus canciones y pistas de fondo', icon: '🎶' },
                 { key: 'showTheme' as const, label: 'Botón de Selector de Temas', desc: 'Acceso rápido al modal de paletas de color', icon: '🎨' },
                 { key: 'showStats' as const, label: 'Pestaña de Estadísticas', desc: 'Acceso a minutos de lectura, rachas y gráficos', icon: '📊' },
                 { key: 'showQuotes' as const, label: 'Pestaña de Notas y Citas', desc: 'Acceso al Baúl de Citas literarias guardadas', icon: '🪶' },
@@ -724,12 +765,61 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               </div>
             </div>
 
-            {/* Stats Reset to Zero Section */}
+            {/* Reading Stats, Quotes/Notes Vault & Stats Reset Section */}
             <div className="pt-4 border-t border-white/5 space-y-3">
               <label className="text-xs font-bold text-white block flex items-center gap-2">
                 <BarChart3 className="w-4 h-4 text-[var(--accent-pink)]" />
-                <span>Reinicio de Estadísticas de Lectura:</span>
+                <span>Estadísticas de Lectura y Baúl de Citas / Notas:</span>
               </label>
+
+              {/* Direct access cards for Stats and Quotes/Notes Vault */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="p-4 rounded-xl bg-black/45 border border-[var(--accent-purple)]/35 flex flex-col justify-between gap-3">
+                  <div>
+                    <h4 className="font-bold text-xs text-white flex items-center gap-1.5">
+                      <BarChart3 className="w-3.5 h-3.5 text-[var(--accent-purple)]" />
+                      <span>Estadísticas de Lectura</span>
+                    </h4>
+                    <p className="text-[11px] text-[var(--text-muted)] mt-1">
+                      Visualiza tus minutos leídos, páginas diarias, rachas activas y gráficos de progreso.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => onOpenStats?.()}
+                    className="w-full px-3.5 py-2 rounded-xl text-xs font-cute font-bold bg-[var(--accent-purple)]/20 hover:bg-[var(--accent-purple)] text-[var(--accent-purple)] hover:text-black border border-[var(--accent-purple)]/50 transition flex items-center justify-center gap-2 active:scale-95"
+                  >
+                    <BarChart3 className="w-3.5 h-3.5" />
+                    <span>Ver Estadísticas de Lectura</span>
+                  </button>
+                </div>
+
+                <div className="p-4 rounded-xl bg-black/45 border border-[var(--accent-pink)]/35 flex flex-col justify-between gap-3">
+                  <div>
+                    <h4 className="font-bold text-xs text-white flex items-center gap-1.5">
+                      <QuoteIcon className="w-3.5 h-3.5 text-[var(--accent-pink)]" />
+                      <span>Baúl de Citas y Notas del Libro</span>
+                      {quotesCount + highlightsCount > 0 && (
+                        <span className="text-[10px] px-1.5 py-0.2 rounded-md bg-[var(--accent-pink)] text-black font-bold">
+                          {quotesCount + highlightsCount}
+                        </span>
+                      )}
+                    </h4>
+                    <p className="text-[11px] text-[var(--text-muted)] mt-1">
+                      Consulta todas tus citas literarias, reflexiones y frases subrayadas de cada libro.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => onOpenQuotes?.()}
+                    className="w-full px-3.5 py-2 rounded-xl text-xs font-cute font-bold bg-[var(--accent-pink)]/20 hover:bg-[var(--accent-pink)] text-[var(--accent-pink)] hover:text-black border border-[var(--accent-pink)]/50 transition flex items-center justify-center gap-2 active:scale-95"
+                  >
+                    <QuoteIcon className="w-3.5 h-3.5" />
+                    <span>Ver Citas y Notas del Libro</span>
+                  </button>
+                </div>
+              </div>
+
               <div className="p-4 rounded-xl bg-red-950/20 border border-red-500/30 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
                 <div>
                   <h4 className="font-bold text-xs text-white">
