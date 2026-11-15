@@ -38,6 +38,7 @@ import {
 import { Book, BookCategory, ShelfStyle, ShelfViewMode, ShelfBackgroundConfig } from '../types';
 import { ShelfBackgroundModal, DEFAULT_SHELF_BG } from './ShelfBackgroundModal';
 import { HeaderButtonsConfig } from './SettingsView';
+import { resolveCoverGradient, normalizeBookEmoji } from '../utils/db';
 
 interface BookshelfProps {
   books: Book[];
@@ -172,6 +173,22 @@ export const Bookshelf: React.FC<BookshelfProps> = ({
 
   const shelfStyle = propShelfStyle ?? internalShelfStyle;
   const viewMode = propViewMode ?? internalViewMode;
+
+  const bookcaseRef = useRef<HTMLDivElement | null>(null);
+  const prevShelfStyleRef = useRef<ShelfStyle>(shelfStyle);
+  const [isDepthTransitioning, setIsDepthTransitioning] = useState(false);
+
+  // Transición de profundidad 3D al cambiar el ShelfStyle
+  useEffect(() => {
+    if (prevShelfStyleRef.current !== shelfStyle) {
+      prevShelfStyleRef.current = shelfStyle;
+      setIsDepthTransitioning(true);
+      const timer = setTimeout(() => {
+        setIsDepthTransitioning(false);
+      }, 620);
+      return () => clearTimeout(timer);
+    }
+  }, [shelfStyle]);
 
   const handleSetShelfStyle = (style: ShelfStyle) => {
     setInternalShelfStyle(style);
@@ -316,19 +333,29 @@ export const Bookshelf: React.FC<BookshelfProps> = ({
     const dy = touch.clientY - touchStartPos.current.y;
     const distance = Math.hypot(dx, dy);
 
-    // Si se desliza más de 8px con el dedo, activar arrastre táctil fluido (sin vibraciones)
-    if (distance > 8) {
+    // Si aún no estamos arrastrando y el usuario mueve verticalmente, es scroll móvil: cancelar long-press y no bloquear scroll
+    if (!isTouchDragging.current && distance > 8) {
       if (longPressTimerRef.current) {
         clearTimeout(longPressTimerRef.current);
         longPressTimerRef.current = null;
       }
 
-      if (!isTouchDragging.current) {
-        isTouchDragging.current = true;
-        setTouchActiveBookId(bookId);
+      if (Math.abs(dy) >= Math.abs(dx) * 1.1) {
+        touchStartPos.current = null;
+        return;
       }
 
-      // Prevenir desplazamiento de la página durante el deslizamiento del libro
+      // Solo iniciar reordenamiento táctil si el gesto inicial es claramente horizontal
+      if (Math.abs(dx) > 14 && Math.abs(dx) > Math.abs(dy) * 1.25) {
+        isTouchDragging.current = true;
+        setTouchActiveBookId(bookId);
+      } else {
+        return;
+      }
+    }
+
+    if (isTouchDragging.current) {
+      // Prevenir desplazamiento de la página durante el arrastre activo del libro
       if (e.cancelable) {
         e.preventDefault();
       }
@@ -473,6 +500,49 @@ export const Bookshelf: React.FC<BookshelfProps> = ({
   const effectivePage = Math.min(currentPage, totalPages);
   const paginatedBooks = sortedBooks.slice((effectivePage - 1) * pageSize, effectivePage * pageSize);
 
+  // Efecto de paralaje suave mediante transformaciones CSS al hacer scroll en la biblioteca
+  useEffect(() => {
+    let rafId = 0;
+
+    const updateParallax = () => {
+      rafId = 0;
+      const el = bookcaseRef.current;
+      if (!el) return;
+
+      const rect = el.getBoundingClientRect();
+      const viewportH = window.innerHeight || 800;
+      const viewportCenter = viewportH * 0.5;
+      const rectCenter = rect.top + rect.height * 0.5;
+
+      const normalizedFromCenter = Math.max(-1, Math.min(1, (rectCenter - viewportCenter) / viewportH));
+      const scrollDrift = Math.sin(window.scrollY * 0.0045) * 6;
+
+      const backwallY = Math.max(-24, Math.min(24, normalizedFromCenter * -20 - scrollDrift));
+      const booksY = Math.max(-4, Math.min(4, normalizedFromCenter * 2.5 + scrollDrift * 0.18));
+      const plankY = Math.max(-6, Math.min(6, normalizedFromCenter * 4.5 + scrollDrift * 0.35));
+
+      el.style.setProperty('--shelf-parallax-y', `${backwallY.toFixed(2)}px`);
+      el.style.setProperty('--shelf-books-parallax-y', `${booksY.toFixed(2)}px`);
+      el.style.setProperty('--shelf-plank-parallax-y', `${plankY.toFixed(2)}px`);
+    };
+
+    const onScrollOrResize = () => {
+      if (!rafId) {
+        rafId = window.requestAnimationFrame(updateParallax);
+      }
+    };
+
+    updateParallax();
+    window.addEventListener('scroll', onScrollOrResize, { passive: true });
+    window.addEventListener('resize', onScrollOrResize, { passive: true });
+
+    return () => {
+      window.removeEventListener('scroll', onScrollOrResize);
+      window.removeEventListener('resize', onScrollOrResize);
+      if (rafId) window.cancelAnimationFrame(rafId);
+    };
+  }, [sortedBooks.length, viewMode, effectivePage]);
+
   // Stats
   const totalBooks = books.length;
   const readingCount = books.filter((b) => b.category === 'reading').length;
@@ -482,7 +552,7 @@ export const Bookshelf: React.FC<BookshelfProps> = ({
   const favoritesCount = books.filter((b) => b.favorite).length;
 
   // Chunk books for shelf levels depending on viewMode
-  const chunkSize = viewMode === 'spines' ? 7 : 4;
+  const chunkSize = viewMode === 'spines' ? 10 : viewMode === 'covers' ? 6 : 4;
   const shelves: Book[][] = [];
   for (let i = 0; i < paginatedBooks.length; i += chunkSize) {
     shelves.push(paginatedBooks.slice(i, i + chunkSize));
@@ -620,7 +690,7 @@ export const Bookshelf: React.FC<BookshelfProps> = ({
           
           {/* 1. Buscador del Libro */}
           <div className="relative flex-1 min-w-[210px] sm:max-w-xs">
-            <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-[var(--accent-purple)]/60" />
+            <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-[var(--accent-pink)]/75 pointer-events-none" />
             <input
               type="text"
               value={searchQuery}
@@ -629,7 +699,7 @@ export const Bookshelf: React.FC<BookshelfProps> = ({
                 setCurrentPage(1);
               }}
               placeholder="Buscador de libro: título o autor..."
-              className="w-full bg-black/50 border border-[var(--border-color)] rounded-xl pl-8 pr-8 py-2 text-xs text-white placeholder-[var(--text-muted)] focus:outline-none focus:border-[var(--accent-pink)] transition shadow-inner font-sans"
+              className="w-full h-9 bg-black/50 border border-[var(--border-color)] rounded-xl pl-8 pr-8 py-1.5 text-xs leading-normal text-white placeholder-[var(--text-muted)] focus:outline-none focus:border-[var(--accent-pink)] transition shadow-inner font-sans"
             />
             {searchQuery && (
               <button
@@ -762,7 +832,7 @@ export const Bookshelf: React.FC<BookshelfProps> = ({
               title="Subir libro individual (EPUB, PDF, TXT)"
             >
               <UploadCloud className="w-3.5 h-3.5" />
-              <span className="hidden xs:inline">Subir</span>
+              <span>Subir</span>
             </button>
 
             {/* Sincronizar Almacenamiento Interno (Hasta 2000 Libros) */}
@@ -849,18 +919,18 @@ export const Bookshelf: React.FC<BookshelfProps> = ({
             </div>
 
             {/* Custom Shelf Style Selector */}
-            <div className="flex items-center gap-1 bg-black/40 border border-[var(--border-color)] rounded-xl px-2 py-1 text-xs text-[var(--text-main)]">
-              <Palette className="w-3 h-3 text-[var(--accent-pink)]" />
+            <div className="flex items-center gap-1.5 bg-black/50 border border-[var(--border-color)] hover:border-[var(--accent-pink)]/60 rounded-xl px-2.5 h-9 text-xs text-[var(--text-main)] shadow-sm transition-colors">
+              <Library className="w-3.5 h-3.5 text-[var(--accent-pink)] shrink-0" />
               <select
                 value={shelfStyle}
                 onChange={(e) => handleSetShelfStyle(e.target.value as ShelfStyle)}
-                aria-label="Personalizar estilo de estantería"
-                className="bg-transparent text-[11px] focus:outline-none cursor-pointer text-[var(--text-main)]"
+                aria-label="Personalizar forma y acabado de biblioteca"
+                className="bg-transparent text-[11px] sm:text-xs font-medium leading-normal py-1 pr-1 focus:outline-none cursor-pointer text-[var(--text-main)]"
               >
-                <option value="wood-gothic" className="bg-[#1a1726]">🪵 Madera Caoba</option>
-                <option value="wood-oak" className="bg-[#1a1726]">🌲 Roble Ébano</option>
-                <option value="digital-neon" className="bg-[#1a1726]">⚡ Digital Neón</option>
-                <option value="digital-cyber" className="bg-[#1a1726]">🔮 Cyber Grid</option>
+                <option value="wood-gothic" className="bg-[#1a1726]">🏛️ Biblioteca Caoba</option>
+                <option value="wood-oak" className="bg-[#1a1726]">🌲 Estantería Roble</option>
+                <option value="digital-neon" className="bg-[#1a1726]">⚡ Vitrina Neón</option>
+                <option value="digital-cyber" className="bg-[#1a1726]">💠 Rack Cyber</option>
                 <option value="minimal-oled" className="bg-[#1a1726]">🖤 Minimal OLED</option>
               </select>
             </div>
@@ -868,13 +938,13 @@ export const Bookshelf: React.FC<BookshelfProps> = ({
 
           <div className="flex items-center gap-2">
             {/* Sort Dropdown */}
-            <div className="flex items-center gap-1 bg-black/40 border border-[var(--border-color)] rounded-xl px-2 py-1 text-xs text-[var(--text-main)] shadow-sm">
-              <SlidersHorizontal className="w-3 h-3 text-[var(--accent-pink)]" />
+            <div className="flex items-center gap-1.5 bg-black/40 border border-[var(--border-color)] rounded-xl px-2.5 h-8 sm:h-9 text-xs text-[var(--text-main)] shadow-sm">
+              <SlidersHorizontal className="w-3.5 h-3.5 text-[var(--accent-pink)] shrink-0" />
               <select
                 value={sortBy}
                 onChange={(e) => handleSetSortBy(e.target.value as any)}
                 aria-label="Ordenar libros por"
-                className="bg-transparent text-[11px] focus:outline-none cursor-pointer text-[var(--text-main)] font-medium"
+                className="bg-transparent text-[11px] sm:text-xs leading-normal py-0.5 focus:outline-none cursor-pointer text-[var(--text-main)] font-medium"
               >
                 <option value="custom" className="bg-[#1a1726]">✨ Mi Orden (Como gustes)</option>
                 <option value="recent" className="bg-[#1a1726]">🕒 Recientes / Última lectura</option>
@@ -944,63 +1014,88 @@ export const Bookshelf: React.FC<BookshelfProps> = ({
         </div>
       ) : (
         <div
-          className={`flex-1 flex flex-col rounded-3xl p-3 sm:p-6 border border-[var(--border-color)] relative transition-all duration-300 shadow-2xl ${
+          ref={bookcaseRef}
+          data-shelf-style={shelfStyle}
+          className={`flex-1 bookcase-cabinet relative transition-all duration-300 ${
             shelfClassMap[shelfStyle]
-          }`}
+          } ${isDepthTransitioning ? 'bookcase-depth-transition' : ''}`}
         >
-          {/* Custom user background image if configured */}
-          {shelfBgConfig?.customImage && (
-            <>
-              <div
-                className="absolute inset-0 rounded-3xl bg-center pointer-events-none transition-all duration-300 overflow-hidden"
-                style={{
-                  backgroundImage: `url(${shelfBgConfig.customImage})`,
-                  backgroundSize: shelfBgConfig.fit === 'pattern' ? 'auto' : 'cover',
-                  backgroundRepeat: shelfBgConfig.fit === 'pattern' ? 'repeat' : 'no-repeat',
-                  filter: `blur(${shelfBgConfig.blur ?? 0}px)`
-                }}
-              />
-              <div
-                className="absolute inset-0 rounded-3xl bg-black pointer-events-none transition-opacity duration-300"
-                style={{ opacity: (shelfBgConfig.overlayDarkness ?? 65) / 100 }}
-              />
-            </>
-          )}
-
-          {/* Top Library Shelf Header */}
-          <div className="relative z-10 px-1 py-1 flex items-center justify-between border-b border-[var(--border-color)] pb-3 text-xs text-[var(--text-muted)]">
-            <span className="font-bold flex items-center gap-2 text-[var(--accent-pink)]">
-              <span>📚</span>
-              <span>MI ESTANTERÍA</span>
-              {markedForDeleteIds.length > 0 && (
-                <span className="text-[10px] bg-rose-600 text-white px-2 py-0.5 rounded-full font-bold animate-pulse">
-                  {markedForDeleteIds.length} marcado{markedForDeleteIds.length === 1 ? '' : 's'} para eliminar
-                </span>
-              )}
-            </span>
-            <div className="flex items-center gap-2.5">
-              <button
-                onClick={() => setIsBgModalOpen(true)}
-                className="text-[11px] text-[var(--accent-pink)] hover:text-white flex items-center gap-1.5 transition px-2.5 py-1 rounded-lg bg-black/50 border border-[var(--border-color)] hover:border-[var(--accent-pink)] shadow-sm"
-                title="Cambiar foto de fondo o textura"
-              >
-                <ImageIcon className="w-3 h-3 text-[var(--accent-pink)]" />
-                <span>{shelfBgConfig?.customImage ? 'Fondo Personalizado' : 'Personalizar Fondo'}</span>
-              </button>
-              <span className="text-[11px] font-mono text-[var(--text-muted)]">
-                {totalBooks} {totalBooks === 1 ? 'TOMO' : 'TOMOS'}
-              </span>
-            </div>
+          {/* Top Bookcase Crown Molding / Cornice */}
+          <div className="bookcase-crown">
+            <div className="bookcase-crown-ornament" />
           </div>
 
-          {/* Shelves rows */}
-          <div className="space-y-8 relative z-10 mt-4">
-            {shelves.map((shelfBooks, shelfIndex) => (
-              <div key={shelfIndex} className="conventional-shelf-row">
-                
+          {/* Bookcase Body: Left Upright Pillar + Recessed Interior + Right Upright Pillar */}
+          <div className="bookcase-body">
+            {/* Left Vertical Bookcase Frame Pillar */}
+            <div className="bookcase-pillar" aria-hidden="true" />
+
+            {/* Recessed Library Interior */}
+            <div className="bookcase-interior px-2.5 sm:px-5 pt-3 pb-4">
+              {/* Architectural Backwall Parallax Layer */}
+              <div className="bookcase-backwall-layer" aria-hidden="true" />
+
+              {/* Custom user background image if configured (also receives parallax depth) */}
+              {shelfBgConfig?.customImage && (
+                <>
+                  <div
+                    className="bookcase-backwall-layer bg-center overflow-hidden"
+                    style={{
+                      backgroundImage: `url(${shelfBgConfig.customImage})`,
+                      backgroundSize: shelfBgConfig.fit === 'pattern' ? 'auto' : 'cover',
+                      backgroundRepeat: shelfBgConfig.fit === 'pattern' ? 'repeat' : 'no-repeat',
+                      filter: `blur(${shelfBgConfig.blur ?? 0}px)`
+                    }}
+                  />
+                  <div
+                    className="absolute inset-0 bg-black pointer-events-none transition-opacity duration-300"
+                    style={{ opacity: (shelfBgConfig.overlayDarkness ?? 65) / 100 }}
+                  />
+                </>
+              )}
+
+              {/* Top Library Shelf Header */}
+              <div className="relative z-10 px-1 py-1 flex items-center justify-between border-b border-white/10 pb-2.5 text-xs text-[var(--text-muted)]">
+                <span className="font-bold flex items-center gap-2 text-[var(--accent-pink)]">
+                  <span>📚</span>
+                  <span>MI ESTANTERÍA</span>
+                  {markedForDeleteIds.length > 0 && (
+                    <span className="text-[10px] bg-rose-600 text-white px-2 py-0.5 rounded-full font-bold animate-pulse">
+                      {markedForDeleteIds.length} marcado{markedForDeleteIds.length === 1 ? '' : 's'} para eliminar
+                    </span>
+                  )}
+                </span>
+                <div className="flex items-center gap-2.5">
+                  <button
+                    onClick={() => setIsBgModalOpen(true)}
+                    className="text-[11px] text-[var(--accent-pink)] hover:text-white flex items-center gap-1.5 transition px-2.5 py-1 rounded-lg bg-black/50 border border-[var(--border-color)] hover:border-[var(--accent-pink)] shadow-sm"
+                    title="Cambiar foto de fondo o textura"
+                  >
+                    <ImageIcon className="w-3 h-3 text-[var(--accent-pink)]" />
+                    <span>{shelfBgConfig?.customImage ? 'Fondo Personalizado' : 'Personalizar Fondo'}</span>
+                  </button>
+                  <span className="text-[11px] font-mono text-[var(--text-muted)]">
+                    {totalBooks} {totalBooks === 1 ? 'TOMO' : 'TOMOS'}
+                  </span>
+                </div>
+              </div>
+
+              {/* Shelves rows */}
+              <div className="space-y-4 relative z-10 mt-2">
+                {shelves.map((shelfBooks, shelfIndex) => (
+              <div
+                key={shelfIndex}
+                className="conventional-shelf-row"
+                style={
+                  isDepthTransitioning
+                    ? { animationDelay: `${Math.min(shelfIndex * 55, 280)}ms` }
+                    : undefined
+                }
+              >
+                <div className="bookcase-books-layer">
                 {/* MODE 1: COVERS VIEW (Portadas frontales) */}
                 {viewMode === 'covers' && (
-                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4 sm:gap-6 px-2 sm:px-4 pb-1 items-end">
+                  <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-2.5 sm:gap-4 px-1.5 sm:px-3 pb-1 items-end">
                     {shelfBooks.map((book) => {
                       const percent = book.progressPercent || 0;
                       const isMarked = isBookMarked(book.id);
@@ -1082,13 +1177,13 @@ export const Bookshelf: React.FC<BookshelfProps> = ({
                           )}
 
                           {/* Conventional Book Cover Container */}
-                          <div className={`relative w-full max-w-[190px] aspect-[2/3] rounded-r-lg rounded-l-sm shadow-md overflow-hidden border border-white/10 group-hover:border-[var(--accent-pink)]/50 group-hover:shadow-[0_10px_25px_rgba(0,0,0,0.5)] transition-all flex flex-col justify-between p-3.5 text-left book-cover-shadow ${
+                          <div className={`relative w-full max-w-[115px] sm:max-w-[130px] aspect-[2/3] rounded-r-lg rounded-l-sm shadow-md overflow-hidden border border-white/10 group-hover:border-[var(--accent-pink)]/50 group-hover:shadow-[0_8px_18px_rgba(0,0,0,0.5)] transition-all flex flex-col justify-between p-2 sm:p-2.5 text-left book-cover-shadow ${
                             isMarked ? 'border-rose-500' : ''
                           }`}>
                             {/* Marked badge inside top right */}
                             {isMarked && (
-                              <div className="absolute top-2 right-2 z-30 bg-rose-600 text-white text-[10px] font-bold px-2 py-0.5 rounded-full shadow-md border border-white flex items-center gap-1 animate-fadeIn">
-                                <Trash2 className="w-3 h-3" />
+                              <div className="absolute top-1.5 right-1.5 z-30 bg-rose-600 text-white text-[9px] font-bold px-1.5 py-0.5 rounded-full shadow-md border border-white flex items-center gap-0.5 animate-fadeIn">
+                                <Trash2 className="w-2.5 h-2.5" />
                                 <span>Eliminar</span>
                               </div>
                             )}
@@ -1096,28 +1191,26 @@ export const Bookshelf: React.FC<BookshelfProps> = ({
                             <div
                               className="absolute inset-0 opacity-95 group-hover:scale-105 transition-transform duration-300"
                               style={{
-                                background:
-                                  book.coverGradient ||
-                                  'linear-gradient(135deg, #1f1a2e 0%, #100d18 100%)'
+                                background: resolveCoverGradient(book.coverGradient)
                               }}
                             />
 
                             {/* Subtle Spine Ledge line */}
-                            <div className="absolute top-0 left-0 bottom-0 w-2.5 bg-black/40 pointer-events-none" />
-                            <div className="absolute top-0 left-2.5 bottom-0 w-px bg-white/10 pointer-events-none" />
+                            <div className="absolute top-0 left-0 bottom-0 w-1.5 bg-black/40 pointer-events-none" />
+                            <div className="absolute top-0 left-1.5 bottom-0 w-px bg-white/10 pointer-events-none" />
 
                             {/* Bookmark Ribbon on top */}
-                            <div className="absolute -top-1 right-3 z-10 w-4 h-9 bg-gradient-to-b from-pink-500 to-rose-600 shadow-md [clip-path:polygon(0_0,100%_0,100%_100%,50%_75%,0_100%)] opacity-90 group-hover:h-10 transition-all" />
+                            <div className="absolute -top-1 right-2 z-10 w-3 h-6 bg-gradient-to-b from-pink-500 to-rose-600 shadow-md [clip-path:polygon(0_0,100%_0,100%_100%,50%_75%,0_100%)] opacity-90 group-hover:h-7 transition-all" />
 
                             {/* Top Card Bar */}
                             <div className="relative z-10 flex items-center justify-between">
                               <button
                                 onClick={(e) => onToggleFavorite(book.id, e)}
-                                className="p-1.5 rounded-full bg-black/50 backdrop-blur-md text-white/70 hover:text-[var(--accent-pink)] transition"
+                                className="p-1 rounded-full bg-black/50 backdrop-blur-md text-white/70 hover:text-[var(--accent-pink)] transition"
                                 title={book.favorite ? 'Quitar de favoritos' : 'Añadir a favoritos'}
                               >
                                 <Heart
-                                  className={`w-3.5 h-3.5 ${
+                                  className={`w-3 h-3 ${
                                     book.favorite
                                       ? 'fill-[var(--accent-pink)] text-[var(--accent-pink)]'
                                       : ''
@@ -1125,7 +1218,7 @@ export const Bookshelf: React.FC<BookshelfProps> = ({
                                 />
                               </button>
 
-                              <span className="text-[10px] font-mono uppercase bg-black/60 backdrop-blur-md px-2 py-0.5 rounded-full text-[var(--accent-purple)] border border-white/5">
+                              <span className="text-[8px] sm:text-[9px] font-mono uppercase bg-black/60 backdrop-blur-md px-1.5 py-0.5 rounded-full text-[var(--accent-purple)] border border-white/5">
                                 {book.type === 'epub'
                                   ? 'EPUB'
                                   : book.type === 'pdf'
@@ -1135,25 +1228,25 @@ export const Bookshelf: React.FC<BookshelfProps> = ({
                             </div>
 
                             {/* Center Cover Graphic */}
-                            <div className="relative z-10 text-center my-auto py-2">
-                              <span className="text-4xl sm:text-5xl filter drop-shadow-[0_4px_8px_rgba(0,0,0,0.8)] transform group-hover:scale-105 transition-transform block">
-                                {book.emoji}
+                            <div className="relative z-10 text-center my-auto py-1">
+                              <span className="text-2xl sm:text-3xl filter drop-shadow-[0_3px_6px_rgba(0,0,0,0.8)] transform group-hover:scale-105 transition-transform block">
+                                {normalizeBookEmoji(book.emoji)}
                               </span>
-                              <h4 className="dark-reborn-font font-bold text-xs sm:text-sm text-white line-clamp-2 mt-2 px-1 group-hover:text-[var(--accent-pink)] transition">
+                              <h4 className="dark-reborn-font font-bold text-[10px] sm:text-xs text-white line-clamp-2 mt-1 px-0.5 leading-tight group-hover:text-[var(--accent-pink)] transition">
                                 {book.title}
                               </h4>
-                              <p className="text-[10px] text-[var(--text-muted)] line-clamp-1 mt-0.5">
+                              <p className="text-[9px] text-[var(--text-muted)] line-clamp-1 mt-0.5">
                                 {book.author}
                               </p>
                             </div>
 
                             {/* Bottom: Reading Progress Indicator */}
                             <div className="relative z-10">
-                              <div className="flex items-center justify-between text-[10px] font-mono text-[var(--text-muted)] mb-1">
+                              <div className="flex items-center justify-between text-[9px] font-mono text-[var(--text-muted)] mb-0.5">
                                 <span>{percent}%</span>
                                 <span>Pág. {book.currentPage || 1}</span>
                               </div>
-                              <div className="w-full bg-black/60 h-1.5 rounded-full overflow-hidden border border-white/5">
+                              <div className="w-full bg-black/60 h-1 rounded-full overflow-hidden border border-white/5">
                                 <div
                                   className="h-full bg-gradient-to-r from-[var(--accent-pink)] to-[var(--accent-purple)] transition-all duration-300"
                                   style={{ width: `${percent}%` }}
@@ -1162,8 +1255,8 @@ export const Bookshelf: React.FC<BookshelfProps> = ({
                             </div>
                           </div>
 
-                          {/* Quick Action Overlay (Categories & Delete) */}
-                          <div className="flex items-center space-x-1 mt-2.5 opacity-0 group-hover:opacity-100 transition-opacity z-20">
+                          {/* Quick Action Overlay (Visibles en móvil táctil y al pasar el cursor en escritorio) */}
+                          <div className="flex items-center space-x-1.5 mt-2.5 opacity-90 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity z-20">
                             <button
                               onClick={(e) =>
                                 onChangeCategory(
@@ -1216,7 +1309,7 @@ export const Bookshelf: React.FC<BookshelfProps> = ({
 
                 {/* MODE 2: SPINES VIEW (Lomos verticales alineados en estantería) */}
                 {viewMode === 'spines' && (
-                  <div className="flex items-end justify-center gap-2 sm:gap-3 px-4 pb-2 overflow-x-auto min-h-[260px]">
+                  <div className="flex items-end justify-center gap-1.5 sm:gap-2.5 px-3 pb-2 overflow-x-auto min-h-[190px]">
                     {shelfBooks.map((book) => {
                       const isMarked = isBookMarked(book.id);
                       const isTouchingCurrent = touchActiveBookId === book.id;
@@ -1249,11 +1342,9 @@ export const Bookshelf: React.FC<BookshelfProps> = ({
                             }
                           }}
                           style={{
-                            background:
-                              book.coverGradient ||
-                              'linear-gradient(180deg, #2b112c 0%, #100b19 100%)',
-                            width: '46px',
-                            height: '240px',
+                            background: resolveCoverGradient(book.coverGradient),
+                            width: '36px',
+                            height: '175px',
                             boxShadow: '3px 0 10px rgba(0,0,0,0.5)',
                             touchAction: 'pan-y',
                             transform: isTouchingCurrent 
@@ -1262,7 +1353,7 @@ export const Bookshelf: React.FC<BookshelfProps> = ({
                             zIndex: isTouchingCurrent ? 60 : undefined,
                             pointerEvents: isTouchingCurrent ? 'none' : 'auto'
                           }}
-                          className={`relative group cursor-grab active:cursor-grabbing flex flex-col justify-between p-2 rounded-t-md transition-all duration-200 border-x border-t border-white/10 select-none ${
+                          className={`relative group cursor-grab active:cursor-grabbing flex flex-col justify-between p-1.5 rounded-t-md transition-all duration-200 border-x border-t border-white/10 select-none ${
                             isTouchingCurrent 
                               ? 'scale-105 shadow-[0_20px_45px_rgba(255,121,198,0.7)] ring-2 ring-[var(--accent-pink)] transition-none' 
                               : ''
@@ -1300,7 +1391,7 @@ export const Bookshelf: React.FC<BookshelfProps> = ({
                               ✕
                             </button>
                           )}
-                          <span className="text-sm block text-center">{book.emoji}</span>
+                          <span className="text-sm block text-center">{normalizeBookEmoji(book.emoji)}</span>
                           <span
                             className="font-cute font-bold text-[11px] text-white tracking-wider whitespace-nowrap overflow-hidden text-ellipsis block text-center"
                             style={{
@@ -1321,7 +1412,7 @@ export const Bookshelf: React.FC<BookshelfProps> = ({
 
                 {/* MODE 3: STACKS VIEW (Libros acostados / apilados horizontalmente) */}
                 {viewMode === 'stacks' && (
-                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 px-4 pb-2 items-end">
+                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2 sm:gap-3 px-2 sm:px-4 pb-2 items-end">
                     {shelfBooks.map((book) => {
                       const isMarked = isBookMarked(book.id);
                       const isTouchingCurrent = touchActiveBookId === book.id;
@@ -1354,9 +1445,7 @@ export const Bookshelf: React.FC<BookshelfProps> = ({
                             }
                           }}
                           style={{
-                            background:
-                              book.coverGradient ||
-                              'linear-gradient(90deg, #2b112c 0%, #100b19 100%)',
+                            background: resolveCoverGradient(book.coverGradient),
                             touchAction: 'pan-y',
                             transform: isTouchingCurrent 
                               ? `translate3d(${touchOffset.x}px, ${touchOffset.y}px, 0)` 
@@ -1364,7 +1453,7 @@ export const Bookshelf: React.FC<BookshelfProps> = ({
                             zIndex: isTouchingCurrent ? 60 : undefined,
                             pointerEvents: isTouchingCurrent ? 'none' : 'auto'
                           }}
-                          className={`relative group cursor-grab active:cursor-grabbing p-3 rounded-xl border border-white/10 transition-all duration-200 flex items-center justify-between shadow-md select-none ${
+                          className={`relative group cursor-grab active:cursor-grabbing p-2 sm:p-2.5 rounded-xl border border-white/10 transition-all duration-200 flex items-center justify-between shadow-md select-none ${
                             isTouchingCurrent 
                               ? 'scale-105 shadow-[0_20px_45px_rgba(255,121,198,0.7)] ring-2 ring-[var(--accent-pink)] transition-none' 
                               : ''
@@ -1402,14 +1491,14 @@ export const Bookshelf: React.FC<BookshelfProps> = ({
                               ✕
                             </button>
                           )}
-                          <div className="flex items-center gap-2 overflow-hidden">
-                            <span className="text-2xl">{book.emoji}</span>
+                          <div className="flex items-center gap-1.5 overflow-hidden">
+                            <span className="text-lg sm:text-xl shrink-0">{normalizeBookEmoji(book.emoji)}</span>
                             <div className="overflow-hidden">
-                              <h4 className="text-xs font-bold text-white truncate">{book.title}</h4>
-                              <p className="text-[10px] text-[var(--text-muted)] truncate">{book.author}</p>
+                              <h4 className="text-[11px] font-bold text-white truncate">{book.title}</h4>
+                              <p className="text-[9px] text-[var(--text-muted)] truncate">{book.author}</p>
                             </div>
                           </div>
-                          <span className="text-xs font-mono font-bold text-[var(--accent-pink)] shrink-0 ml-2">
+                          <span className="text-[10px] font-mono font-bold text-[var(--accent-pink)] shrink-0 ml-1.5">
                             {book.progressPercent || 0}%
                           </span>
                         </div>
@@ -1417,10 +1506,37 @@ export const Bookshelf: React.FC<BookshelfProps> = ({
                     })}
                   </div>
                 )}
+                </div>
 
-                {/* The Physical 3D Shelf Ledge / Plank */}
-                <div className="shelf-plank-shadow h-4 sm:h-5 w-full rounded-b-md relative overflow-hidden">
-                  <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent" />
+                {/* The Physical 3D Shelf Ledge / Plank with Brackets & Niche Shadow */}
+                <div
+                  className="bookcase-plank-wrap mt-1"
+                  aria-hidden="true"
+                  style={
+                    isDepthTransitioning
+                      ? { animationDelay: `${Math.min(shelfIndex * 55, 280)}ms` }
+                      : undefined
+                  }
+                >
+                  <div className="bookcase-plank-top" />
+                  <div className="bookcase-plank-front">
+                    <span className="w-1.5 h-1.5 rounded-full bg-white/15" />
+                    <span className="text-[8px] font-mono tracking-widest uppercase text-white/25">
+                      {shelfStyle === 'wood-gothic'
+                        ? '✦ ✦ ✦'
+                        : shelfStyle === 'digital-neon'
+                        ? '━━━━━'
+                        : shelfStyle === 'digital-cyber'
+                        ? '[ NODE ]'
+                        : ''}
+                    </span>
+                    <span className="w-1.5 h-1.5 rounded-full bg-white/15" />
+                  </div>
+                  <div className="bookcase-plank-brackets">
+                    <div className="bookcase-plank-shadow" />
+                    <div className="bookcase-bracket-left" />
+                    <div className="bookcase-bracket-right" />
+                  </div>
                 </div>
               </div>
             ))}
@@ -1428,7 +1544,7 @@ export const Bookshelf: React.FC<BookshelfProps> = ({
 
           {/* Pagination Controls for Large Libraries (Supports up to 2000 books smoothly) */}
           {totalPages > 1 && (
-            <div className="relative z-10 flex flex-wrap items-center justify-between gap-3 pt-6 mt-4 border-t border-[var(--border-color)] text-xs">
+            <div className="relative z-10 flex flex-wrap items-center justify-between gap-3 pt-5 mt-3 border-t border-white/10 text-xs">
               <div className="text-[11px] text-[var(--text-muted)] font-mono">
                 Mostrando {((effectivePage - 1) * pageSize) + 1} - {Math.min(effectivePage * pageSize, sortedBooks.length)} de {sortedBooks.length} tomos
               </div>
@@ -1475,6 +1591,14 @@ export const Bookshelf: React.FC<BookshelfProps> = ({
               </div>
             </div>
           )}
+            </div>
+
+            {/* Right Vertical Bookcase Frame Pillar */}
+            <div className="bookcase-pillar" aria-hidden="true" />
+          </div>
+
+          {/* Bottom Bookcase Plinth / Base */}
+          <div className="bookcase-base" aria-hidden="true" />
         </div>
       )}
 

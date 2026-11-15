@@ -164,7 +164,7 @@ export async function deleteBookFromDB(id: string): Promise<void> {
 // Helper to assign cute gothic / kawaii emojis based on title keywords
 export function getSmartEmojiForTitle(title: string): string {
   const lower = title.toLowerCase();
-  if (lower.includes('gato') || lower.includes('neko') || lower.includes('cat')) return '🐈‍⬛';
+  if (lower.includes('gato') || lower.includes('neko') || lower.includes('cat')) return '🐱';
   if (lower.includes('fantasma') || lower.includes('ghost') || lower.includes('muerte')) return '👻';
   if (lower.includes('vampir') || lower.includes('dracula') || lower.includes('sangre')) return '🦇';
   if (lower.includes('magia') || lower.includes('bruja') || lower.includes('witch') || lower.includes('hechizo')) return '🔮';
@@ -179,6 +179,12 @@ export function getSmartEmojiForTitle(title: string): string {
   return '📖';
 }
 
+// Normalize cat ZWJ emoji on WebViews/systems that render it as cat + gray square
+export function normalizeBookEmoji(emoji?: string): string {
+  if (!emoji) return '📖';
+  return emoji === '🐈‍⬛' ? '🐱' : emoji;
+}
+
 // Generate aesthetic Dark Reborn gradient
 export function getRandomGothicGradient(index: number): string {
   const gradients = [
@@ -190,5 +196,34 @@ export function getRandomGothicGradient(index: number): string {
     'linear-gradient(135deg, #162424 0%, #091313 100%)',
     'linear-gradient(135deg, #2e1d0d 0%, #140b03 100%)'
   ];
-  return gradients[index % gradients.length];
+  return gradients[Math.abs(index) % gradients.length];
+}
+
+// Convert legacy Tailwind gradient class strings (or missing values) into valid CSS background gradients
+export function resolveCoverGradient(coverGradient?: string, index = 0): string {
+  if (coverGradient) {
+    const trimmed = coverGradient.trim();
+    if (
+      trimmed.startsWith('linear-gradient') ||
+      trimmed.startsWith('radial-gradient') ||
+      trimmed.startsWith('#') ||
+      trimmed.startsWith('rgb') ||
+      trimmed.startsWith('hsl')
+    ) {
+      return trimmed;
+    }
+    if (trimmed.includes('pink-900')) {
+      return 'linear-gradient(135deg, #5b1846 0%, #2a103f 55%, #0c0714 100%)';
+    }
+    if (trimmed.includes('rose-950')) {
+      return 'linear-gradient(135deg, #4c0519 0%, #2e1065 55%, #090612 100%)';
+    }
+    if (trimmed.includes('violet-950')) {
+      return 'linear-gradient(135deg, #2e1065 0%, #500724 55%, #090612 100%)';
+    }
+    if (trimmed.includes('slate-900')) {
+      return 'linear-gradient(135deg, #1e293b 0%, #2e1065 55%, #090612 100%)';
+    }
+  }
+  return getRandomGothicGradient(index);
 }

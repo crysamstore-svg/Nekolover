@@ -682,7 +682,7 @@ export default function App() {
     );
 
   return (
-    <div className="min-h-screen flex flex-col bg-[var(--bg-color)] text-[var(--text-main)] transition-colors duration-300">
+    <div className="min-h-[100dvh] flex flex-col bg-[var(--bg-color)] text-[var(--text-main)] transition-colors duration-300">
       {/* Hidden file input for single/multi upload */}
       <input
         id="global-file-input"
@@ -1081,9 +1081,9 @@ export default function App() {
 
       {/* Floating Toast Notification */}
       {toastMessage && (
-        <div className="fixed bottom-6 right-6 z-50 bg-[var(--card-bg)] border border-[var(--accent-pink)] text-white px-4 py-3 rounded-2xl shadow-2xl modal-animate flex items-center space-x-2.5">
-          <span className="text-lg">🐾</span>
-          <span className="text-xs font-semibold">{toastMessage}</span>
+        <div className="fixed bottom-5 left-4 right-4 sm:left-auto sm:right-6 sm:max-w-sm z-50 bg-[var(--card-bg)] border border-[var(--accent-pink)] text-white px-4 py-3 rounded-2xl shadow-2xl modal-animate flex items-center space-x-2.5">
+          <span className="text-lg shrink-0">🐾</span>
+          <span className="text-xs font-semibold leading-snug">{toastMessage}</span>
         </div>
       )}
     </div>

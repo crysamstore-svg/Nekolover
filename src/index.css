@@ -90,6 +90,11 @@
   --reader-text: #ffeef0;
 }
 
+html, body {
+  overscroll-behavior-y: contain;
+  touch-action: manipulation;
+}
+
 body {
   background-color: var(--bg-color);
   color: var(--text-main);
@@ -294,73 +299,608 @@ body {
   }
 }
 
-/* Conventional Bookshelf Styles (Modo Estantería Convencional) */
-.conventional-shelf-container {
-  background: var(--card-bg);
-  border: 1px solid var(--border-color);
+/* ==========================================================================
+   3D Bookcase / Library Architectural System (Biblioteca & Estantería Física)
+   ========================================================================== */
+
+.bookcase-cabinet {
+  position: relative;
   border-radius: 1.25rem;
   overflow: hidden;
-  box-shadow: 0 10px 30px -10px rgba(0, 0, 0, 0.5);
+  display: flex;
+  flex-direction: column;
+  box-shadow:
+    0 24px 50px rgba(0, 0, 0, 0.85),
+    0 4px 14px rgba(0, 0, 0, 0.6);
 }
 
+/* Top Crown Molding / Cornice */
+.bookcase-crown {
+  position: relative;
+  height: 18px;
+  width: 100%;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+@media (min-width: 640px) {
+  .bookcase-crown {
+    height: 22px;
+  }
+}
+
+.bookcase-crown-ornament {
+  width: 68px;
+  height: 6px;
+  border-radius: 999px;
+  opacity: 0.75;
+}
+
+/* Body containing left upright pillar, recessed backwall, and right upright pillar */
+.bookcase-body {
+  position: relative;
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+
+.bookcase-pillar {
+  width: 12px;
+  flex-shrink: 0;
+  position: relative;
+  z-index: 15;
+}
+@media (min-width: 640px) {
+  .bookcase-pillar {
+    width: 18px;
+  }
+}
+
+.bookcase-interior {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  /* Deep recessed bookcase niche shadow */
+  box-shadow:
+    inset 0 18px 28px -8px rgba(0, 0, 0, 0.9),
+    inset 12px 0 20px -8px rgba(0, 0, 0, 0.8),
+    inset -12px 0 20px -8px rgba(0, 0, 0, 0.8),
+    inset 0 -14px 24px -10px rgba(0, 0, 0, 0.85);
+}
+
+/* Parallax Backwall Layer inside the bookcase interior */
+.bookcase-backwall-layer {
+  position: absolute;
+  inset: -36px 0;
+  pointer-events: none;
+  z-index: 0;
+  will-change: transform;
+  transform: translate3d(0, var(--shelf-parallax-y, 0px), 0) scale(1.03);
+  transition: transform 0.12s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.45s ease;
+}
+
+/* Bottom Bookcase Plinth / Base */
+.bookcase-base {
+  position: relative;
+  height: 16px;
+  width: 100%;
+  z-index: 20;
+}
+@media (min-width: 640px) {
+  .bookcase-base {
+    height: 20px;
+  }
+}
+
+/* Individual Shelf Row & 3D Plank */
 .conventional-shelf-row {
   position: relative;
-  padding-top: 1.5rem;
+  padding-top: 0.9rem;
   padding-bottom: 0;
   display: flex;
   flex-direction: column;
 }
 
-.conventional-shelf-bar {
-  height: 26px;
+.bookcase-books-layer {
+  position: relative;
+  z-index: 5;
+  will-change: transform;
+  transform: translate3d(0, var(--shelf-books-parallax-y, 0px), 0);
+  transition: transform 0.12s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.bookcase-plank-wrap {
+  position: relative;
+  z-index: 12;
+  margin-left: -4px;
+  margin-right: -4px;
+  will-change: transform;
+  transform: translate3d(0, var(--shelf-plank-parallax-y, 0px), 0);
+  transition: transform 0.12s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+/* Top horizontal surface where books rest (3D perspective ledge) */
+.bookcase-plank-top {
+  height: 10px;
+  width: 100%;
+  clip-path: polygon(8px 0%, calc(100% - 8px) 0%, 100% 100%, 0% 100%);
+  position: relative;
+}
+@media (min-width: 640px) {
+  .bookcase-plank-top {
+    height: 12px;
+    clip-path: polygon(12px 0%, calc(100% - 12px) 0%, 100% 100%, 0% 100%);
+  }
+}
+
+/* Front vertical fascia of the shelf plank */
+.bookcase-plank-front {
+  height: 14px;
   width: 100%;
   position: relative;
-  border-radius: 4px 4px 6px 6px;
-  box-shadow: 0 10px 24px -2px rgba(0, 0, 0, 0.75);
-  z-index: 10;
   display: flex;
   align-items: center;
-  justify-content: center;
+  justify-content: space-between;
+  padding: 0 10px;
+  border-radius: 0 0 3px 3px;
+}
+@media (min-width: 640px) {
+  .bookcase-plank-front {
+    height: 17px;
+    padding: 0 16px;
+  }
 }
 
-/* 1. Madera Caoba Gótica */
+/* Left & right shelf support brackets / corbels under the plank */
+.bookcase-plank-brackets {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  padding: 0 6px;
+  height: 14px;
+  pointer-events: none;
+  position: relative;
+}
+@media (min-width: 640px) {
+  .bookcase-plank-brackets {
+    padding: 0 10px;
+    height: 16px;
+  }
+}
+
+.bookcase-bracket-left,
+.bookcase-bracket-right {
+  width: 14px;
+  height: 12px;
+  opacity: 0.9;
+}
+.bookcase-bracket-left {
+  clip-path: polygon(0 0, 100% 0, 0 100%);
+}
+.bookcase-bracket-right {
+  clip-path: polygon(0 0, 100% 0, 100% 100%);
+}
+
+/* Cast shadow onto the niche below the shelf plank */
+.bookcase-plank-shadow {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, rgba(0, 0, 0, 0.72) 0%, rgba(0, 0, 0, 0.25) 55%, transparent 100%);
+  pointer-events: none;
+}
+
+/* --------------------------------------------------------------------------
+   Depth Transition on ShelfStyle Change
+   -------------------------------------------------------------------------- */
+.bookcase-depth-transition {
+  animation: bookcaseDepthCabinet 0.58s cubic-bezier(0.22, 1, 0.36, 1);
+  transform-origin: center center;
+}
+
+.bookcase-depth-transition .bookcase-backwall-layer {
+  animation: bookcaseDepthBackwall 0.6s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.bookcase-depth-transition .conventional-shelf-row {
+  animation: bookcaseDepthRow 0.56s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.bookcase-depth-transition .bookcase-plank-wrap {
+  animation: bookcaseDepthPlank 0.6s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes bookcaseDepthCabinet {
+  0% {
+    transform: perspective(1200px) translate3d(0, 6px, -26px) scale(0.985) rotateX(1.4deg);
+    filter: brightness(0.86);
+  }
+  50% {
+    transform: perspective(1200px) translate3d(0, -1px, 6px) scale(1.004) rotateX(-0.35deg);
+    filter: brightness(1.04);
+  }
+  100% {
+    transform: perspective(1200px) translate3d(0, 0, 0) scale(1) rotateX(0deg);
+    filter: brightness(1);
+  }
+}
+
+@keyframes bookcaseDepthBackwall {
+  0% {
+    opacity: 0.45;
+    transform: translate3d(0, calc(var(--shelf-parallax-y, 0px) + 12px), 0) scale(1.1);
+  }
+  100% {
+    opacity: 1;
+    transform: translate3d(0, var(--shelf-parallax-y, 0px), 0) scale(1.03);
+  }
+}
+
+@keyframes bookcaseDepthRow {
+  0% {
+    opacity: 0.72;
+    transform: perspective(900px) translate3d(0, 10px, -24px) scale(0.975);
+  }
+  100% {
+    opacity: 1;
+    transform: perspective(900px) translate3d(0, 0, 0) scale(1);
+  }
+}
+
+@keyframes bookcaseDepthPlank {
+  0% {
+    opacity: 0.55;
+    transform: perspective(900px) translate3d(0, calc(var(--shelf-plank-parallax-y, 0px) + 8px), 18px) rotateX(-8deg);
+  }
+  100% {
+    opacity: 1;
+    transform: perspective(900px) translate3d(0, var(--shelf-plank-parallax-y, 0px), 0) rotateX(0deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bookcase-backwall-layer,
+  .bookcase-books-layer,
+  .bookcase-plank-wrap {
+    transform: none !important;
+    transition: none !important;
+  }
+  .bookcase-depth-transition,
+  .bookcase-depth-transition .bookcase-backwall-layer,
+  .bookcase-depth-transition .conventional-shelf-row,
+  .bookcase-depth-transition .bookcase-plank-wrap {
+    animation: none !important;
+  }
+}
+
+/* --------------------------------------------------------------------------
+   1. WOOD GOTHIC (Biblioteca Caoba Clásica - Tallada y panelada)
+   -------------------------------------------------------------------------- */
 .shelf-wood-gothic {
-  background: linear-gradient(180deg, #4d2337 0%, #351625 45%, #200c16 85%, #12060d 100%);
-  border-top: 3px solid #994770;
-  border-bottom: 5px solid #0d0408;
-  box-shadow: 0 12px 24px rgba(0, 0, 0, 0.8), inset 0 1px 3px rgba(255, 121, 198, 0.2);
+  background: linear-gradient(180deg, #240e18 0%, #1a0911 55%, #12060b 100%);
+  border: 2px solid #59263e;
+}
+.shelf-wood-gothic .bookcase-backwall-layer {
+  background:
+    repeating-linear-gradient(
+      0deg,
+      rgba(255, 160, 200, 0.03) 0px,
+      rgba(255, 160, 200, 0.03) 1px,
+      transparent 1px,
+      transparent 38px
+    ),
+    repeating-linear-gradient(
+      90deg,
+      rgba(12, 3, 8, 0.5) 0px,
+      rgba(12, 3, 8, 0.5) 2px,
+      rgba(66, 24, 44, 0.24) 2px,
+      rgba(66, 24, 44, 0.24) 44px
+    );
+}
+.shelf-wood-gothic .bookcase-crown {
+  background: linear-gradient(180deg, #692c49 0%, #4a1c32 55%, #2d0f1d 100%);
+  border-bottom: 2px solid #14050b;
+  box-shadow: inset 0 2px 3px rgba(255, 180, 210, 0.2), 0 6px 14px rgba(0, 0, 0, 0.75);
+}
+.shelf-wood-gothic .bookcase-crown-ornament {
+  background: linear-gradient(90deg, transparent, #c08497, #f5d0a9, #c08497, transparent);
+  height: 4px;
+}
+.shelf-wood-gothic .bookcase-pillar {
+  background:
+    repeating-linear-gradient(180deg, rgba(255, 255, 255, 0.03) 0px, rgba(0, 0, 0, 0.12) 18px),
+    linear-gradient(90deg, #341322 0%, #5c263f 45%, #3d1729 85%, #220b16 100%);
+  border-right: 1px solid rgba(255, 150, 190, 0.12);
+  border-left: 1px solid rgba(255, 150, 190, 0.12);
+  box-shadow: 0 0 14px rgba(0, 0, 0, 0.7);
+}
+.shelf-wood-gothic .bookcase-base {
+  background: linear-gradient(180deg, #4b1d33 0%, #2f101f 65%, #1a0710 100%);
+  border-top: 2px solid #7d3657;
+  box-shadow: inset 0 2px 4px rgba(255, 180, 210, 0.15);
+}
+.shelf-wood-gothic .bookcase-plank-top {
+  background: linear-gradient(180deg, #4f2036 0%, #6e2f4c 100%);
+  border-top: 1px solid rgba(255, 190, 215, 0.22);
+}
+.shelf-wood-gothic .bookcase-plank-front {
+  background:
+    repeating-linear-gradient(90deg, rgba(0, 0, 0, 0.12) 0px, transparent 14px, rgba(255, 255, 255, 0.04) 28px),
+    linear-gradient(180deg, #5c243f 0%, #41182c 60%, #270c19 100%);
+  border-top: 1px solid #8a3d61;
+  border-bottom: 2px solid #12040a;
+  box-shadow: 0 6px 14px rgba(0, 0, 0, 0.75);
+}
+.shelf-wood-gothic .bookcase-bracket-left,
+.shelf-wood-gothic .bookcase-bracket-right {
+  background: linear-gradient(180deg, #3c1628 0%, #1d0812 100%);
 }
 
-/* 2. Madera Roble Oscuro / Ébano */
+/* --------------------------------------------------------------------------
+   2. WOOD OAK (Estantería Roble & Nogal - Madera natural con veta cálida)
+   -------------------------------------------------------------------------- */
 .shelf-wood-oak {
-  background: linear-gradient(180deg, #452b1e 0%, #2e1c12 45%, #1b100a 85%, #0e0804 100%);
-  border-top: 3px solid #82563b;
-  border-bottom: 5px solid #080402;
-  box-shadow: 0 12px 24px rgba(0, 0, 0, 0.8), inset 0 1px 3px rgba(212, 175, 55, 0.2);
+  background: linear-gradient(180deg, #27180f 0%, #1d110a 55%, #140b06 100%);
+  border: 2px solid #633f26;
+}
+.shelf-wood-oak .bookcase-backwall-layer {
+  background:
+    repeating-linear-gradient(
+      0deg,
+      rgba(255, 215, 165, 0.03) 0px,
+      rgba(255, 215, 165, 0.03) 1px,
+      transparent 1px,
+      transparent 44px
+    ),
+    repeating-linear-gradient(
+      90deg,
+      rgba(16, 9, 4, 0.45) 0px,
+      rgba(16, 9, 4, 0.45) 2px,
+      rgba(74, 46, 26, 0.22) 2px,
+      rgba(74, 46, 26, 0.22) 54px
+    );
+}
+.shelf-wood-oak .bookcase-crown {
+  background: linear-gradient(180deg, #754b2e 0%, #57361f 55%, #3a2212 100%);
+  border-bottom: 2px solid #1b0e06;
+  box-shadow: inset 0 2px 3px rgba(255, 224, 178, 0.22), 0 6px 14px rgba(0, 0, 0, 0.75);
+}
+.shelf-wood-oak .bookcase-crown-ornament {
+  background: linear-gradient(90deg, transparent, #d4a373, #faedcd, #d4a373, transparent);
+  height: 3px;
+}
+.shelf-wood-oak .bookcase-pillar {
+  background:
+    repeating-linear-gradient(180deg, rgba(255, 215, 160, 0.04) 0px, rgba(0, 0, 0, 0.12) 22px),
+    linear-gradient(90deg, #3e2514 0%, #6b4328 45%, #4f301c 85%, #2b180c 100%);
+  border-right: 1px solid rgba(255, 210, 150, 0.15);
+  border-left: 1px solid rgba(255, 210, 150, 0.15);
+  box-shadow: 0 0 14px rgba(0, 0, 0, 0.7);
+}
+.shelf-wood-oak .bookcase-base {
+  background: linear-gradient(180deg, #5b3821 0%, #3b2313 65%, #221309 100%);
+  border-top: 2px solid #8a5a38;
+}
+.shelf-wood-oak .bookcase-plank-top {
+  background: linear-gradient(180deg, #5e3b22 0%, #805232 100%);
+  border-top: 1px solid rgba(255, 224, 178, 0.25);
+}
+.shelf-wood-oak .bookcase-plank-front {
+  background:
+    repeating-linear-gradient(90deg, rgba(0, 0, 0, 0.12) 0px, transparent 18px, rgba(255, 220, 170, 0.05) 36px),
+    linear-gradient(180deg, #6e452a 0%, #52321d 60%, #341e10 100%);
+  border-top: 1px solid #966340;
+  border-bottom: 2px solid #190d06;
+  box-shadow: 0 6px 14px rgba(0, 0, 0, 0.75);
+}
+.shelf-wood-oak .bookcase-bracket-left,
+.shelf-wood-oak .bookcase-bracket-right {
+  background: linear-gradient(180deg, #4a2d1a 0%, #24140a 100%);
 }
 
-/* 3. Digital Neón */
+/* --------------------------------------------------------------------------
+   3. DIGITAL NEON (Vitrina Neón - Repisas acrílicas luminosas con marco LED)
+   -------------------------------------------------------------------------- */
 .shelf-digital-neon {
-  background: linear-gradient(180deg, #22153b 0%, #170d29 45%, #0e071c 85%, #07030e 100%);
-  border-top: 3px solid #ff79c6;
-  border-bottom: 5px solid #000000;
-  box-shadow: 0 6px 20px rgba(255, 121, 198, 0.35), 0 12px 24px rgba(0, 0, 0, 0.8), inset 0 1px 4px rgba(0, 240, 255, 0.3);
+  background: linear-gradient(180deg, #130a24 0%, #0c0618 60%, #070310 100%);
+  border: 2px solid rgba(255, 121, 198, 0.55);
+  box-shadow: 0 0 28px rgba(255, 121, 198, 0.2), 0 20px 44px rgba(0, 0, 0, 0.85);
+}
+.shelf-digital-neon .bookcase-backwall-layer {
+  background:
+    radial-gradient(circle at 50% 25%, rgba(255, 121, 198, 0.11), transparent 60%),
+    repeating-linear-gradient(
+      0deg,
+      rgba(255, 121, 198, 0.05) 0px,
+      rgba(255, 121, 198, 0.05) 1px,
+      transparent 1px,
+      transparent 20px
+    ),
+    repeating-linear-gradient(
+      90deg,
+      rgba(34, 211, 238, 0.04) 0px,
+      rgba(34, 211, 238, 0.04) 1px,
+      transparent 1px,
+      transparent 48px
+    );
+}
+.shelf-digital-neon .bookcase-crown {
+  background: linear-gradient(180deg, #2a1447 0%, #180b2b 100%);
+  border-bottom: 2px solid #ff79c6;
+  box-shadow: 0 2px 16px rgba(255, 121, 198, 0.55);
+}
+.shelf-digital-neon .bookcase-crown-ornament {
+  background: linear-gradient(90deg, transparent, #22d3ee, #ff79c6, #22d3ee, transparent);
+  height: 3px;
+  box-shadow: 0 0 10px #ff79c6;
+}
+.shelf-digital-neon .bookcase-pillar {
+  background: linear-gradient(90deg, #150926 0%, #2a144a 50%, #150926 100%);
+  border-right: 1px solid rgba(34, 211, 238, 0.35);
+  border-left: 1px solid rgba(255, 121, 198, 0.45);
+  box-shadow: inset 0 0 8px rgba(255, 121, 198, 0.25);
+}
+.shelf-digital-neon .bookcase-base {
+  background: linear-gradient(180deg, #1d0d33 0%, #0e061a 100%);
+  border-top: 2px solid #22d3ee;
+  box-shadow: 0 -2px 14px rgba(34, 211, 238, 0.35);
+}
+.shelf-digital-neon .bookcase-plank-top {
+  background: linear-gradient(180deg, rgba(168, 85, 247, 0.16) 0%, rgba(255, 121, 198, 0.34) 100%);
+  border-top: 1px solid rgba(255, 255, 255, 0.25);
+}
+.shelf-digital-neon .bookcase-plank-front {
+  background: linear-gradient(180deg, #2b1448 0%, #160928 70%, #0c0416 100%);
+  border-top: 2px solid #ff79c6;
+  border-bottom: 2px solid #22d3ee;
+  box-shadow:
+    0 0 14px rgba(255, 121, 198, 0.45),
+    0 6px 14px rgba(0, 0, 0, 0.8);
+}
+.shelf-digital-neon .bookcase-bracket-left,
+.shelf-digital-neon .bookcase-bracket-right {
+  background: linear-gradient(180deg, #22d3ee 0%, #150926 100%);
+  opacity: 0.55;
 }
 
-/* 4. Digital Matrix Cyber */
+/* --------------------------------------------------------------------------
+   4. DIGITAL CYBER (Rack Cyber - Estructura metálica con rejilla y rieles LED)
+   -------------------------------------------------------------------------- */
 .shelf-digital-cyber {
-  background: linear-gradient(180deg, #102e1d 0%, #0a1f13 45%, #05130b 85%, #020905 100%);
-  border-top: 3px solid #50fa7b;
-  border-bottom: 5px solid #000000;
-  box-shadow: 0 6px 20px rgba(80, 250, 123, 0.3), 0 12px 24px rgba(0, 0, 0, 0.8), inset 0 1px 4px rgba(80, 250, 123, 0.25);
+  background-color: #04110a;
+  border: 2px solid rgba(80, 250, 123, 0.5);
+  box-shadow: 0 0 24px rgba(80, 250, 123, 0.16), 0 20px 44px rgba(0, 0, 0, 0.9);
+}
+.shelf-digital-cyber .bookcase-backwall-layer {
+  background-image:
+    linear-gradient(rgba(80, 250, 123, 0.09) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(80, 250, 123, 0.09) 1px, transparent 1px);
+  background-size: 24px 24px;
+}
+.shelf-digital-cyber .bookcase-crown {
+  background: repeating-linear-gradient(
+    -45deg,
+    #0b2416,
+    #0b2416 8px,
+    #07170e 8px,
+    #07170e 16px
+  );
+  border-bottom: 2px solid #50fa7b;
+  box-shadow: 0 3px 14px rgba(80, 250, 123, 0.35);
+}
+.shelf-digital-cyber .bookcase-crown-ornament {
+  background: linear-gradient(90deg, transparent, #50fa7b, #a7f3d0, #50fa7b, transparent);
+  height: 3px;
+  border-radius: 0;
+}
+.shelf-digital-cyber .bookcase-pillar {
+  background:
+    repeating-linear-gradient(180deg, #0c2618 0px, #0c2618 10px, #05130b 10px, #05130b 14px);
+  border-right: 1px solid rgba(80, 250, 123, 0.45);
+  border-left: 1px solid rgba(80, 250, 123, 0.45);
+}
+.shelf-digital-cyber .bookcase-base {
+  background: linear-gradient(180deg, #0b2416 0%, #040f09 100%);
+  border-top: 2px solid #50fa7b;
+}
+.shelf-digital-cyber .bookcase-plank-top {
+  background: linear-gradient(180deg, rgba(16, 65, 38, 0.7) 0%, rgba(34, 120, 70, 0.75) 100%);
+  border-top: 1px solid rgba(80, 250, 123, 0.35);
+}
+.shelf-digital-cyber .bookcase-plank-front {
+  background:
+    repeating-linear-gradient(90deg, #0b2617 0px, #0b2617 22px, #07190f 22px, #07190f 26px);
+  border-top: 2px solid #50fa7b;
+  border-bottom: 2px solid #020804;
+  box-shadow: 0 0 12px rgba(80, 250, 123, 0.35), 0 6px 14px rgba(0, 0, 0, 0.85);
+}
+.shelf-digital-cyber .bookcase-bracket-left,
+.shelf-digital-cyber .bookcase-bracket-right {
+  background: linear-gradient(180deg, #50fa7b 0%, #062112 100%);
+  opacity: 0.65;
 }
 
-/* 5. Minimal OLED */
+/* --------------------------------------------------------------------------
+   5. MINIMAL OLED (Estantería Arquitectónica Minimalista de Pizarra Oscura)
+   -------------------------------------------------------------------------- */
 .shelf-minimal-oled {
-  background: linear-gradient(180deg, #27272a 0%, #1c1c1f 45%, #131316 85%, #09090b 100%);
-  border-top: 3px solid #52525b;
-  border-bottom: 5px solid #000000;
-  box-shadow: 0 12px 24px rgba(0, 0, 0, 0.9), inset 0 1px 2px rgba(255, 255, 255, 0.1);
+  background: linear-gradient(180deg, #111114 0%, #0a0a0d 60%, #050507 100%);
+  border: 1.5px solid #2e2e36;
+}
+.shelf-minimal-oled .bookcase-backwall-layer {
+  background:
+    radial-gradient(circle at 50% 30%, rgba(255, 255, 255, 0.035), transparent 65%),
+    repeating-linear-gradient(
+      0deg,
+      rgba(255, 255, 255, 0.025) 0px,
+      rgba(255, 255, 255, 0.025) 1px,
+      transparent 1px,
+      transparent 28px
+    );
+}
+.shelf-minimal-oled .bookcase-crown {
+  background: linear-gradient(180deg, #1c1c21 0%, #121216 100%);
+  border-bottom: 1px solid #3f3f46;
+}
+.shelf-minimal-oled .bookcase-crown-ornament {
+  background: linear-gradient(90deg, transparent, #71717a, transparent);
+  height: 2px;
+}
+.shelf-minimal-oled .bookcase-pillar {
+  background: linear-gradient(90deg, #141418 0%, #1e1e24 50%, #111114 100%);
+  border-right: 1px solid #27272f;
+  border-left: 1px solid #27272f;
+}
+.shelf-minimal-oled .bookcase-base {
+  background: linear-gradient(180deg, #1a1a20 0%, #0b0b0e 100%);
+  border-top: 1px solid #3f3f46;
+}
+.shelf-minimal-oled .bookcase-plank-top {
+  background: linear-gradient(180deg, #1e1e24 0%, #2d2d36 100%);
+  border-top: 1px solid rgba(255, 255, 255, 0.12);
+}
+.shelf-minimal-oled .bookcase-plank-front {
+  background: linear-gradient(180deg, #27272f 0%, #18181d 65%, #0d0d10 100%);
+  border-top: 1px solid #52525b;
+  border-bottom: 2px solid #000000;
+  box-shadow: 0 8px 16px rgba(0, 0, 0, 0.85);
+}
+.shelf-minimal-oled .bookcase-bracket-left,
+.shelf-minimal-oled .bookcase-bracket-right {
+  background: linear-gradient(180deg, #3f3f46 0%, #09090b 100%);
+}
+
+/* OLED Night Mode overrides keeping bookcase structure crisp */
+[data-night-mode="true"] .bookcase-cabinet {
+  border-color: #2c2c2c !important;
+  background: #040404 !important;
+  background-image: none !important;
+}
+[data-night-mode="true"] .bookcase-backwall-layer {
+  background: repeating-linear-gradient(
+    0deg,
+    rgba(255, 255, 255, 0.02) 0px,
+    rgba(255, 255, 255, 0.02) 1px,
+    transparent 1px,
+    transparent 28px
+  ) !important;
+}
+[data-night-mode="true"] .bookcase-crown,
+[data-night-mode="true"] .bookcase-pillar,
+[data-night-mode="true"] .bookcase-base {
+  background: #0b0b0b !important;
+  border-color: #2f2f2f !important;
+}
+[data-night-mode="true"] .bookcase-plank-top {
+  background: linear-gradient(180deg, #141414 0%, #222222 100%) !important;
+}
+[data-night-mode="true"] .bookcase-plank-front {
+  background: linear-gradient(180deg, #1c1c1c 0%, #0e0e0e 100%) !important;
+  border-top-color: #444444 !important;
+  box-shadow: 0 6px 14px rgba(0, 0, 0, 1) !important;
 }
 
 /* Book Marked For Deletion Style (No vibrations) */

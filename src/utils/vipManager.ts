@@ -1,4 +1,4 @@
-import { verificarCodigo } from './supabase';
+import { verificarCodigo, registrarConsentimientoEnSupabase } from './supabase';
 
 export interface VipSubscriptionData {
   isVip: boolean;
@@ -20,6 +20,7 @@ export interface ConsentLogRecord {
   termsAccepted: boolean;
   privacyAccepted: boolean;
   refundPolicyAccepted: boolean;
+  codigo?: string;
   email?: string;
   userAgent?: string;
 }
@@ -28,22 +29,13 @@ const STORAGE_KEY = 'nl_vip_subscription';
 const LEGACY_PREMIUM_KEY = 'usuario_premium';
 const CONSENT_LOGS_KEY = 'nl_legal_consent_logs';
 const COOKIE_CONSENT_KEY = 'consentimiento_privacidad';
-const SUPABASE_TEST_RESET_KEY = 'nl_supabase_test_reset_v1';
 
 class VipManager {
   private listeners: Set<(isVip: boolean) => void> = new Set();
+  private approvedPayPalIds: Set<string> = new Set();
 
   constructor() {
     if (typeof window !== 'undefined') {
-      try {
-        if (!localStorage.getItem(SUPABASE_TEST_RESET_KEY)) {
-          this.cancel();
-          localStorage.setItem(SUPABASE_TEST_RESET_KEY, '1');
-        }
-      } catch (e) {
-        console.warn('Error resetting VIP for Supabase test:', e);
-      }
-
       window.addEventListener('vip_status_changed', (e: any) => {
         this.notify(e.detail?.isVip ?? this.isVip());
       });
@@ -104,7 +96,15 @@ class VipManager {
     return this.getSubscription().isVip;
   }
 
-  // Solo activar el VIP cuando el código sea insertado por el usuario
+  // Registrar en memoria únicamente un ID de suscripción recién aprobado por el SDK oficial de PayPal
+  public registerApprovedPayPalId(subscriptionId: string): void {
+    const clean = subscriptionId?.trim().toUpperCase();
+    if (clean) {
+      this.approvedPayPalIds.add(clean);
+    }
+  }
+
+  // Solo activar el VIP cuando el código sea insertado por el usuario y validado
   public subscribe(paymentMethod: string = 'PayPal', email?: string): VipSubscriptionData {
     console.info('Pago registrado. Pendiente de insertar código de activación por el usuario.');
     return this.getSubscription();
@@ -112,7 +112,8 @@ class VipManager {
 
   /**
    * Validación asíncrona de código de activación:
-   * Primero consulta en tiempo real la base de datos de Supabase mediante GET fetch en la tabla "suscripciones".
+   * Consulta en tiempo real la base de datos de Supabase mediante GET fetch en la tabla "suscripciones".
+   * Ningún código se almacena en la app.
    * Si es válido y activo, activa "usuario_premium = true" en localStorage y actualiza la app.
    */
   public async activateWithCodeAsync(code: string, email?: string): Promise<{ success: boolean; message: string; sub?: VipSubscriptionData }> {
@@ -124,7 +125,14 @@ class VipManager {
       };
     }
 
-    // 1. Verificación en la tabla "suscripciones" de Supabase
+    if (cleanCode.length < 4) {
+      return {
+        success: false,
+        message: 'El código de activación debe contener al menos 4 caracteres.'
+      };
+    }
+
+    // 1. Verificación obligatoria en la tabla "suscripciones" de Supabase
     try {
       const supRes = await verificarCodigo(cleanCode);
       if (supRes.success) {
@@ -135,33 +143,34 @@ class VipManager {
           termsAccepted: true,
           privacyAccepted: true,
           refundPolicyAccepted: true,
-          email: email?.trim() || supRes.data?.email
+          codigo: cleanCode.toUpperCase()
         });
         return {
           success: true,
           message: supRes.message,
           sub: subData
         };
-      } else {
-        // Si Supabase respondió que el código no existe o no está activo,
-        // solo permitir si es un cupón maestro oficial o ID de PayPal válido
-        const upper = cleanCode.toUpperCase();
-        const isMasterVoucher = /^(NEKO-VIP|NEKO-VIP-2026|VIP-NEKO|GATO-VIP|PREMIUM-NEKO)$/i.test(upper);
-        const isPayPalId = /^(I|P)-[A-Z0-9]{8,}$/i.test(upper);
-        
-        if (!isMasterVoucher && !isPayPalId) {
-          return {
-            success: false,
-            message: supRes.message || 'El código ingresado no existe o no tiene estado "activo" en la base de datos de suscripciones.'
-          };
-        }
       }
-    } catch (e) {
-      console.warn('Error consultando Supabase, intentando comprobación local:', e);
-    }
 
-    // 2. Respaldo para ID de suscripción de PayPal o cupones maestros
-    return this.activateWithCode(cleanCode, email);
+      // 2. Si acaba de completar el pago oficial de PayPal en esta sesión, permitir su ID aprobado
+      if (this.approvedPayPalIds.has(cleanCode.toUpperCase())) {
+        return this.activateWithCode(cleanCode, email);
+      }
+
+      return {
+        success: false,
+        message: supRes.message || 'El código ingresado no existe o no tiene estado "activo" en Supabase.'
+      };
+    } catch (e) {
+      console.warn('Error consultando Supabase:', e);
+      if (this.approvedPayPalIds.has(cleanCode.toUpperCase())) {
+        return this.activateWithCode(cleanCode, email);
+      }
+      return {
+        success: false,
+        message: 'No se pudo conectar con Supabase para verificar tu código. Intenta de nuevo.'
+      };
+    }
   }
 
   public activateWithCode(code: string, email?: string): { success: boolean; message: string; sub?: VipSubscriptionData } {
@@ -173,24 +182,11 @@ class VipManager {
       };
     }
 
-    if (cleanCode.length < 4) {
-      return { 
-        success: false, 
-        message: 'El código de activación debe contener al menos 4 caracteres.' 
-      };
-    }
-
-    // Formatos válidos de respaldo:
-    // 1. ID de Suscripción oficial de PayPal (ej: P-0GH31223S1526604TNLUBBEQ o I-...)
-    const isPayPalId = /^(I|P)-[A-Z0-9]{8,}$/i.test(cleanCode);
-    // 2. Vales de cortesía del sistema
-    const isVipVoucher = /^(NEKO-VIP|NEKO-VIP-2026|VIP-NEKO|GATO-VIP|PREMIUM-NEKO)$/i.test(cleanCode);
-    const isValidFormat = isPayPalId || isVipVoucher;
-
-    if (!isValidFormat) {
+    // Únicamente permite activación directa si corresponde a un pago recién aprobado por PayPal en esta sesión
+    if (!this.approvedPayPalIds.has(cleanCode)) {
       return {
         success: false,
-        message: 'Código de activación no reconocido o inactivo en la base de datos. Revisa el código que recibiste por correo tras tu pago o contacta a soporte en nekolover.online.zoho.com.'
+        message: 'Código de activación no verificado en Supabase. Revisa tu código o contacta a soporte en nekolover.online@nekolover.Online.'
       };
     }
 
@@ -296,6 +292,19 @@ class VipManager {
     } catch (e) {
       console.warn('Error writing consent log:', e);
     }
+
+    // Enviar respaldo asíncrono a la tabla "consentimientos" en Supabase
+    void registrarConsentimientoEnSupabase({
+      consent_id: fullRecord.id,
+      consent_type: fullRecord.consentType,
+      terms_accepted: fullRecord.termsAccepted,
+      privacy_accepted: fullRecord.privacyAccepted,
+      refund_policy_accepted: fullRecord.refundPolicyAccepted,
+      legal_version: fullRecord.legalVersion,
+      accepted_at: fullRecord.isoDate,
+      user_agent: fullRecord.userAgent,
+      codigo_activacion: fullRecord.codigo
+    });
 
     return fullRecord;
   }

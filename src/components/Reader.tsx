@@ -253,6 +253,7 @@ export const Reader: React.FC<ReaderProps> = ({
   const pdfDocRef = useRef<any>(null);
   const epubRenditionRef = useRef<any>(null);
   const epubBookRef = useRef<any>(null);
+  const pageSwipeStartRef = useRef<{ x: number; y: number; time: number } | null>(null);
 
   const pageKey = `${book.id}-p${currentPage}`;
   const currentPageStickers = stickers[pageKey] || [];
@@ -571,12 +572,12 @@ export const Reader: React.FC<ReaderProps> = ({
       if (canvas) {
         const ctx = canvas.getContext('2d');
         if (ctx) {
-          const viewportWidth = containerRef.current?.clientWidth || 750;
+          const viewportWidth = containerRef.current?.clientWidth || window.innerWidth || 750;
           const unscaledViewport = page.getViewport({ scale: 1.0 });
 
-          // Base scale fits viewport nicely with padding
-          const fitScale = (viewportWidth - 52) / unscaledViewport.width;
-          const baseScale = Math.max(0.65, fitScale);
+          // Base scale fits mobile and desktop viewports cleanly with slim side margin
+          const fitScale = Math.max(240, viewportWidth - 28) / unscaledViewport.width;
+          const baseScale = Math.max(0.55, fitScale);
           const finalScale = baseScale * zoomLevel;
 
           const pixelRatio = Math.max(window.devicePixelRatio || 1, 2.0);
@@ -989,7 +990,7 @@ export const Reader: React.FC<ReaderProps> = ({
 
   return (
     <div 
-      className="flex-1 flex flex-col h-[calc(100vh-62px)] bg-black/95 relative overflow-hidden select-none"
+      className="flex-1 flex flex-col h-[calc(100dvh-62px)] min-h-0 bg-black/95 relative overflow-hidden select-none"
       onPointerMove={onPointerMoveContainer}
       onPointerUp={onPointerUpContainer}
     >
@@ -1224,10 +1225,10 @@ export const Reader: React.FC<ReaderProps> = ({
         </div>
       )}
 
-      {/* Floating Text Selection Menu */}
+      {/* Floating Text Selection Menu (Desktop only; mobile uses dedicated bottom bar so Android/iOS handles don't collide) */}
       {selectionPos && selectedText && (
         <div
-          className="fixed z-50 bg-[var(--card-bg)] border border-[var(--accent-pink)] rounded-2xl p-1.5 shadow-2xl flex items-center gap-1 modal-animate backdrop-blur-md"
+          className="hidden md:flex fixed z-50 bg-[var(--card-bg)] border border-[var(--accent-pink)] rounded-2xl p-1.5 shadow-2xl items-center gap-1 modal-animate backdrop-blur-md"
           style={{ left: `${selectionPos.x}px`, top: `${selectionPos.y}px` }}
         >
           {showColorPicker ? (
@@ -1356,10 +1357,10 @@ export const Reader: React.FC<ReaderProps> = ({
 
       {/* Menú de Copiar del Móvil y Acciones Rápidas Literarias */}
       {selectedText && (
-        <div className="fixed bottom-14 left-1/2 -translate-x-1/2 z-50 w-[94%] max-w-md bg-[var(--card-bg)]/95 backdrop-blur-xl border-2 border-[var(--accent-pink)] rounded-2xl p-2.5 shadow-[0_10px_35px_rgba(0,0,0,0.8)] flex flex-col gap-2 modal-animate">
+        <div className="fixed bottom-16 left-1/2 -translate-x-1/2 z-50 w-[94%] max-w-md bg-[var(--card-bg)]/95 backdrop-blur-xl border-2 border-[var(--accent-pink)] rounded-2xl p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] shadow-[0_10px_35px_rgba(0,0,0,0.85)] flex flex-col gap-2.5 modal-animate">
           <div className="flex items-center justify-between gap-2 border-b border-[var(--border-color)] pb-1.5">
             <span className="text-[11px] font-bold text-[var(--accent-pink)] flex items-center gap-1.5 truncate">
-              <span>✍️</span> Menú de Copiar & Subrayar ({selectedText.length} carácteres)
+              <span>✍️</span> Copiar y Subrayar ({selectedText.length})
             </span>
             <button
               onClick={() => {
@@ -1367,7 +1368,7 @@ export const Reader: React.FC<ReaderProps> = ({
                 setSelectionPos(null);
                 window.getSelection()?.removeAllRanges();
               }}
-              className="p-1 rounded-lg text-xs text-[var(--text-muted)] hover:text-white hover:bg-white/10"
+              className="p-1.5 rounded-lg text-xs text-[var(--text-muted)] hover:text-white hover:bg-white/10"
               title="Cerrar selección"
             >
               ✕
@@ -1378,7 +1379,7 @@ export const Reader: React.FC<ReaderProps> = ({
             "{selectedText}"
           </div>
 
-          <div className="flex items-center justify-between gap-1.5 pt-0.5">
+          <div className="flex flex-wrap items-center justify-between gap-2 pt-0.5">
             {/* Botón Copiar al Portapapeles (Estilo Móvil) */}
             <button
               onClick={() => {
@@ -1386,83 +1387,83 @@ export const Reader: React.FC<ReaderProps> = ({
                 setToastHighlight('Copiado al portapapeles 📋');
                 setTimeout(() => setToastHighlight(null), 2500);
               }}
-              className="px-3 py-1.5 bg-black/60 border border-[var(--border-color)] hover:border-[var(--accent-pink)] rounded-xl text-xs font-bold text-[var(--text-main)] flex items-center gap-1.5 transition shrink-0 active:scale-95"
+              className="px-3 py-2 bg-black/60 border border-[var(--border-color)] hover:border-[var(--accent-pink)] rounded-xl text-xs font-bold text-[var(--text-main)] flex items-center gap-1.5 transition shrink-0 active:scale-95"
               title="Copiar texto al portapapeles"
             >
               <Copy className="w-3.5 h-3.5 text-[var(--accent-pink)]" />
-              <span>Copiar 📋</span>
+              <span>Copiar</span>
             </button>
 
             {/* Subrayadores de Colores */}
-            <div className="flex items-center gap-1.5 bg-black/50 p-1 rounded-xl border border-white/10">
+            <div className="flex flex-wrap items-center justify-center gap-1.5 bg-black/50 p-1.5 rounded-xl border border-white/10">
               {/* Gratis: Amarillo */}
               <button
                 onClick={() => handleAddHighlight('gold')}
-                className="w-5 h-5 rounded-full bg-amber-400 hover:scale-125 active:scale-95 transition border border-white/40 shadow-sm"
+                className="w-6 h-6 sm:w-5 sm:h-5 rounded-full bg-amber-400 hover:scale-125 active:scale-95 transition border border-white/40 shadow-sm"
                 title="Amarillo / Dorado Sepia (Gratis)"
               />
               {/* Gratis: Gris */}
               <button
                 onClick={() => handleAddHighlight('gris')}
-                className="w-5 h-5 rounded-full bg-[#94a3b8] hover:scale-125 active:scale-95 transition border border-white/40 shadow-sm"
+                className="w-6 h-6 sm:w-5 sm:h-5 rounded-full bg-[#94a3b8] hover:scale-125 active:scale-95 transition border border-white/40 shadow-sm"
                 title="Gris Plata (Gratis)"
               />
 
               {/* Separador */}
-              <div className="h-3.5 w-px bg-white/20 mx-0.5" />
+              <div className="h-4 w-px bg-white/20 mx-0.5" />
 
               {/* VIP: Rosa Neón */}
               <button
                 onClick={() => handleAddHighlight('pink')}
-                className={`w-5 h-5 rounded-full bg-pink-400 hover:scale-125 active:scale-95 transition border border-white/30 relative flex items-center justify-center ${!isVip ? 'opacity-80' : ''}`}
+                className={`w-6 h-6 sm:w-5 sm:h-5 rounded-full bg-pink-400 hover:scale-125 active:scale-95 transition border border-white/30 relative flex items-center justify-center ${!isVip ? 'opacity-80' : ''}`}
                 title={!isVip ? 'Rosa Neón (👑 Exclusivo VIP $2/mes)' : 'Rosa Neón'}
               >
-                {!isVip && <span className="text-[8px] leading-none">👑</span>}
+                {!isVip && <span className="text-[9px] leading-none">👑</span>}
               </button>
 
               {/* VIP: Rosa Pastel */}
               <button
                 onClick={() => handleAddHighlight('rosa-pastel')}
-                className={`w-5 h-5 rounded-full bg-[#fbcfe8] hover:scale-125 active:scale-95 transition border border-pink-300 relative flex items-center justify-center ${!isVip ? 'opacity-80' : ''}`}
+                className={`w-6 h-6 sm:w-5 sm:h-5 rounded-full bg-[#fbcfe8] hover:scale-125 active:scale-95 transition border border-pink-300 relative flex items-center justify-center ${!isVip ? 'opacity-80' : ''}`}
                 title={!isVip ? 'Rosa Pastel (👑 Exclusivo VIP $2/mes)' : 'Rosa Pastel'}
               >
-                {!isVip && <span className="text-[8px] leading-none">👑</span>}
+                {!isVip && <span className="text-[9px] leading-none">👑</span>}
               </button>
 
               {/* VIP: Púrpura */}
               <button
                 onClick={() => handleAddHighlight('purple')}
-                className={`w-5 h-5 rounded-full bg-purple-400 hover:scale-125 active:scale-95 transition border border-white/30 relative flex items-center justify-center ${!isVip ? 'opacity-80' : ''}`}
+                className={`w-6 h-6 sm:w-5 sm:h-5 rounded-full bg-purple-400 hover:scale-125 active:scale-95 transition border border-white/30 relative flex items-center justify-center ${!isVip ? 'opacity-80' : ''}`}
                 title={!isVip ? 'Púrpura Amatista (👑 Exclusivo VIP $2/mes)' : 'Púrpura Amatista'}
               >
-                {!isVip && <span className="text-[8px] leading-none">👑</span>}
+                {!isVip && <span className="text-[9px] leading-none">👑</span>}
               </button>
 
               {/* VIP: Lila */}
               <button
                 onClick={() => handleAddHighlight('lila')}
-                className={`w-5 h-5 rounded-full bg-[#d8b4fe] hover:scale-125 active:scale-95 transition border border-purple-300 relative flex items-center justify-center ${!isVip ? 'opacity-80' : ''}`}
+                className={`w-6 h-6 sm:w-5 sm:h-5 rounded-full bg-[#d8b4fe] hover:scale-125 active:scale-95 transition border border-purple-300 relative flex items-center justify-center ${!isVip ? 'opacity-80' : ''}`}
                 title={!isVip ? 'Lila Mágico (👑 Exclusivo VIP $2/mes)' : 'Lila Mágico'}
               >
-                {!isVip && <span className="text-[8px] leading-none">👑</span>}
+                {!isVip && <span className="text-[9px] leading-none">👑</span>}
               </button>
 
               {/* VIP: Rojo */}
               <button
                 onClick={() => handleAddHighlight('rojo')}
-                className={`w-5 h-5 rounded-full bg-red-500 hover:scale-125 active:scale-95 transition border border-white/30 relative flex items-center justify-center ${!isVip ? 'opacity-80' : ''}`}
+                className={`w-6 h-6 sm:w-5 sm:h-5 rounded-full bg-red-500 hover:scale-125 active:scale-95 transition border border-white/30 relative flex items-center justify-center ${!isVip ? 'opacity-80' : ''}`}
                 title={!isVip ? 'Rojo Carmesí (👑 Exclusivo VIP $2/mes)' : 'Rojo Carmesí'}
               >
-                {!isVip && <span className="text-[8px] leading-none">👑</span>}
+                {!isVip && <span className="text-[9px] leading-none">👑</span>}
               </button>
 
               {/* VIP: Esmeralda */}
               <button
                 onClick={() => handleAddHighlight('emerald')}
-                className={`w-5 h-5 rounded-full bg-emerald-400 hover:scale-125 active:scale-95 transition border border-white/30 relative flex items-center justify-center ${!isVip ? 'opacity-80' : ''}`}
+                className={`w-6 h-6 sm:w-5 sm:h-5 rounded-full bg-emerald-400 hover:scale-125 active:scale-95 transition border border-white/30 relative flex items-center justify-center ${!isVip ? 'opacity-80' : ''}`}
                 title={!isVip ? 'Esmeralda Místico (👑 Exclusivo VIP $2/mes)' : 'Esmeralda'}
               >
-                {!isVip && <span className="text-[8px] leading-none">👑</span>}
+                {!isVip && <span className="text-[9px] leading-none">👑</span>}
               </button>
             </div>
 
@@ -1478,11 +1479,11 @@ export const Reader: React.FC<ReaderProps> = ({
                 setSelectedText('');
                 setSelectionPos(null);
               }}
-              className="px-2.5 py-1.5 bg-purple-500/30 border border-purple-500/50 hover:bg-purple-500 hover:text-black rounded-xl text-xs font-bold text-[var(--accent-purple)] flex items-center gap-1 transition shrink-0 active:scale-95"
+              className="px-3 py-2 bg-purple-500/30 border border-purple-500/50 hover:bg-purple-500 hover:text-black rounded-xl text-xs font-bold text-[var(--accent-purple)] flex items-center gap-1 transition shrink-0 active:scale-95"
               title="Guardar como Cita en el Baúl"
             >
               <Feather className="w-3.5 h-3.5" />
-              <span className="hidden xs:inline">Cita</span>
+              <span>Cita</span>
               {!isVip && quotesCount !== undefined && quotesCount >= 3 && (
                 <span className="text-[9px] text-amber-300 font-bold">👑</span>
               )}
@@ -1523,12 +1524,43 @@ export const Reader: React.FC<ReaderProps> = ({
             </button>
           </div>
         ) : (
-          /* Book Page Card with Readers & Movable Stickers Layer */
+          /* Book Page Card with Readers, Swipe Turn & Movable Stickers Layer */
           <div
             id="page-container"
             onMouseUp={handleTextSelection}
-            onTouchEnd={handleTextSelection}
-            className={`relative shadow-2xl min-h-[540px] ${
+            onTouchStart={(e) => {
+              if (e.touches.length === 1 && !activeDragRef.current && !activeResizeRef.current) {
+                pageSwipeStartRef.current = {
+                  x: e.touches[0].clientX,
+                  y: e.touches[0].clientY,
+                  time: Date.now()
+                };
+              } else {
+                pageSwipeStartRef.current = null;
+              }
+            }}
+            onTouchEnd={(e) => {
+              handleTextSelection();
+              const start = pageSwipeStartRef.current;
+              pageSwipeStartRef.current = null;
+              if (!start || activeDragRef.current || activeResizeRef.current) return;
+              if (book.type === 'pdf' && !pdfReflowMode && zoomLevel > 1.05) return;
+              const sel = window.getSelection()?.toString().trim();
+              if (sel) return;
+              const touch = e.changedTouches[0];
+              if (!touch) return;
+              const dx = touch.clientX - start.x;
+              const dy = touch.clientY - start.y;
+              const elapsed = Date.now() - start.time;
+              if (elapsed < 450 && Math.abs(dx) > 65 && Math.abs(dy) < 40 && Math.abs(dx) > Math.abs(dy) * 2) {
+                if (dx < 0 && currentPage < totalPages) {
+                  changePage(1);
+                } else if (dx > 0 && currentPage > 1) {
+                  changePage(-1);
+                }
+              }
+            }}
+            className={`relative shadow-2xl min-h-[60dvh] sm:min-h-[540px] ${
               book.type === 'pdf'
                 ? zoomLevel > 1.0 && !pdfReflowMode
                   ? 'w-auto max-w-none'
@@ -1542,7 +1574,7 @@ export const Reader: React.FC<ReaderProps> = ({
                 : containerWidth === 'wide'
                 ? 'w-full max-w-4xl'
                 : 'w-full max-w-3xl'
-            } rounded-2xl overflow-hidden transition-all my-auto p-2 sm:p-6 border border-[var(--border-color)] ${
+            } rounded-2xl overflow-hidden transition-all my-auto px-5 py-3 sm:p-6 border border-[var(--border-color)] ${
               flipDirection === 'forward' ? 'page-flip-forward' : flipDirection === 'backward' ? 'page-flip-backward' : ''
             }`}
             style={{
@@ -1559,14 +1591,14 @@ export const Reader: React.FC<ReaderProps> = ({
                 if (currentPage > 1) changePage(-1);
               }}
               disabled={currentPage <= 1}
-              className={`absolute left-0 top-0 bottom-0 w-10 sm:w-16 z-30 flex items-center justify-start pl-1 sm:pl-2 group/prev transition-all cursor-pointer select-none ${
-                currentPage <= 1 ? 'opacity-0 pointer-events-none' : 'opacity-40 hover:opacity-100'
+              className={`absolute left-0 top-0 bottom-0 w-7 sm:w-14 z-30 flex items-center justify-start pl-0.5 sm:pl-2 group/prev transition-all cursor-pointer select-none ${
+                currentPage <= 1 ? 'opacity-0 pointer-events-none' : 'opacity-35 hover:opacity-100'
               }`}
               title="Página Anterior (Lado izquierdo) [←]"
               aria-label="Página anterior"
             >
-              <div className="w-7 sm:w-9 h-16 sm:h-20 rounded-r-2xl bg-black/70 backdrop-blur-md border border-l-0 border-[var(--border-color)] group-hover/prev:border-[var(--accent-pink)] group-hover/prev:bg-[var(--accent-pink)]/25 flex items-center justify-center text-[var(--text-muted)] group-hover/prev:text-[var(--accent-pink)] transition shadow-2xl transform group-hover/prev:-translate-x-0.5">
-                <ChevronLeft className="w-5 h-5 sm:w-6 sm:h-6 stroke-[2.5]" />
+              <div className="w-6 sm:w-9 h-14 sm:h-20 rounded-r-2xl bg-black/70 backdrop-blur-md border border-l-0 border-[var(--border-color)] group-hover/prev:border-[var(--accent-pink)] group-hover/prev:bg-[var(--accent-pink)]/25 flex items-center justify-center text-[var(--text-muted)] group-hover/prev:text-[var(--accent-pink)] transition shadow-2xl transform group-hover/prev:-translate-x-0.5">
+                <ChevronLeft className="w-4 h-4 sm:w-6 sm:h-6 stroke-[2.5]" />
               </div>
             </button>
 
@@ -1578,14 +1610,14 @@ export const Reader: React.FC<ReaderProps> = ({
                 if (currentPage < totalPages) changePage(1);
               }}
               disabled={currentPage >= totalPages}
-              className={`absolute right-0 top-0 bottom-0 w-10 sm:w-16 z-30 flex items-center justify-end pr-1 sm:pr-2 group/next transition-all cursor-pointer select-none ${
-                currentPage >= totalPages ? 'opacity-0 pointer-events-none' : 'opacity-40 hover:opacity-100'
+              className={`absolute right-0 top-0 bottom-0 w-7 sm:w-14 z-30 flex items-center justify-end pr-0.5 sm:pr-2 group/next transition-all cursor-pointer select-none ${
+                currentPage >= totalPages ? 'opacity-0 pointer-events-none' : 'opacity-35 hover:opacity-100'
               }`}
               title="Página Siguiente (Lado derecho) [→]"
               aria-label="Página siguiente"
             >
-              <div className="w-7 sm:w-9 h-16 sm:h-20 rounded-l-2xl bg-black/70 backdrop-blur-md border border-r-0 border-[var(--border-color)] group-hover/next:border-[var(--accent-pink)] group-hover/next:bg-[var(--accent-pink)]/25 flex items-center justify-center text-[var(--text-muted)] group-hover/next:text-[var(--accent-pink)] transition shadow-2xl transform group-hover/next:translate-x-0.5">
-                <ChevronRight className="w-5 h-5 sm:w-6 sm:h-6 stroke-[2.5]" />
+              <div className="w-6 sm:w-9 h-14 sm:h-20 rounded-l-2xl bg-black/70 backdrop-blur-md border border-r-0 border-[var(--border-color)] group-hover/next:border-[var(--accent-pink)] group-hover/next:bg-[var(--accent-pink)]/25 flex items-center justify-center text-[var(--text-muted)] group-hover/next:text-[var(--accent-pink)] transition shadow-2xl transform group-hover/next:translate-x-0.5">
+                <ChevronRight className="w-4 h-4 sm:w-6 sm:h-6 stroke-[2.5]" />
               </div>
             </button>
 
@@ -1971,12 +2003,12 @@ export const Reader: React.FC<ReaderProps> = ({
       </div>
 
       {/* Bottom Floating Reading Controls Bar (Atrás, Barra de Navegación, Conteo Pequeño y Adelante) */}
-      <div className="bg-[var(--card-bg)]/90 backdrop-blur-md border-t border-[var(--border-color)] px-3 sm:px-4 py-2 flex items-center justify-between gap-2 sm:gap-3 z-30">
+      <div className="bg-[var(--card-bg)]/95 backdrop-blur-md border-t border-[var(--border-color)] px-2.5 sm:px-4 py-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] flex items-center justify-between gap-2 sm:gap-3 z-30 shrink-0">
         {/* Left: Previous page button (Atrás) */}
         <button
           onClick={() => changePage(-1)}
           disabled={currentPage <= 1}
-          className="px-2.5 sm:px-3.5 py-1.5 bg-black/40 border border-[var(--border-color)] rounded-xl text-xs font-semibold text-[var(--text-main)] hover:border-[var(--accent-pink)] disabled:opacity-30 disabled:hover:border-transparent transition flex items-center gap-1 shrink-0"
+          className="px-2.5 sm:px-3.5 py-2 sm:py-1.5 bg-black/40 border border-[var(--border-color)] rounded-xl text-xs font-semibold text-[var(--text-main)] hover:border-[var(--accent-pink)] disabled:opacity-30 disabled:hover:border-transparent transition flex items-center gap-1 shrink-0"
           title="Página anterior (Atrás)"
         >
           <ChevronLeft className="w-3.5 h-3.5" />
@@ -1984,7 +2016,7 @@ export const Reader: React.FC<ReaderProps> = ({
         </button>
 
         {/* Center: Conteo de página más pequeño y barra de adelante/atrás (deslizador) */}
-        <div className="flex items-center space-x-2 sm:space-x-3 max-w-sm sm:max-w-md w-full mx-1">
+        <div className="flex items-center space-x-2 sm:space-x-3 max-w-sm sm:max-w-md w-full mx-1 min-w-0">
           {/* Conteo de página más pequeño junto a la barra */}
           <span 
             className="text-[10px] font-mono text-[var(--text-muted)] shrink-0 whitespace-nowrap bg-black/50 px-2 py-0.5 rounded-md border border-white/5 select-none"
@@ -2000,13 +2032,13 @@ export const Reader: React.FC<ReaderProps> = ({
             max={totalPages || 1}
             value={currentPage}
             onChange={(e) => handlePageChange(parseInt(e.target.value, 10))}
-            className="w-full accent-[var(--accent-pink)] cursor-pointer h-1.5 bg-black/60 rounded-lg"
+            className="w-full accent-[var(--accent-pink)] cursor-pointer h-2 sm:h-1.5 bg-black/60 rounded-lg"
             title={`Deslizar entre páginas (Pág. ${currentPage} de ${totalPages})`}
           />
 
-          {/* Controles de Zoom para PDF */}
+          {/* Controles de Zoom para PDF (visibles también en móvil) */}
           {book.type === 'pdf' && (
-            <div className="hidden xs:flex items-center space-x-1 border-l border-[var(--border-color)] pl-2 shrink-0">
+            <div className="flex items-center space-x-1 border-l border-[var(--border-color)] pl-1.5 sm:pl-2 shrink-0">
               <button
                 onClick={() => setZoomLevel((z) => Math.max(0.5, Number((z - 0.25).toFixed(2))))}
                 className="p-1 bg-black/40 border border-[var(--border-color)] rounded-md text-[11px] hover:border-[var(--accent-pink)] text-[var(--text-main)] transition flex items-center justify-center"

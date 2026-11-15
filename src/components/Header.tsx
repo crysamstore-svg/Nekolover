@@ -25,7 +25,7 @@ export const Header: React.FC<HeaderProps> = ({
           🐾
         </div>
         <div>
-          <h1 className="dark-reborn-title text-base sm:text-xl font-bold bg-gradient-to-r from-[var(--accent-pink)] via-[var(--accent-purple)] to-[var(--accent-secondary)] bg-clip-text text-transparent leading-tight">
+          <h1 className="dark-reborn-title text-base sm:text-xl font-bold text-[var(--accent-pink)] leading-tight">
             NekoLover Read
           </h1>
           <p className="text-[10px] sm:text-xs text-[var(--accent-purple)] font-medium flex items-center gap-1">

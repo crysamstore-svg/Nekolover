@@ -812,7 +812,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                   <span>2. Privacidad</span>
                 </div>
                 <div className="text-[10px] text-[var(--text-muted)] mt-1">
-                  Minimización: solo correo PayPal
+                  Sin recopilación de datos personales
                 </div>
               </button>
 
@@ -840,7 +840,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                   <span>4. Reembolso</span>
                 </div>
                 <div className="text-[10px] text-[var(--text-muted)] mt-1">
-                  Cancelable en PayPal, sin recargo
+                  3 días gratis • Cancelable en PayPal
                 </div>
               </button>
             </div>
@@ -862,7 +862,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 <div className="p-3 rounded-xl bg-black/50 border border-white/10">
                   <span className="font-bold text-emerald-300">2. Política de Privacidad & 7. Minimización de Datos:</span>
                   <p className="text-[11px] text-white/80 mt-0.5">
-                    No se recopilan libros, lecturas ni hábitos. Para la suscripción Premium ($2/mes) solo se solicita el correo de PayPal indispensable para activar la membresía.
+                    No se recopilan libros, lecturas ni datos personales en la app. El pago de la suscripción ($2/mes) se procesa directamente en la plataforma segura de PayPal.
                   </p>
                 </div>
 
@@ -890,7 +890,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 <div className="p-3 rounded-xl bg-black/50 border border-white/10">
                   <span className="font-bold text-rose-300">6. Política de Cancelación y Reembolso:</span>
                   <p className="text-[11px] text-white/80 mt-0.5">
-                    Las ventas de bienes digitales son definitivas (sin reembolsos por meses ya transcurridos). Cancelación autogestionada en cualquier momento desde PayPal. En caso de incidencia técnica sin recepción de código, soporte directo en <a href="https://nekolover.online.zoho.com" target="_blank" rel="noopener noreferrer" className="text-amber-300 underline font-mono">nekolover.online.zoho.com</a> para activación manual.
+                    Incluye <strong>3 días de prueba gratis</strong> antes del primer cobro mensual (cancelable sin cargo durante la prueba desde PayPal). Las ventas de bienes digitales posteriores son definitivas. En caso de incidencia técnica sin recepción de código, soporte directo en <a href="mailto:nekolover.online@nekolover.Online" className="text-amber-300 underline font-mono">nekolover.online@nekolover.Online</a> para activación manual.
                   </p>
                 </div>
 

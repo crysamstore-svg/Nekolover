@@ -33,7 +33,7 @@ export const CookieConsentBanner: React.FC<CookieConsentBannerProps> = ({
     <aside 
       id="banner-consentimiento" 
       aria-label="Aviso de privacidad y cookies"
-      className="fixed bottom-0 left-0 w-full z-[9999] bg-[#120f1d]/95 backdrop-blur-md border-t-2 border-[var(--accent-pink)]/50 text-white p-4 sm:p-5 shadow-[0_-8px_30px_rgba(0,0,0,0.8)] transition-all animate-slideUp select-none"
+      className="fixed bottom-0 left-0 w-full z-[9999] bg-[#120f1d]/95 backdrop-blur-md border-t-2 border-[var(--accent-pink)]/50 text-white p-4 pb-[max(1rem,env(safe-area-inset-bottom))] sm:p-5 shadow-[0_-8px_30px_rgba(0,0,0,0.8)] transition-all animate-slideUp select-none"
     >
       <div className="max-w-5xl mx-auto flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
         {/* Text information */}

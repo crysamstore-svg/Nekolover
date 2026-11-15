@@ -2,7 +2,7 @@
 <html lang="es" class="h-full">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
     <title>NekoLover Read 🐾🖤 Lector Kawaii Dark & EPUB/PDF</title>
     <meta name="description" content="Lector Kawaii Dark & EPUB/PDF con estanterías 3D, stickers movibles, citas literarias, tipografía Dark Reborn y sonidos ambientales." />
     <meta property="og:title" content="NekoLover Read 🐾🖤 Lector Kawaii Dark & EPUB/PDF" />
@@ -46,7 +46,7 @@
   <body class="h-full bg-[#121019] text-[#e2d6ff] font-sans antialiased selection:bg-pink-500 selection:text-black">
     <div id="root" class="h-full">
       <!-- Instant Splash Screen while React initializes -->
-      <div style="min-height: 100vh; width: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; background: radial-gradient(circle at center, #1e1830 0%, #121019 100%); color: #ff79c6; font-family: 'Quicksand', system-ui, -apple-system, sans-serif; text-align: center; padding: 20px; box-sizing: border-box;">
+      <div style="min-height: 100dvh; width: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; background: radial-gradient(circle at center, #1e1830 0%, #121019 100%); color: #ff79c6; font-family: 'Quicksand', system-ui, -apple-system, sans-serif; text-align: center; padding: 20px; box-sizing: border-box;">
         <div style="position: relative; margin-bottom: 16px;">
           <div style="font-size: 3.5rem; filter: drop-shadow(0 0 20px rgba(255, 121, 198, 0.4)); animation: nekoPulse 1.6s ease-in-out infinite alternate;">🐾🖤</div>
         </div>
@@ -87,11 +87,13 @@
 
         const cleanCode = codigo.trim();
         const upperCode = cleanCode.toUpperCase();
+        if (cleanCode.length < 4) {
+          return false;
+        }
         const candidateCodes = cleanCode === upperCode ? [cleanCode] : [upperCode, cleanCode];
         const urls = [
           ...candidateCodes.map((c) => `${SUPABASE_URL}suscripciones?codigo=eq.${encodeURIComponent(c)}`),
-          `${SUPABASE_URL}suscripciones?codigo=ilike.${encodeURIComponent(cleanCode)}`,
-          `${SUPABASE_URL}suscripciones?codigo_activacion=eq.${encodeURIComponent(cleanCode)}`
+          `${SUPABASE_URL}suscripciones?codigo_activacion=eq.${encodeURIComponent(upperCode)}`
         ];
 
         for (const url of urls) {
@@ -110,8 +112,9 @@
 
               if (Array.isArray(data) && data.length > 0) {
                 const activeMatch = data.find((row) => {
+                  const rowCode = String(row.codigo || row.codigo_activacion || "").trim();
                   const est = String(row.estado || "").trim().toLowerCase();
-                  return est === "activo" || est === "active";
+                  return rowCode.toUpperCase() === upperCode && (est === "activo" || est === "active");
                 });
                 if (activeMatch) {
                   const matchedCode = String(activeMatch.codigo || activeMatch.codigo_activacion || cleanCode).trim();

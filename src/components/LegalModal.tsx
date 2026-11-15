@@ -37,7 +37,7 @@ export const LegalModal: React.FC<LegalModalProps> = ({
   return (
     <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex items-center justify-center p-3 sm:p-5 select-none overflow-y-auto">
       <div 
-        className="bg-gradient-to-b from-[#181324] via-[#120f1d] to-[#0a0812] border-2 border-[var(--accent-pink)]/40 rounded-3xl max-w-2xl w-full shadow-[0_0_40px_rgba(255,121,198,0.2)] flex flex-col max-h-[92vh] overflow-hidden modal-animate my-auto"
+        className="bg-gradient-to-b from-[#181324] via-[#120f1d] to-[#0a0812] border-2 border-[var(--accent-pink)]/40 rounded-3xl max-w-2xl w-full shadow-[0_0_40px_rgba(255,121,198,0.2)] flex flex-col max-h-[92dvh] overflow-hidden modal-animate my-auto"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
@@ -200,7 +200,7 @@ export const LegalModal: React.FC<LegalModalProps> = ({
                   <div className="p-2.5 rounded-xl bg-black/60 border border-emerald-500/30">
                     <span className="text-emerald-300 font-bold block text-[11px]">✅ Lo que recopilamos:</span>
                     <span className="text-[10px] text-white/70 block mt-1">
-                      Únicamente el correo electrónico vinculado a tu cuenta de PayPal para identificar tu suscripción Premium ($2/mes) y validar la activación.
+                      La app no solicita correo electrónico ni datos personales. Tu pago de suscripción ($2/mes) es procesado directamente por PayPal y validado mediante tu código de activación.
                     </span>
                   </div>
                   <div className="p-2.5 rounded-xl bg-black/60 border border-red-500/30">
@@ -299,14 +299,17 @@ export const LegalModal: React.FC<LegalModalProps> = ({
                     <span>2.</span> Cancelación de la Suscripción
                   </h5>
                   <p className="text-[11px] text-white/80 leading-relaxed">
-                    El usuario tiene el control total sobre su suscripción y puede cancelarla en cualquier momento para evitar futuros cobros automáticos:
+                    La suscripción incluye <strong>3 días de prueba gratis</strong> antes del primer cobro mensual ($2.00 USD/mes). El usuario tiene el control total sobre su suscripción y puede cancelarla en cualquier momento para evitar futuros cobros automáticos:
                   </p>
                   <ul className="list-disc list-inside space-y-1.5 text-[11px] text-white/80 pl-1">
+                    <li>
+                      <strong>Periodo de Prueba (3 días):</strong> Si cancelas desde PayPal antes de concluir los 3 días de prueba gratuita, no se realizará ningún cargo.
+                    </li>
                     <li>
                       <strong>Procedimiento:</strong> La cancelación debe gestionarse directamente por el usuario desde su propia cuenta de <strong>PayPal</strong> (en la sección de <em>Pagos con aprobación previa</em> o <em>Suscripciones</em>).
                     </li>
                     <li>
-                      <strong>Efecto de la cancelación:</strong> Al cancelar la suscripción en PayPal, el usuario mantendrá el acceso a las funciones Premium de la aplicación hasta que finalice el periodo mensual facturado actual. Una vez terminado dicho periodo, la aplicación volverá automáticamente al modo gratuito.
+                      <strong>Efecto de la cancelación:</strong> Al cancelar la suscripción en PayPal, el usuario mantendrá el acceso a las funciones Premium de la aplicación hasta que finalice el periodo actual (de prueba o mensual facturado). Una vez terminado dicho periodo, la aplicación volverá automáticamente al modo gratuito.
                     </li>
                   </ul>
                 </div>
@@ -319,12 +322,10 @@ export const LegalModal: React.FC<LegalModalProps> = ({
                   <p className="text-[11px] text-white/90 leading-relaxed">
                     Si el usuario experimenta un problema técnico donde PayPal procesó el cobro pero el sistema de automatización no entregó el código de activación por correo electrónico, el usuario deberá contactar al soporte a través de{' '}
                     <a 
-                      href="https://nekolover.online.zoho.com" 
-                      target="_blank" 
-                      rel="noopener noreferrer" 
+                      href="mailto:nekolover.online@nekolover.Online" 
                       className="text-amber-300 underline font-mono font-bold hover:text-white"
                     >
-                      nekolover.online.zoho.com
+                      nekolover.online@nekolover.Online
                     </a>{' '}
                     adjuntando su comprobante de pago de PayPal para registrar e ingresar su código de acceso manualmente en la aplicación.
                   </p>

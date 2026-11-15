@@ -34,7 +34,6 @@ export const VipClubPage: React.FC<VipClubPageProps> = ({
   onSubscribed
 }) => {
   const [subscription, setSubscription] = useState<VipSubscriptionData>(() => vipManager.getSubscription());
-  const [paypalEmail, setPaypalEmail] = useState('');
   const [manualCode, setManualCode] = useState('');
   const [showCodeInput, setShowCodeInput] = useState(false);
   
@@ -66,21 +65,16 @@ export const VipClubPage: React.FC<VipClubPageProps> = ({
       return;
     }
 
-    if (!paypalEmail || !paypalEmail.includes('@') || !paypalEmail.includes('.')) {
-      setErrorMessage('Por favor ingresa una dirección de correo válida vinculada a tu cuenta de PayPal.');
-      return;
-    }
-
-    setErrorMessage('Para suscribirte, utiliza el botón oficial de PayPal situado arriba. Una vez completado, inserta tu código de activación para activar la membresía VIP.');
+    setErrorMessage('Para suscribirte, utiliza el botón oficial de PayPal situado abajo. Una vez completado, inserta tu código de activación para activar la membresía VIP.');
   };
 
   const handlePayPalApprove = (subscriptionId: string) => {
+    vipManager.registerApprovedPayPalId(subscriptionId);
     vipManager.saveConsentLog({
       consentType: 'vip_checkout_paypal',
       termsAccepted: true,
       privacyAccepted: true,
-      refundPolicyAccepted: true,
-      email: paypalEmail.trim() || 'subscriber-paypal@user.com'
+      refundPolicyAccepted: true
     });
 
     setManualCode(subscriptionId);
@@ -99,7 +93,7 @@ export const VipClubPage: React.FC<VipClubPageProps> = ({
 
     setIsProcessing(true);
     try {
-      const res = await vipManager.activateWithCodeAsync(manualCode, paypalEmail);
+      const res = await vipManager.activateWithCodeAsync(manualCode);
       if (res.success && res.sub) {
         setSubscription(res.sub);
         setSuccessMessage(res.message);
@@ -134,7 +128,7 @@ export const VipClubPage: React.FC<VipClubPageProps> = ({
         </button>
 
         <div className="text-right">
-          <h2 className="dark-reborn-font font-bold text-lg sm:text-2xl bg-gradient-to-r from-amber-300 via-pink-400 to-amber-200 bg-clip-text text-transparent flex items-center justify-end gap-2">
+          <h2 className="dark-reborn-font font-bold text-lg sm:text-2xl text-amber-300 flex items-center justify-end gap-2">
             <span>👑</span>
             <span>NekoLover VIP Club</span>
           </h2>
@@ -300,16 +294,20 @@ export const VipClubPage: React.FC<VipClubPageProps> = ({
         <div className="lg:col-span-5 space-y-4">
           <div className="bg-gradient-to-b from-[#1c162b] to-[#100d1a] border-2 border-amber-400/50 rounded-3xl p-5 sm:p-6 shadow-[0_0_40px_rgba(251,191,36,0.15)] space-y-4">
             {/* Price Box */}
-            <div className="text-center pb-3 border-b border-white/10 space-y-1">
+            <div className="text-center pb-3 border-b border-white/10 space-y-1.5">
+              <span className="inline-flex items-center gap-1.5 px-3 py-0.5 rounded-full bg-emerald-500/20 border border-emerald-400/50 text-emerald-300 text-[11px] font-extrabold tracking-wide">
+                🎁 ¡3 días de prueba gratis!
+              </span>
               <span className="text-[11px] font-bold text-amber-300 uppercase tracking-widest block">
                 Suscripción Mensual
               </span>
               <div className="flex items-baseline justify-center gap-1.5">
+                <span className="text-xs text-white/70">Luego</span>
                 <span className="text-3xl font-extrabold text-white">$2.00</span>
                 <span className="text-xs font-semibold text-amber-300">USD / mes</span>
               </div>
               <span className="text-[11px] text-white/70 block">
-                Pago procesado exclusivamente por PayPal
+                Pago exclusivo por PayPal • Cancela antes de 3 días sin cobro
               </span>
             </div>
 
@@ -330,23 +328,9 @@ export const VipClubPage: React.FC<VipClubPageProps> = ({
 
             {/* PayPal Subscription Form */}
             <form onSubmit={handlePayPalSubmit} className="space-y-4">
-              {/* Data Minimization: Email only */}
-              <div>
-                <label className="text-xs font-bold text-white block mb-1">
-                  Correo Electrónico de PayPal:
-                </label>
-                <input
-                  type="email"
-                  required
-                  placeholder="tu-correo@paypal.com"
-                  value={paypalEmail}
-                  onChange={(e) => setPaypalEmail(e.target.value)}
-                  className="w-full bg-black/60 border border-white/20 focus:border-amber-400 rounded-xl px-3.5 py-2.5 text-xs text-white placeholder-white/40 focus:outline-none transition font-sans"
-                />
-                <p className="text-[10px] text-[var(--text-muted)] mt-1">
-                  🔒 Principio de minimización: solo solicitamos tu correo para activar y vincular tu cuenta VIP.
-                </p>
-              </div>
+              <p className="text-[11px] text-[var(--text-muted)] bg-black/40 border border-white/10 rounded-xl px-3 py-2">
+                🔒 Pago directo y seguro en PayPal: la aplicación no te solicita correo electrónico ni datos bancarios.
+              </p>
 
               {/* 2 CASILLAS SEPARADAS OBLIGATORIAS */}
               <div className="p-3.5 rounded-2xl bg-black/50 border border-white/10 space-y-2.5 text-[11px]">
@@ -401,7 +385,7 @@ export const VipClubPage: React.FC<VipClubPageProps> = ({
                     >
                       Política de Privacidad
                     </button>
-                    {' '}y autorizo el uso de mi correo exclusivamente para la activación y gestión de mi suscripción VIP.
+                    {' '}y autorizo la gestión segura de mi suscripción a través de la pasarela oficial de PayPal.
                   </span>
                 </label>
               </div>
@@ -410,7 +394,17 @@ export const VipClubPage: React.FC<VipClubPageProps> = ({
               <div className="pt-1">
                 <PayPalSubscriptionButton 
                   onSuccess={handlePayPalApprove}
-                  onError={(err) => setErrorMessage('Error al conectar con PayPal. Por favor intenta de nuevo.')}
+                  onError={() => setErrorMessage('La ventana emergente de PayPal fue bloqueada por el navegador. Pulsa el botón azul «Iniciar 3 días gratis con PayPal» abajo para completar la suscripción.')}
+                  onCheckoutClick={() => {
+                    if (acceptTermsAndRefund || acceptPrivacy) {
+                      vipManager.saveConsentLog({
+                        consentType: 'vip_checkout_paypal',
+                        termsAccepted: acceptTermsAndRefund,
+                        privacyAccepted: acceptPrivacy,
+                        refundPolicyAccepted: acceptTermsAndRefund
+                      });
+                    }
+                  }}
                 />
               </div>
             </form>
@@ -439,19 +433,17 @@ export const VipClubPage: React.FC<VipClubPageProps> = ({
               <p className="text-[11px] text-white/80 leading-relaxed">
                 Por políticas de seguridad, el acceso a la membresía VIP se activa única y exclusivamente cuando ingresas tu código de activación. Tras suscribirte por PayPal, tu código de acceso te llegará a tu correo (o puedes ingresar tu ID de suscripción de PayPal). Si necesitas soporte manual, contáctanos en{' '}
                 <a
-                  href="https://nekolover.online.zoho.com"
-                  target="_blank"
-                  rel="noopener noreferrer"
+                  href="mailto:nekolover.online@nekolover.Online"
                   className="text-amber-300 underline font-mono font-bold hover:text-white"
                 >
-                  nekolover.online.zoho.com
+                  nekolover.online@nekolover.Online
                 </a>.
               </p>
 
               <form onSubmit={handleActivateManualCode} className="flex flex-col sm:flex-row gap-2 pt-1">
                 <input
                   type="text"
-                  placeholder="Ej. NEKO-VIP-2026 o ID de PayPal"
+                  placeholder="Ingresa tu código de activación VIP"
                   value={manualCode}
                   onChange={(e) => setManualCode(e.target.value.toUpperCase())}
                   className="flex-1 bg-black/90 border border-amber-400/50 rounded-xl px-3.5 py-2 text-xs text-white uppercase font-mono focus:border-amber-400 focus:outline-none placeholder-white/30"
@@ -501,11 +493,12 @@ export const VipClubPage: React.FC<VipClubPageProps> = ({
               <span>2.</span> Cancelación de la Suscripción
             </h4>
             <p className="text-[11px] text-white/80 leading-relaxed mb-1">
-              El usuario tiene el control total sobre su suscripción y puede cancelarla en cualquier momento para evitar futuros cobros automáticos:
+              Incluye <strong>3 días de prueba gratis</strong>. El usuario tiene el control total sobre su suscripción y puede cancelarla en cualquier momento para evitar futuros cobros automáticos:
             </p>
             <ul className="list-disc list-inside space-y-1 text-[10px] text-white/70 pl-0.5">
+              <li><strong>Prueba de 3 días:</strong> Si cancelas desde PayPal antes de que terminen los 3 días de prueba, no se realizará ningún cobro.</li>
               <li><strong>Procedimiento:</strong> Directamente en tu propia cuenta de <strong>PayPal</strong> (en <em>Pagos con aprobación previa</em> o <em>Suscripciones</em>).</li>
-              <li><strong>Efecto:</strong> Mantendrás las funciones VIP hasta que finalice el periodo mensual pagado actual, volviendo al modo gratis al término.</li>
+              <li><strong>Efecto:</strong> Mantendrás las funciones VIP hasta que finalice el periodo actual, volviendo al modo gratis al término.</li>
             </ul>
           </div>
 
@@ -517,12 +510,10 @@ export const VipClubPage: React.FC<VipClubPageProps> = ({
             <p className="text-[11px] text-white/80 leading-relaxed">
               Si experimentas un problema técnico donde PayPal procesó el cobro pero el sistema de automatización no entregó el código de activación por correo electrónico, deberás contactar al soporte a través de{' '}
               <a
-                href="https://nekolover.online.zoho.com"
-                target="_blank"
-                rel="noopener noreferrer"
+                href="mailto:nekolover.online@nekolover.Online"
                 className="text-amber-300 underline font-mono font-bold hover:text-white"
               >
-                nekolover.online.zoho.com
+                nekolover.online@nekolover.Online
               </a>{' '}
               adjuntando tu comprobante de pago de PayPal para registrar e ingresar tu código de acceso manualmente.
             </p>

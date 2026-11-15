@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { X, Feather, BookOpen, Heart, Sparkles } from 'lucide-react';
 import { Book, Quote } from '../types';
+import { resolveCoverGradient, normalizeBookEmoji } from '../utils/db';
 
 interface AddQuoteModalProps {
   isOpen: boolean;
@@ -80,10 +81,10 @@ export const AddQuoteModal: React.FC<AddQuoteModalProps> = ({
             {/* 3D Mini Book Cover */}
             <div 
               className="w-12 h-16 rounded-md shadow-lg flex flex-col justify-between p-1 text-center shrink-0 border border-white/10 relative overflow-hidden"
-              style={{ background: activeBook.coverGradient || 'linear-gradient(135deg, #1f1a2e 0%, #100d18 100%)' }}
+              style={{ background: resolveCoverGradient(activeBook.coverGradient) }}
             >
               <div className="absolute top-0 left-0 bottom-0 w-1.5 bg-gradient-to-r from-black/70 to-transparent pointer-events-none" />
-              <span className="text-xl my-auto block drop-shadow-md">{activeBook.emoji}</span>
+              <span className="text-xl my-auto block drop-shadow-md">{normalizeBookEmoji(activeBook.emoji)}</span>
               <div className="w-full bg-black/60 h-1 rounded-full overflow-hidden">
                 <div className="bg-[var(--accent-pink)] h-full" style={{ width: `${activeBook.progressPercent || 0}%` }} />
               </div>

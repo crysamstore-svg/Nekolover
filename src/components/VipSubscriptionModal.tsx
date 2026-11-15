@@ -37,8 +37,6 @@ export const VipSubscriptionModal: React.FC<VipSubscriptionModalProps> = ({
   featureReason
 }) => {
   const [subscription, setSubscription] = useState<VipSubscriptionData>(() => vipManager.getSubscription());
-  // Data minimization: Strictly ONLY PayPal email address is requested
-  const [paypalEmail, setPaypalEmail] = useState('');
   const [manualCode, setManualCode] = useState('');
   const [showCodeInput, setShowCodeInput] = useState(false);
   const [codeSuccessMessage, setCodeSuccessMessage] = useState<string | null>(null);
@@ -78,24 +76,18 @@ export const VipSubscriptionModal: React.FC<VipSubscriptionModalProps> = ({
       return;
     }
 
-    // Email format validation
-    if (!paypalEmail || !paypalEmail.includes('@') || !paypalEmail.includes('.')) {
-      setValidationError('Por favor, introduce una dirección de correo electrónico válida asociada a tu cuenta de PayPal.');
-      return;
-    }
-
     // Direct user to click the official PayPal button or enter an existing code
-    setValidationError('Para suscribirte, utiliza el botón oficial de PayPal arriba. Una vez completado, inserta el código de activación en la casilla para activar tu membresía VIP.');
+    setValidationError('Para suscribirte, utiliza el botón oficial de PayPal abajo. Una vez completado, inserta el código de activación en la casilla para activar tu membresía VIP.');
   };
 
   const handlePayPalApprove = (subscriptionId: string) => {
+    vipManager.registerApprovedPayPalId(subscriptionId);
     // Guardar registro legal de consentimiento
     vipManager.saveConsentLog({
       consentType: 'vip_checkout_paypal',
       termsAccepted: true,
       privacyAccepted: true,
-      refundPolicyAccepted: true,
-      email: paypalEmail.trim() || 'subscriber-paypal@user.com'
+      refundPolicyAccepted: true
     });
 
     setManualCode(subscriptionId);
@@ -123,7 +115,7 @@ export const VipSubscriptionModal: React.FC<VipSubscriptionModalProps> = ({
 
     setIsProcessing(true);
     try {
-      const res = await vipManager.activateWithCodeAsync(manualCode, paypalEmail);
+      const res = await vipManager.activateWithCodeAsync(manualCode);
       if (res.success && res.sub) {
         setSubscription(res.sub);
         setCodeSuccessMessage(res.message);
@@ -182,7 +174,7 @@ export const VipSubscriptionModal: React.FC<VipSubscriptionModalProps> = ({
   return (
     <div className="fixed inset-0 bg-black/85 backdrop-blur-md z-50 flex items-center justify-center p-3 sm:p-5 select-none overflow-y-auto">
       <div 
-        className="bg-gradient-to-b from-[#181324] via-[#120f1d] to-[#0a0812] border-2 border-amber-400/60 rounded-3xl p-4 sm:p-6 max-w-lg w-full shadow-[0_0_50px_rgba(251,191,36,0.25)] relative modal-animate my-auto max-h-[92vh] flex flex-col"
+        className="bg-gradient-to-b from-[#181324] via-[#120f1d] to-[#0a0812] border-2 border-amber-400/60 rounded-3xl p-4 sm:p-6 max-w-lg w-full shadow-[0_0_50px_rgba(251,191,36,0.25)] relative modal-animate my-auto max-h-[92dvh] flex flex-col"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Close button */}
@@ -198,11 +190,11 @@ export const VipSubscriptionModal: React.FC<VipSubscriptionModalProps> = ({
         {successAnimation ? (
           <div className="py-10 text-center space-y-4 my-auto">
             <div className="text-6xl animate-bounce">👑✨🎉</div>
-            <h3 className="dark-reborn-title text-2xl font-bold bg-gradient-to-r from-amber-300 via-pink-400 to-amber-200 bg-clip-text text-transparent">
+            <h3 className="dark-reborn-title text-2xl font-bold text-amber-300">
               ¡Bienvenido al Club VIP de NekoLover!
             </h3>
             <p className="text-sm text-amber-200/90 max-w-sm mx-auto leading-relaxed">
-              Tu suscripción mensual de <strong>$2.00 USD</strong> mediante <strong>PayPal</strong> está activa para <span className="text-white font-mono">{paypalEmail || 'tu cuenta'}</span>.
+              Tu suscripción mensual de <strong>$2.00 USD</strong> mediante <strong>PayPal</strong> está activa para tu cuenta.
             </p>
             <div className="bg-black/50 border border-emerald-500/30 p-3 rounded-2xl max-w-xs mx-auto text-xs text-emerald-300 space-y-1">
               <div className="flex items-center justify-center gap-1.5 font-bold">
@@ -229,24 +221,28 @@ export const VipSubscriptionModal: React.FC<VipSubscriptionModalProps> = ({
               <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-gradient-to-tr from-amber-500 to-pink-500 text-black shadow-[0_0_20px_rgba(245,158,11,0.5)] mb-2 animate-pulse">
                 <Crown className="w-8 h-8 fill-black" />
               </div>
-              <h2 className="dark-reborn-title text-xl sm:text-2xl font-bold bg-gradient-to-r from-amber-300 via-pink-300 to-amber-100 bg-clip-text text-transparent">
+              <h2 className="dark-reborn-title text-xl sm:text-2xl font-bold text-amber-300">
                 NekoLover VIP Club 👑
               </h2>
               <p className="text-xs text-[var(--text-muted)] mt-1">
                 La experiencia literaria definitiva sin límites
               </p>
 
-              {/* Price Tag - Solo PayPal */}
-              <div className="inline-flex flex-col items-center mt-2.5 gap-1">
+              {/* Price Tag - 3 días de prueba gratis + Solo PayPal */}
+              <div className="inline-flex flex-col items-center mt-2.5 gap-1.5">
+                <span className="inline-flex items-center gap-1.5 px-3 py-0.5 rounded-full bg-emerald-500/20 border border-emerald-400/50 text-emerald-300 text-[11px] font-extrabold tracking-wide shadow-[0_0_12px_rgba(16,185,129,0.25)]">
+                  🎁 ¡3 días de prueba gratis!
+                </span>
                 <div className="inline-flex items-baseline gap-1 px-4 py-1.5 rounded-full bg-amber-400/15 border border-amber-400/40 text-amber-300">
+                  <span className="text-[11px] text-amber-200/90 mr-0.5">Luego</span>
                   <span className="text-2xl font-extrabold text-white">$2.00</span>
                   <span className="text-xs font-semibold text-amber-300">USD / mes</span>
-                  <span className="text-[10px] text-pink-300/90 ml-1.5 font-semibold">• Procesado vía PayPal</span>
+                  <span className="text-[10px] text-pink-300/90 ml-1.5 font-semibold">• Vía PayPal</span>
                 </div>
-                <div className="flex items-center gap-1.5 text-[11px] text-amber-200/80">
+                <div className="flex flex-wrap items-center justify-center gap-1.5 text-[11px] text-amber-200/80">
                   <span>🅿️ Pago exclusivo por PayPal</span>
                   <span>•</span>
-                  <span>Cancela en cualquier momento</span>
+                  <span>Cancela antes de 3 días sin cobro</span>
                 </div>
               </div>
             </div>
@@ -276,7 +272,7 @@ export const VipSubscriptionModal: React.FC<VipSubscriptionModalProps> = ({
                 <p className="text-xs text-emerald-200/80">
                   Plan: <strong>{subscription.planName}</strong>
                   <br />
-                  Método: <strong>PayPal</strong> ({subscription.email || 'correo guardado'})
+                  Método: <strong>{subscription.paymentMethod || 'PayPal'}</strong>
                   <br />
                   Válido hasta:{' '}
                   {subscription.expiresAt
@@ -461,23 +457,9 @@ export const VipSubscriptionModal: React.FC<VipSubscriptionModalProps> = ({
                     </span>
                   </div>
 
-                  {/* DATA MINIMIZATION: Ask ONLY for the user's PayPal email */}
-                  <div>
-                    <label className="text-[11px] font-semibold text-white block mb-1">
-                      Correo Electrónico de tu Cuenta de PayPal:
-                    </label>
-                    <input
-                      type="email"
-                      required
-                      placeholder="tu-correo-paypal@ejemplo.com"
-                      value={paypalEmail}
-                      onChange={(e) => setPaypalEmail(e.target.value)}
-                      className="w-full bg-black/70 border border-white/15 focus:border-amber-400 rounded-xl px-3 py-2 text-xs text-white placeholder-white/40 focus:outline-none transition font-sans"
-                    />
-                    <p className="text-[10px] text-[var(--text-muted)] mt-1">
-                      🔒 <strong>Minimización de datos:</strong> Solo te pedimos tu correo de PayPal para gestionar tu suscripción y enviarte el código de activación. No pedimos tarjeta, teléfono ni domicilio.
-                    </p>
-                  </div>
+                  <p className="text-[10px] text-[var(--text-muted)]">
+                    🔒 <strong>Privacidad total:</strong> El pago se procesa directamente en PayPal. No te pedimos correo electrónico, tarjeta, teléfono ni domicilio en la aplicación.
+                  </p>
                 </div>
 
                 {/* Error Banner */}
@@ -549,7 +531,7 @@ export const VipSubscriptionModal: React.FC<VipSubscriptionModalProps> = ({
                       >
                         Política de Privacidad
                       </button>
-                      {' '}y consiento de forma libre e inequívoca el tratamiento de mi correo electrónico de PayPal única y exclusivamente para la activación, comprobante de pago y soporte de mi suscripción VIP.
+                      {' '}y consiento el procesamiento seguro de mi suscripción exclusivamente a través de PayPal.
                     </span>
                   </label>
                 </div>
@@ -565,7 +547,17 @@ export const VipSubscriptionModal: React.FC<VipSubscriptionModalProps> = ({
                 <div className="pt-1">
                   <PayPalSubscriptionButton 
                     onSuccess={handlePayPalApprove}
-                    onError={(err) => setValidationError('Error al procesar el pago con PayPal. Intenta de nuevo.')}
+                    onError={() => setValidationError('La ventana emergente de PayPal fue bloqueada por el navegador. Pulsa el botón azul «Iniciar 3 días gratis con PayPal» arriba para completar la suscripción.')}
+                    onCheckoutClick={() => {
+                      if (acceptTermsAndRefund || acceptPrivacy) {
+                        vipManager.saveConsentLog({
+                          consentType: 'vip_checkout_paypal',
+                          termsAccepted: acceptTermsAndRefund,
+                          privacyAccepted: acceptPrivacy,
+                          refundPolicyAccepted: acceptTermsAndRefund
+                        });
+                      }
+                    }}
                   />
                 </div>
 
@@ -593,12 +585,10 @@ export const VipSubscriptionModal: React.FC<VipSubscriptionModalProps> = ({
                   <p className="text-[10px] text-white/80 leading-relaxed">
                     De conformidad con nuestras políticas de seguridad, el acceso VIP únicamente se activará cuando insertes tu código de activación. Al suscribirte por PayPal, tu código es entregado a tu correo o puedes usar tu ID de transacción. Si necesitas asistencia, escribe a{' '}
                     <a
-                      href="https://nekolover.online.zoho.com"
-                      target="_blank"
-                      rel="noopener noreferrer"
+                      href="mailto:nekolover.online@nekolover.Online"
                       className="text-amber-300 underline font-mono font-bold hover:text-white"
                     >
-                      nekolover.online.zoho.com
+                      nekolover.online@nekolover.Online
                     </a>.
                   </p>
 
@@ -611,7 +601,7 @@ export const VipSubscriptionModal: React.FC<VipSubscriptionModalProps> = ({
                   <div className="flex flex-col gap-2 pt-1">
                     <input
                       type="text"
-                      placeholder="Ej. NEKO-VIP-2026 o ID de PayPal"
+                      placeholder="Ingresa tu código de activación VIP"
                       value={manualCode}
                       onChange={(e) => setManualCode(e.target.value.toUpperCase())}
                       className="w-full bg-black/90 border border-amber-400/50 rounded-xl px-3.5 py-2.5 text-xs text-white uppercase font-mono focus:border-amber-400 focus:outline-none placeholder-white/30"

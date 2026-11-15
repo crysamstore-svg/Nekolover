@@ -38,11 +38,17 @@ export async function verificarCodigo(codigo: string): Promise<VerificarCodigoRe
   const cleanCode = codigo.trim();
   const upperCode = cleanCode.toUpperCase();
 
+  if (cleanCode.length < 4) {
+    return {
+      success: false,
+      message: 'El código de activación debe tener al menos 4 caracteres.'
+    };
+  }
+
   const candidateCodes = cleanCode === upperCode ? [cleanCode] : [upperCode, cleanCode];
   const urlsToTry: string[] = [
     ...candidateCodes.map((c) => `${SUPABASE_URL}suscripciones?codigo=eq.${encodeURIComponent(c)}`),
-    `${SUPABASE_URL}suscripciones?codigo=ilike.${encodeURIComponent(cleanCode)}`,
-    `${SUPABASE_URL}suscripciones?codigo_activacion=eq.${encodeURIComponent(cleanCode)}`
+    `${SUPABASE_URL}suscripciones?codigo_activacion=eq.${encodeURIComponent(upperCode)}`
   ];
 
   let foundRecord: SupabaseSuscripcion | null = null;
@@ -62,15 +68,20 @@ export async function verificarCodigo(codigo: string): Promise<VerificarCodigoRe
       if (response.ok) {
         const data: SupabaseSuscripcion[] = await response.json();
         if (Array.isArray(data) && data.length > 0) {
-          const activeMatch = data.find((row) => {
+          const matchingRows = data.filter((row) => {
+            const rowCode = String(row.codigo ?? row.codigo_activacion ?? '').trim();
+            return rowCode.toUpperCase() === upperCode;
+          });
+
+          const activeMatch = matchingRows.find((row) => {
             const est = String(row.estado ?? '').trim().toLowerCase();
             return est === 'activo' || est === 'active';
           });
           if (activeMatch) {
             foundRecord = activeMatch;
             break;
-          } else if (!inactiveRecord) {
-            inactiveRecord = data[0];
+          } else if (!inactiveRecord && matchingRows.length > 0) {
+            inactiveRecord = matchingRows[0];
           }
         }
       }
@@ -121,6 +132,42 @@ export async function verificarCodigo(codigo: string): Promise<VerificarCodigoRe
       success: false,
       message: 'El código ingresado no existe o no tiene estado "activo" en la base de datos de Supabase.'
     };
+  }
+}
+
+export interface ConsentimientoPayload {
+  consent_id: string;
+  consent_type: 'cookie_banner' | 'vip_checkout_paypal';
+  terms_accepted: boolean;
+  privacy_accepted: boolean;
+  refund_policy_accepted: boolean;
+  legal_version: string;
+  accepted_at: string;
+  user_agent?: string;
+  codigo_activacion?: string;
+}
+
+/**
+ * Envía el registro de consentimiento legal a la tabla "consentimientos" de Supabase (POST).
+ * Si la tabla aún no existe o el dispositivo está sin conexión, falla silenciosamente sin afectar la app.
+ */
+export async function registrarConsentimientoEnSupabase(payload: ConsentimientoPayload): Promise<boolean> {
+  try {
+    const response = await fetch(`${SUPABASE_URL}consentimientos`, {
+      method: 'POST',
+      headers: {
+        'apikey': SUPABASE_ANON_KEY,
+        'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+        'Content-Type': 'application/json',
+        'Prefer': 'return=minimal'
+      },
+      body: JSON.stringify(payload)
+    });
+
+    return response.ok;
+  } catch (e) {
+    console.warn('No se pudo sincronizar el consentimiento con Supabase:', e);
+    return false;
   }
 }
 
