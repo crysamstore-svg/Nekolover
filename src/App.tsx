@@ -29,52 +29,39 @@ import { saveFileToDB, deleteFileFromDB, saveBooksToDB, getBooksFromDB, getSmart
 import { soundscape } from './utils/audio';
 import { loadReadingStats, logReadingSession, resetReadingStatsToZero } from './utils/stats';
 import { parseEpubFile } from './utils/epubParser';
+import { safeJsonParse, sanitizeImageUrl } from './utils/sanitizeHtml';
+
+const MAX_BOOK_FILE_BYTES = 100 * 1024 * 1024; // 100 MB (PDF/EPUB)
+const MAX_TEXT_FILE_BYTES = 20 * 1024 * 1024;  // 20 MB (TXT/MD)
+
+const isPlainRecord = (val: unknown): val is Record<string, any> =>
+  Boolean(val) && typeof val === 'object' && !Array.isArray(val);
 
 export default function App() {
   // App State initialized with localStorage caching
   const [books, setBooks] = useState<Book[]>(() => {
-    try {
-      const saved = localStorage.getItem('nl_books');
-      return saved ? JSON.parse(saved) : DEFAULT_BOOKS;
-    } catch {
-      return DEFAULT_BOOKS;
-    }
+    const saved = localStorage.getItem('nl_books');
+    return safeJsonParse<Book[]>(saved, DEFAULT_BOOKS, (v): v is Book[] => Array.isArray(v));
   });
 
   const [quotes, setQuotes] = useState<Quote[]>(() => {
-    try {
-      const saved = localStorage.getItem('nl_quotes');
-      return saved ? JSON.parse(saved) : DEFAULT_QUOTES;
-    } catch {
-      return DEFAULT_QUOTES;
-    }
+    const saved = localStorage.getItem('nl_quotes');
+    return safeJsonParse<Quote[]>(saved, DEFAULT_QUOTES, (v): v is Quote[] => Array.isArray(v));
   });
 
   const [stickers, setStickers] = useState<Record<string, PageSticker[]>>(() => {
-    try {
-      const saved = localStorage.getItem('nl_stickers');
-      return saved ? JSON.parse(saved) : DEFAULT_STICKERS;
-    } catch {
-      return DEFAULT_STICKERS;
-    }
+    const saved = localStorage.getItem('nl_stickers');
+    return safeJsonParse<Record<string, PageSticker[]>>(saved, DEFAULT_STICKERS, isPlainRecord);
   });
 
   const [highlights, setHighlights] = useState<Record<string, TextHighlight[]>>(() => {
-    try {
-      const saved = localStorage.getItem('nl_highlights');
-      return saved ? JSON.parse(saved) : {};
-    } catch {
-      return {};
-    }
+    const saved = localStorage.getItem('nl_highlights');
+    return safeJsonParse<Record<string, TextHighlight[]>>(saved, {}, isPlainRecord);
   });
 
   const [bookmarks, setBookmarks] = useState<Bookmark[]>(() => {
-    try {
-      const saved = localStorage.getItem('nl_bookmarks');
-      return saved ? JSON.parse(saved) : [];
-    } catch {
-      return [];
-    }
+    const saved = localStorage.getItem('nl_bookmarks');
+    return safeJsonParse<Bookmark[]>(saved, [], (v): v is Bookmark[] => Array.isArray(v));
   });
 
   const [currentTheme, setCurrentTheme] = useState<ThemeId>(() => {
@@ -119,11 +106,9 @@ export default function App() {
   };
 
   const [headerConfig, setHeaderConfig] = useState<HeaderButtonsConfig>(() => {
-    try {
-      const saved = localStorage.getItem('nl_header_config');
-      if (saved) return { ...DEFAULT_HEADER_CONFIG, ...JSON.parse(saved) };
-    } catch {}
-    return DEFAULT_HEADER_CONFIG;
+    const saved = localStorage.getItem('nl_header_config');
+    const parsed = safeJsonParse<Partial<HeaderButtonsConfig> | null>(saved, null, isPlainRecord);
+    return parsed ? { ...DEFAULT_HEADER_CONFIG, ...parsed } : DEFAULT_HEADER_CONFIG;
   });
 
   const [shelfStyle, setShelfStyle] = useState<ShelfStyle>(() => {
@@ -136,18 +121,28 @@ export default function App() {
 
   // Custom Shelf Background Texture / Photo Config
   const [shelfBgConfig, setShelfBgConfig] = useState<ShelfBackgroundConfig>(() => {
-    try {
-      const saved = localStorage.getItem('nl_shelf_bg_config');
-      return saved ? JSON.parse(saved) : DEFAULT_SHELF_BG;
-    } catch {
-      return DEFAULT_SHELF_BG;
-    }
+    const saved = localStorage.getItem('nl_shelf_bg_config');
+    const parsed = safeJsonParse<Partial<ShelfBackgroundConfig> | null>(saved, null, isPlainRecord);
+    if (!parsed) return DEFAULT_SHELF_BG;
+    return {
+      ...DEFAULT_SHELF_BG,
+      ...parsed,
+      customImage: sanitizeImageUrl(parsed.customImage),
+      overlayDarkness: Math.max(0, Math.min(100, Number(parsed.overlayDarkness) || 65)),
+      blur: Math.max(0, Math.min(20, Number(parsed.blur) || 0))
+    };
   });
 
   const handleUpdateShelfBgConfig = (cfg: ShelfBackgroundConfig) => {
-    setShelfBgConfig(cfg);
+    const sanitizedCfg: ShelfBackgroundConfig = {
+      ...cfg,
+      customImage: sanitizeImageUrl(cfg.customImage),
+      overlayDarkness: Math.max(0, Math.min(100, Number(cfg.overlayDarkness) || 0)),
+      blur: Math.max(0, Math.min(20, Number(cfg.blur) || 0))
+    };
+    setShelfBgConfig(sanitizedCfg);
     try {
-      localStorage.setItem('nl_shelf_bg_config', JSON.stringify(cfg));
+      localStorage.setItem('nl_shelf_bg_config', JSON.stringify(sanitizedCfg));
     } catch (e) {
       console.warn('Error saving shelf background config:', e);
     }
@@ -193,6 +188,7 @@ export default function App() {
     const unsub = vipManager.onVipChange((vip) => {
       setIsVip(vip);
     });
+    void vipManager.revalidateWithServer();
     return () => unsub();
   }, []);
 
@@ -353,6 +349,13 @@ export default function App() {
 
       const bookId = `book-${Date.now()}-${i}-${Math.random().toString(36).substring(2, 6)}`;
       const fileNameLower = file.name.toLowerCase();
+      const isTextFile = fileNameLower.endsWith('.txt') || fileNameLower.endsWith('.md');
+      const maxAllowedSize = isTextFile ? MAX_TEXT_FILE_BYTES : MAX_BOOK_FILE_BYTES;
+      if (file.size > maxAllowedSize) {
+        showToast(`⚠️ "${file.name}" supera el límite (${isTextFile ? '20 MB' : '100 MB'}).`);
+        continue;
+      }
+
       const rawTitle = file.name.replace(/\.[^/.]+$/, '');
       const smartEmoji = getSmartEmojiForTitle(rawTitle);
       const gradient = getRandomGothicGradient(books.length + i);

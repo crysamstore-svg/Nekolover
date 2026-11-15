@@ -1,4 +1,9 @@
 import JSZip from 'jszip';
+import { sanitizeEpubHtml, sanitizeImageUrl } from './sanitizeHtml';
+
+const MAX_EPUB_SIZE_BYTES = 100 * 1024 * 1024; // 100 MB safety cap
+const MAX_EPUB_CHAPTERS = 400;
+const MAX_IMAGE_BASE64_LEN = 12 * 1024 * 1024; // ~9 MB binary image cap
 
 export interface ParsedEpubChapter {
   id: string;
@@ -17,9 +22,13 @@ export interface ParsedEpub {
 
 /**
  * Robust EPUB Parser using pure JSZip and DOMParser.
- * Works 100% offline, zero iframe dependencies, safe inside any sandboxed environment.
+ * Works 100% offline, zero iframe dependencies, sanitized against XSS.
  */
 export async function parseEpubFile(data: ArrayBuffer | Blob): Promise<ParsedEpub> {
+  const byteSize = data instanceof Blob ? data.size : data.byteLength;
+  if (byteSize > MAX_EPUB_SIZE_BYTES) {
+    throw new Error('El archivo EPUB supera el límite seguro de 100 MB.');
+  }
   const zip = new JSZip();
   const loadedZip = await zip.loadAsync(data);
 
@@ -91,8 +100,11 @@ export async function parseEpubFile(data: ArrayBuffer | Blob): Promise<ParsedEpu
     let cleanHref = imgHref.split('#')[0];
     let fullImgPath = '';
 
-    if (cleanHref.startsWith('http://') || cleanHref.startsWith('https://') || cleanHref.startsWith('data:')) {
-      return imgHref;
+    if (cleanHref.startsWith('https://') || cleanHref.startsWith('data:')) {
+      return sanitizeImageUrl(imgHref) || '';
+    }
+    if (cleanHref.startsWith('http://') || cleanHref.startsWith('javascript:')) {
+      return '';
     }
 
     if (cleanHref.startsWith('/')) {
@@ -122,9 +134,16 @@ export async function parseEpubFile(data: ArrayBuffer | Blob): Promise<ParsedEpu
 
     if (file) {
       try {
-        const base64 = await file.async('base64');
         const ext = fullImgPath.split('.').pop()?.toLowerCase() || 'png';
-        const mime = ext === 'jpg' || ext === 'jpeg' ? 'image/jpeg' : ext === 'svg' ? 'image/svg+xml' : ext === 'webp' ? 'image/webp' : 'image/png';
+        // Block active SVG images inside untrusted EPUBs to prevent script execution
+        if (ext === 'svg' || ext === 'svgz') {
+          return '';
+        }
+        const base64 = await file.async('base64');
+        if (base64.length > MAX_IMAGE_BASE64_LEN) {
+          return '';
+        }
+        const mime = ext === 'jpg' || ext === 'jpeg' ? 'image/jpeg' : ext === 'webp' ? 'image/webp' : ext === 'gif' ? 'image/gif' : 'image/png';
         const dataUrl = `data:${mime};base64,${base64}`;
         imageCache[fullImgPath] = dataUrl;
         return dataUrl;
@@ -138,8 +157,9 @@ export async function parseEpubFile(data: ArrayBuffer | Blob): Promise<ParsedEpu
   const chapters: ParsedEpubChapter[] = [];
   const pages: string[] = [];
 
-  // 3. Process each chapter in spine
-  for (let idx = 0; idx < spineIds.length; idx++) {
+  // 3. Process each chapter in spine (capped to prevent Zip Bomb / DoS)
+  const chapterLimit = Math.min(spineIds.length, MAX_EPUB_CHAPTERS);
+  for (let idx = 0; idx < chapterLimit; idx++) {
     const id = spineIds[idx];
     const manifestItem = manifestItems[id];
     if (!manifestItem) continue;
@@ -202,7 +222,9 @@ export async function parseEpubFile(data: ArrayBuffer | Blob): Promise<ParsedEpu
         }
       });
 
-      const bodyHtml = body.innerHTML.trim();
+      // Sanitize entire chapter body DOM strictly against XSS before paginating
+      const rawBodyHtml = body.innerHTML.trim();
+      const bodyHtml = sanitizeEpubHtml(rawBodyHtml);
       const textContent = body.textContent?.trim() || '';
 
       if (textContent.length > 0 || bodyHtml.includes('<img')) {
@@ -213,10 +235,10 @@ export async function parseEpubFile(data: ArrayBuffer | Blob): Promise<ParsedEpu
           text: textContent
         });
 
-        // Paginate chapter if it's too long (> 2200 chars), so reading feels like turning real book pages
+        // Paginate chapter if it's too long (> 2500 chars), so reading feels like turning real book pages
         if (textContent.length > 2500) {
-          // Split into readable segments
-          const paragraphs = Array.from(body.children);
+          const sanitizedDoc = parser.parseFromString(bodyHtml, 'text/html');
+          const paragraphs = Array.from((sanitizedDoc.body || body).children);
           if (paragraphs.length > 1) {
             let currentChunk = '';
             let currentLen = 0;
@@ -226,7 +248,7 @@ export async function parseEpubFile(data: ArrayBuffer | Blob): Promise<ParsedEpu
               const childLen = child.textContent?.length || 0;
 
               if (currentLen + childLen > 1800 && currentChunk) {
-                pages.push(currentChunk);
+                pages.push(sanitizeEpubHtml(currentChunk));
                 currentChunk = childHtml;
                 currentLen = childLen;
               } else {
@@ -236,7 +258,7 @@ export async function parseEpubFile(data: ArrayBuffer | Blob): Promise<ParsedEpu
             }
 
             if (currentChunk.trim()) {
-              pages.push(currentChunk);
+              pages.push(sanitizeEpubHtml(currentChunk));
             }
           } else {
             pages.push(bodyHtml);

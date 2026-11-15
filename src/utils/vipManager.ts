@@ -1,4 +1,5 @@
-import { verificarCodigo, registrarConsentimientoEnSupabase } from './supabase';
+import { verificarCodigo, revalidarCodigoSilencioso, registrarConsentimientoEnSupabase } from './supabase';
+import { safeJsonParse } from './sanitizeHtml';
 
 export interface VipSubscriptionData {
   isVip: boolean;
@@ -8,6 +9,8 @@ export interface VipSubscriptionData {
   paymentMethod: string;
   email?: string;
   autoRenew: boolean;
+  activationCode?: string;
+  integrityTag?: string;
 }
 
 export interface ConsentLogRecord {
@@ -29,6 +32,54 @@ const STORAGE_KEY = 'nl_vip_subscription';
 const LEGACY_PREMIUM_KEY = 'usuario_premium';
 const CONSENT_LOGS_KEY = 'nl_legal_consent_logs';
 const COOKIE_CONSENT_KEY = 'consentimiento_privacidad';
+const INTEGRITY_SALT = 'NL-VIP-CORE-2026-DARK-REBORN';
+
+const FREE_PLAN_DATA: VipSubscriptionData = {
+  isVip: false,
+  subscribedAt: null,
+  expiresAt: null,
+  planName: 'Plan Gratuito',
+  paymentMethod: 'Ninguno',
+  autoRenew: false
+};
+
+function computeVipIntegrityTag(sub: {
+  isVip: boolean;
+  subscribedAt: number | null;
+  expiresAt: number | null;
+  paymentMethod: string;
+  activationCode?: string;
+}): string {
+  const payload = [
+    INTEGRITY_SALT,
+    sub.isVip ? '1' : '0',
+    String(sub.subscribedAt ?? 0),
+    String(sub.expiresAt ?? 0),
+    sub.paymentMethod || '',
+    (sub.activationCode || '').toUpperCase()
+  ].join('|');
+
+  let h1 = 0x811c9dc5;
+  let h2 = 0x9e3779b9;
+  for (let i = 0; i < payload.length; i++) {
+    const ch = payload.charCodeAt(i);
+    h1 ^= ch;
+    h1 = Math.imul(h1, 0x01000193) >>> 0;
+    h2 ^= (ch + i) & 0xff;
+    h2 = Math.imul(h2, 0x85ebca6b) >>> 0;
+  }
+  return `${h1.toString(36)}-${h2.toString(36)}`;
+}
+
+function isValidVipObject(val: unknown): val is VipSubscriptionData {
+  if (!val || typeof val !== 'object' || Array.isArray(val)) return false;
+  const obj = val as Record<string, unknown>;
+  return (
+    typeof obj.isVip === 'boolean' &&
+    typeof obj.planName === 'string' &&
+    typeof obj.paymentMethod === 'string'
+  );
+}
 
 class VipManager {
   private listeners: Set<(isVip: boolean) => void> = new Set();
@@ -36,8 +87,9 @@ class VipManager {
 
   constructor() {
     if (typeof window !== 'undefined') {
-      window.addEventListener('vip_status_changed', (e: any) => {
-        this.notify(e.detail?.isVip ?? this.isVip());
+      // Siempre recalcular desde el estado verificado e ignorar cualquier payload arbitrario del evento
+      window.addEventListener('vip_status_changed', () => {
+        this.notify(this.isVip());
       });
       window.addEventListener('storage', (e: StorageEvent) => {
         if (e.key === LEGACY_PREMIUM_KEY || e.key === STORAGE_KEY) {
@@ -49,47 +101,52 @@ class VipManager {
 
   public getSubscription(): VipSubscriptionData {
     try {
-      // Check both keys for complete cross-compatibility
-      const legacyPremium = localStorage.getItem(LEGACY_PREMIUM_KEY) === 'true';
       const saved = localStorage.getItem(STORAGE_KEY);
-      
-      if (saved) {
-        const data = JSON.parse(saved);
-        // Check if expired
-        if (data.expiresAt && Date.now() > data.expiresAt) {
+      if (!saved) {
+        // Rechazar flag suelto usuario_premium='true' sin registro íntegro
+        if (localStorage.getItem(LEGACY_PREMIUM_KEY) === 'true') {
           localStorage.removeItem(LEGACY_PREMIUM_KEY);
-          return {
-            isVip: false,
-            subscribedAt: null,
-            expiresAt: null,
-            planName: 'Plan Gratuito',
-            paymentMethod: 'Ninguno',
-            autoRenew: false
-          };
         }
-        return data;
-      } else if (legacyPremium) {
-        return {
-          isVip: true,
-          subscribedAt: Date.now(),
-          expiresAt: Date.now() + 30 * 24 * 60 * 60 * 1000,
-          planName: 'Suscripción Mensual VIP ($2 USD/mes)',
-          paymentMethod: 'PayPal',
-          autoRenew: true
-        };
+        return { ...FREE_PLAN_DATA };
       }
+
+      const data = safeJsonParse<VipSubscriptionData | null>(saved, null, isValidVipObject);
+      if (!data) {
+        return { ...FREE_PLAN_DATA };
+      }
+
+      if (!data.isVip) {
+        return { ...FREE_PLAN_DATA };
+      }
+
+      // Verificar fecha de expiración válida (no expirada ni manipulada con un horizonte irreal > 400 días)
+      const now = Date.now();
+      const maxFutureMs = 400 * 24 * 60 * 60 * 1000;
+      if (!data.expiresAt || typeof data.expiresAt !== 'number' || now > data.expiresAt || data.expiresAt - now > maxFutureMs) {
+        localStorage.removeItem(LEGACY_PREMIUM_KEY);
+        return { ...FREE_PLAN_DATA };
+      }
+
+      // Verificar etiqueta de integridad para evitar alteración trivial en localStorage
+      const expectedTag = computeVipIntegrityTag({
+        isVip: data.isVip,
+        subscribedAt: data.subscribedAt,
+        expiresAt: data.expiresAt,
+        paymentMethod: data.paymentMethod,
+        activationCode: data.activationCode
+      });
+
+      if (!data.integrityTag || data.integrityTag !== expectedTag) {
+        localStorage.removeItem(LEGACY_PREMIUM_KEY);
+        return { ...FREE_PLAN_DATA };
+      }
+
+      return data;
     } catch (e) {
       console.warn('Error reading VIP status:', e);
     }
 
-    return {
-      isVip: false,
-      subscribedAt: null,
-      expiresAt: null,
-      planName: 'Plan Gratuito',
-      paymentMethod: 'Ninguno',
-      autoRenew: false
-    };
+    return { ...FREE_PLAN_DATA };
   }
 
   public isVip(): boolean {
@@ -99,22 +156,54 @@ class VipManager {
   // Registrar en memoria únicamente un ID de suscripción recién aprobado por el SDK oficial de PayPal
   public registerApprovedPayPalId(subscriptionId: string): void {
     const clean = subscriptionId?.trim().toUpperCase();
-    if (clean) {
+    if (clean && clean.length >= 6 && clean.length <= 64) {
       this.approvedPayPalIds.add(clean);
     }
   }
 
   // Solo activar el VIP cuando el código sea insertado por el usuario y validado
-  public subscribe(paymentMethod: string = 'PayPal', email?: string): VipSubscriptionData {
-    console.info('Pago registrado. Pendiente de insertar código de activación por el usuario.');
+  public subscribe(_paymentMethod: string = 'PayPal', _email?: string): VipSubscriptionData {
     return this.getSubscription();
+  }
+
+  private persistVerifiedSubscription(subInput: Omit<VipSubscriptionData, 'integrityTag'>): VipSubscriptionData {
+    const integrityTag = computeVipIntegrityTag({
+      isVip: subInput.isVip,
+      subscribedAt: subInput.subscribedAt,
+      expiresAt: subInput.expiresAt,
+      paymentMethod: subInput.paymentMethod,
+      activationCode: subInput.activationCode
+    });
+
+    const signedData: VipSubscriptionData = {
+      ...subInput,
+      integrityTag
+    };
+
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(signedData));
+    localStorage.setItem(LEGACY_PREMIUM_KEY, 'true');
+    this.notify(true);
+    return signedData;
+  }
+
+  /**
+   * Revalidación silenciosa al arrancar para revocar códigos desactivados en Supabase.
+   */
+  public async revalidateWithServer(): Promise<void> {
+    const current = this.getSubscription();
+    if (!current.isVip || !current.activationCode) return;
+    // Solo revalidar códigos provenientes de Supabase (no IDs locales de sesión PayPal si no empiezan como código)
+    if (current.paymentMethod.startsWith('Código Activación')) return;
+
+    const status = await revalidarCodigoSilencioso(current.activationCode);
+    if (status === 'invalid') {
+      this.cancel();
+    }
   }
 
   /**
    * Validación asíncrona de código de activación:
    * Consulta en tiempo real la base de datos de Supabase mediante GET fetch en la tabla "suscripciones".
-   * Ningún código se almacena en la app.
-   * Si es válido y activo, activa "usuario_premium = true" en localStorage y actualiza la app.
    */
   public async activateWithCodeAsync(code: string, email?: string): Promise<{ success: boolean; message: string; sub?: VipSubscriptionData }> {
     const cleanCode = code.trim();
@@ -125,26 +214,37 @@ class VipManager {
       };
     }
 
-    if (cleanCode.length < 4) {
+    if (cleanCode.length < 4 || cleanCode.length > 64) {
       return {
         success: false,
-        message: 'El código de activación debe contener al menos 4 caracteres.'
+        message: 'El código de activación debe tener entre 4 y 64 caracteres.'
       };
     }
 
-    // 1. Verificación obligatoria en la tabla "suscripciones" de Supabase
     try {
       const supRes = await verificarCodigo(cleanCode);
       if (supRes.success) {
-        const subData = this.getSubscription();
-        this.notify(true);
+        const matchedCode = (supRes.matchedCode || cleanCode).toUpperCase();
+        const now = Date.now();
+        const thirtyDays = 30 * 24 * 60 * 60 * 1000;
+        const subData = this.persistVerifiedSubscription({
+          isVip: true,
+          subscribedAt: now,
+          expiresAt: now + thirtyDays,
+          planName: 'Suscripción Mensual VIP ($2 USD/mes)',
+          paymentMethod: `Supabase [${matchedCode}]`,
+          autoRenew: true,
+          activationCode: matchedCode
+        });
+
         this.saveConsentLog({
           consentType: 'vip_checkout_paypal',
           termsAccepted: true,
           privacyAccepted: true,
           refundPolicyAccepted: true,
-          codigo: cleanCode.toUpperCase()
+          codigo: matchedCode
         });
+
         return {
           success: true,
           message: supRes.message,
@@ -152,7 +252,7 @@ class VipManager {
         };
       }
 
-      // 2. Si acaba de completar el pago oficial de PayPal en esta sesión, permitir su ID aprobado
+      // Si acaba de completar el pago oficial de PayPal en esta sesión, permitir su ID aprobado
       if (this.approvedPayPalIds.has(cleanCode.toUpperCase())) {
         return this.activateWithCode(cleanCode, email);
       }
@@ -192,19 +292,16 @@ class VipManager {
 
     const now = Date.now();
     const thirtyDays = 30 * 24 * 60 * 60 * 1000;
-    const subData: VipSubscriptionData = {
+    const subData = this.persistVerifiedSubscription({
       isVip: true,
       subscribedAt: now,
       expiresAt: now + thirtyDays,
       planName: 'Suscripción Mensual VIP ($2 USD/mes)',
       paymentMethod: `Código Activación (${cleanCode})`,
       email: email?.trim() || undefined,
-      autoRenew: false
-    };
-
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(subData));
-    localStorage.setItem(LEGACY_PREMIUM_KEY, 'true');
-    this.notify(true);
+      autoRenew: false,
+      activationCode: cleanCode
+    });
 
     this.saveConsentLog({
       consentType: 'vip_checkout_paypal',
@@ -222,16 +319,7 @@ class VipManager {
   }
 
   public cancel(): void {
-    const subData: VipSubscriptionData = {
-      isVip: false,
-      subscribedAt: null,
-      expiresAt: null,
-      planName: 'Plan Gratuito',
-      paymentMethod: 'Ninguno',
-      autoRenew: false
-    };
-
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(subData));
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...FREE_PLAN_DATA }));
     localStorage.removeItem(LEGACY_PREMIUM_KEY);
     this.notify(false);
   }
@@ -255,15 +343,12 @@ class VipManager {
 
   // Legal Consent Audit Trail
   public getConsentLogs(): ConsentLogRecord[] {
-    try {
-      const raw = localStorage.getItem(CONSENT_LOGS_KEY);
-      if (raw) {
-        return JSON.parse(raw);
-      }
-    } catch (e) {
-      console.warn('Error reading consent logs:', e);
-    }
-    return [];
+    const raw = localStorage.getItem(CONSENT_LOGS_KEY);
+    return safeJsonParse<ConsentLogRecord[]>(
+      raw,
+      [],
+      (val): val is ConsentLogRecord[] => Array.isArray(val)
+    );
   }
 
   public getLatestConsent(): ConsentLogRecord | null {
@@ -286,7 +371,6 @@ class VipManager {
     try {
       const logs = this.getConsentLogs();
       logs.unshift(fullRecord);
-      // Keep up to 50 logs for history and auditing
       localStorage.setItem(CONSENT_LOGS_KEY, JSON.stringify(logs.slice(0, 50)));
       localStorage.setItem(COOKIE_CONSENT_KEY, 'true');
     } catch (e) {

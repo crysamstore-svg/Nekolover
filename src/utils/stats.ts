@@ -1,4 +1,5 @@
 import { ReadingStatsData, DailyReadingStat, ReadingSession } from '../types';
+import { safeJsonParse } from './sanitizeHtml';
 
 export const STATS_STORAGE_KEY = 'nl_reading_stats';
 
@@ -67,8 +68,19 @@ export function generateDefaultStats(): ReadingStatsData {
 export function loadReadingStats(): ReadingStatsData {
   try {
     const stored = localStorage.getItem(STATS_STORAGE_KEY);
-    if (stored) {
-      return JSON.parse(stored);
+    const parsed = safeJsonParse<ReadingStatsData | null>(
+      stored,
+      null,
+      (val): val is ReadingStatsData =>
+        Boolean(val) &&
+        typeof val === 'object' &&
+        !Array.isArray(val) &&
+        typeof (val as ReadingStatsData).dailyRecords === 'object' &&
+        (val as ReadingStatsData).dailyRecords !== null &&
+        Array.isArray((val as ReadingStatsData).sessions)
+    );
+    if (parsed) {
+      return parsed;
     }
   } catch (err) {
     console.warn('Could not load reading stats from localStorage:', err);

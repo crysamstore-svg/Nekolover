@@ -10,7 +10,8 @@
     <meta property="og:type" content="website" />
     <meta name="twitter:card" content="summary_large_image" />
 
-    <!-- Mobile & PWA App Metadata -->
+    <!-- Security & Mobile Metadata -->
+    <meta name="referrer" content="strict-origin-when-cross-origin" />
     <meta name="theme-color" content="#121019" />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
@@ -26,14 +27,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Cinzel+Decorative:wght@700;900&family=Pirata+One&family=UnifrakturMaguntia&family=Creepster&family=Quicksand:wght@400;500;600;700&family=Fredoka:wght@400;500;600;700&family=Playfair+Display:ital,wght@0,400;0,700;1,400&family=Lora:ital,wght@0,400;0,600;1,400&display=swap" rel="stylesheet">
 
     <!-- PDF.js library (deferred for fast startup) -->
-    <script defer src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
-
-    <!-- ePub.js & JSZip libraries (deferred for fast startup) -->
-    <script defer src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
-    <script defer src="https://cdnjs.cloudflare.com/ajax/libs/epub.js/0.3.88/epub.min.js"></script>
-
-    <!-- Supabase Library via CDN (deferred for fast startup) -->
-    <script defer src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script defer src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
 
     <script>
       window.addEventListener('DOMContentLoaded', function() {
@@ -72,90 +66,6 @@
       </div>
     </div>
     <script type="module" src="/src/main.tsx"></script>
-
-    <!-- Bloque de Integración Supabase: Validación de Código Premium -->
-    <script>
-      const SUPABASE_URL = "https://jeplkoloixbkvgqwxkez.supabase.co/rest/v1/";
-      const SUPABASE_ANON_KEY = "sb_publishable_7P6iF17OzgWWgWfbc3rg9Q_LXP_Gp1v";
-
-      // Función para verificar código en la tabla suscripciones de Supabase mediante GET fetch
-      async function verificarCodigo(codigo) {
-        if (!codigo || typeof codigo !== "string" || !codigo.trim()) {
-          console.warn("Código no proporcionado");
-          return false;
-        }
-
-        const cleanCode = codigo.trim();
-        const upperCode = cleanCode.toUpperCase();
-        if (cleanCode.length < 4) {
-          return false;
-        }
-        const candidateCodes = cleanCode === upperCode ? [cleanCode] : [upperCode, cleanCode];
-        const urls = [
-          ...candidateCodes.map((c) => `${SUPABASE_URL}suscripciones?codigo=eq.${encodeURIComponent(c)}`),
-          `${SUPABASE_URL}suscripciones?codigo_activacion=eq.${encodeURIComponent(upperCode)}`
-        ];
-
-        for (const url of urls) {
-          try {
-            const response = await fetch(url, {
-              method: "GET",
-              headers: {
-                "apikey": SUPABASE_ANON_KEY,
-                "Authorization": "Bearer " + SUPABASE_ANON_KEY,
-                "Accept": "application/json"
-              }
-            });
-
-            if (response.ok) {
-              const data = await response.json();
-
-              if (Array.isArray(data) && data.length > 0) {
-                const activeMatch = data.find((row) => {
-                  const rowCode = String(row.codigo || row.codigo_activacion || "").trim();
-                  const est = String(row.estado || "").trim().toLowerCase();
-                  return rowCode.toUpperCase() === upperCode && (est === "activo" || est === "active");
-                });
-                if (activeMatch) {
-                  const matchedCode = String(activeMatch.codigo || activeMatch.codigo_activacion || cleanCode).trim();
-                  // Guardar usuario_premium = true en el localStorage de la app
-                  localStorage.setItem("usuario_premium", "true");
-
-                  // Sincronizar datos de suscripción para el lector
-                  const subData = {
-                    isVip: true,
-                    subscribedAt: Date.now(),
-                    expiresAt: Date.now() + 30 * 24 * 60 * 60 * 1000,
-                    planName: "Suscripción Mensual VIP ($2 USD/mes)",
-                    paymentMethod: `Supabase [${matchedCode}]`,
-                    autoRenew: true
-                  };
-                  localStorage.setItem("nl_vip_subscription", JSON.stringify(subData));
-
-                  // Disparar evento para actualizar la interfaz al instante
-                  if (window.dispatchEvent) {
-                    window.dispatchEvent(new CustomEvent("vip_status_changed", { detail: { isVip: true, code: matchedCode } }));
-                  }
-
-                  console.log("¡Código válido! usuario_premium = true guardado en localStorage.");
-                  return true;
-                }
-              }
-            }
-          } catch (error) {
-            console.error("Error al verificar código con Supabase:", error);
-          }
-        }
-
-        console.warn("Código no encontrado o inactivo en Supabase.");
-        return false;
-      }
-
-      // Exponer globalmente para App Mint y la app
-      window.SUPABASE_URL = SUPABASE_URL;
-      window.SUPABASE_ANON_KEY = SUPABASE_ANON_KEY;
-      window.verificarCodigo = verificarCodigo;
-    </script>
   </body>
 </html>
 

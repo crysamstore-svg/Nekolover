@@ -12,6 +12,9 @@ import {
   HelpCircle
 } from 'lucide-react';
 import { ShelfBackgroundConfig } from '../types';
+import { sanitizeImageUrl } from '../utils/sanitizeHtml';
+
+const MAX_SHELF_IMAGE_BYTES = 15 * 1024 * 1024; // 15 MB
 
 export const DEFAULT_SHELF_BG: ShelfBackgroundConfig = {
   customImage: null,
@@ -94,8 +97,12 @@ export const ShelfBackgroundModal: React.FC<ShelfBackgroundModalProps> = ({
   // Compress & downscale uploaded image using canvas to ensure safe localStorage persistence
   const handleProcessImage = (file: File) => {
     setUploadError(null);
-    if (!file.type.startsWith('image/')) {
-      setUploadError('Por favor selecciona un archivo de imagen válido (JPG, PNG, WebP).');
+    if (!file.type.startsWith('image/') || file.type === 'image/svg+xml') {
+      setUploadError('Por favor selecciona una imagen raster válida (JPG, PNG, WebP, GIF).');
+      return;
+    }
+    if (file.size > MAX_SHELF_IMAGE_BYTES) {
+      setUploadError('La imagen supera el límite máximo permitido de 15 MB.');
       return;
     }
 
@@ -209,17 +216,22 @@ export const ShelfBackgroundModal: React.FC<ShelfBackgroundModalProps> = ({
             </label>
             <div className="relative h-32 sm:h-36 rounded-2xl border border-[var(--border-color)] overflow-hidden flex items-end p-3 shadow-inner">
               {/* Background Layer */}
-              <div 
-                className="absolute inset-0 transition-all duration-300"
-                style={{
-                  backgroundImage: currentConfig.customImage ? `url(${currentConfig.customImage})` : undefined,
-                  backgroundSize: currentConfig.fit === 'cover' ? 'cover' : '300px',
-                  backgroundRepeat: currentConfig.fit === 'cover' ? 'no-repeat' : 'repeat',
-                  backgroundPosition: 'center',
-                  backgroundColor: currentConfig.customImage ? undefined : '#0f0c13',
-                  filter: `blur(${currentConfig.blur}px)`
-                }}
-              />
+              {(() => {
+                const safePreviewImg = sanitizeImageUrl(currentConfig.customImage);
+                return (
+                  <div 
+                    className="absolute inset-0 transition-all duration-300"
+                    style={{
+                      backgroundImage: safePreviewImg ? `url(${safePreviewImg})` : undefined,
+                      backgroundSize: currentConfig.fit === 'cover' ? 'cover' : '300px',
+                      backgroundRepeat: currentConfig.fit === 'cover' ? 'no-repeat' : 'repeat',
+                      backgroundPosition: 'center',
+                      backgroundColor: safePreviewImg ? undefined : '#0f0c13',
+                      filter: `blur(${Math.max(0, Math.min(20, currentConfig.blur || 0))}px)`
+                    }}
+                  />
+                );
+              })()}
 
               {/* Dark Overlay for Book Contrast */}
               <div 

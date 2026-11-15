@@ -39,6 +39,7 @@ import { Book, BookCategory, ShelfStyle, ShelfViewMode, ShelfBackgroundConfig } 
 import { ShelfBackgroundModal, DEFAULT_SHELF_BG } from './ShelfBackgroundModal';
 import { HeaderButtonsConfig } from './SettingsView';
 import { resolveCoverGradient, normalizeBookEmoji } from '../utils/db';
+import { sanitizeImageUrl } from '../utils/sanitizeHtml';
 
 interface BookshelfProps {
   books: Book[];
@@ -569,10 +570,9 @@ export const Bookshelf: React.FC<BookshelfProps> = ({
   // so every single row of books always rests directly on its own shelf plank without wrapping or horizontal scrolling
   const chunkSize = (() => {
     if (viewMode === 'covers') {
-      if (viewportWidth < 640) return 3;
-      if (viewportWidth < 768) return 4;
-      if (viewportWidth < 1024) return 5;
-      return 6;
+      if (viewportWidth < 768) return 5;
+      if (viewportWidth < 1024) return 6;
+      return 7;
     }
     if (viewMode === 'spines') {
       if (viewportWidth < 420) return 6;
@@ -1127,23 +1127,27 @@ export const Bookshelf: React.FC<BookshelfProps> = ({
               <div className="bookcase-backwall-layer" aria-hidden="true" />
 
               {/* Custom user background image if configured (also receives parallax depth) */}
-              {shelfBgConfig?.customImage && (
-                <>
-                  <div
-                    className="bookcase-backwall-layer bg-center overflow-hidden"
-                    style={{
-                      backgroundImage: `url(${shelfBgConfig.customImage})`,
-                      backgroundSize: shelfBgConfig.fit === 'pattern' ? 'auto' : 'cover',
-                      backgroundRepeat: shelfBgConfig.fit === 'pattern' ? 'repeat' : 'no-repeat',
-                      filter: `blur(${shelfBgConfig.blur ?? 0}px)`
-                    }}
-                  />
-                  <div
-                    className="absolute inset-0 bg-black pointer-events-none transition-opacity duration-300"
-                    style={{ opacity: (shelfBgConfig.overlayDarkness ?? 65) / 100 }}
-                  />
-                </>
-              )}
+              {(() => {
+                const safeShelfBgImage = sanitizeImageUrl(shelfBgConfig?.customImage);
+                if (!safeShelfBgImage) return null;
+                return (
+                  <>
+                    <div
+                      className="bookcase-backwall-layer bg-center overflow-hidden"
+                      style={{
+                        backgroundImage: `url(${safeShelfBgImage})`,
+                        backgroundSize: shelfBgConfig?.fit === 'pattern' ? 'auto' : 'cover',
+                        backgroundRepeat: shelfBgConfig?.fit === 'pattern' ? 'repeat' : 'no-repeat',
+                        filter: `blur(${Math.max(0, Math.min(20, shelfBgConfig?.blur ?? 0))}px)`
+                      }}
+                    />
+                    <div
+                      className="absolute inset-0 bg-black pointer-events-none transition-opacity duration-300"
+                      style={{ opacity: Math.max(0, Math.min(100, shelfBgConfig?.overlayDarkness ?? 65)) / 100 }}
+                    />
+                  </>
+                );
+              })()}
 
               {/* Top Library Shelf Header */}
               <div className="relative z-10 px-1 py-1 flex items-center justify-between border-b border-white/10 pb-2.5 text-xs text-[var(--text-muted)]">
@@ -1184,9 +1188,9 @@ export const Bookshelf: React.FC<BookshelfProps> = ({
                 }
               >
                 <div className="bookcase-books-layer">
-                {/* MODE 1: COVERS VIEW (Portadas frontales descansando sobre la repisa) */}
+                {/* MODE 1: COVERS VIEW (Portadas frontales más pequeñas: 5 por fila en móvil descansando sobre la repisa) */}
                 {viewMode === 'covers' && (
-                  <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-2.5 sm:gap-4 px-1.5 sm:px-3 pb-0 items-end">
+                  <div className="grid grid-cols-5 md:grid-cols-6 lg:grid-cols-7 gap-1.5 sm:gap-2.5 lg:gap-3.5 px-1 sm:px-2.5 pb-0 items-end">
                     {shelfBooks.map((book) => {
                       const percent = book.progressPercent || 0;
                       const isMarked = isBookMarked(book.id);
@@ -1267,15 +1271,15 @@ export const Bookshelf: React.FC<BookshelfProps> = ({
                             </button>
                           )}
 
-                          {/* Conventional Book Cover Container - Descansa directamente sobre la repisa */}
-                          <div className={`relative w-full max-w-[115px] sm:max-w-[130px] aspect-[2/3] rounded-r-lg rounded-l-sm shadow-[0_4px_10px_rgba(0,0,0,0.85)] overflow-hidden border border-white/10 group-hover:border-[var(--accent-pink)]/50 group-hover:shadow-[0_8px_18px_rgba(0,0,0,0.65)] transition-all flex flex-col justify-between p-2 sm:p-2.5 text-left book-cover-shadow ${
+                          {/* Conventional Book Cover Container - Más pequeña, 5 por estante en móvil descansando sobre la repisa */}
+                          <div className={`relative w-full max-w-[74px] sm:max-w-[96px] md:max-w-[106px] aspect-[2/3] rounded-r-md sm:rounded-r-lg rounded-l-sm shadow-[0_4px_10px_rgba(0,0,0,0.85)] overflow-hidden border border-white/10 group-hover:border-[var(--accent-pink)]/50 group-hover:shadow-[0_8px_18px_rgba(0,0,0,0.65)] transition-all flex flex-col justify-between p-1 sm:p-2 text-left book-cover-shadow ${
                             isMarked ? 'border-rose-500' : ''
                           }`}>
                             {/* Marked badge inside top right */}
                             {isMarked && (
-                              <div className="absolute top-1.5 right-1.5 z-30 bg-rose-600 text-white text-[9px] font-bold px-1.5 py-0.5 rounded-full shadow-md border border-white flex items-center gap-0.5 animate-fadeIn">
-                                <Trash2 className="w-2.5 h-2.5" />
-                                <span>Opciones</span>
+                              <div className="absolute top-1 right-1 z-30 bg-rose-600 text-white text-[7px] sm:text-[9px] font-bold px-1 py-0.5 rounded-full shadow-md border border-white flex items-center gap-0.5 animate-fadeIn">
+                                <Trash2 className="w-2 h-2 sm:w-2.5 sm:h-2.5" />
+                                <span className="hidden sm:inline">Opciones</span>
                               </div>
                             )}
                             {/* Background cover gradient */}
@@ -1287,21 +1291,21 @@ export const Bookshelf: React.FC<BookshelfProps> = ({
                             />
 
                             {/* Subtle Spine Ledge line */}
-                            <div className="absolute top-0 left-0 bottom-0 w-1.5 bg-black/40 pointer-events-none" />
-                            <div className="absolute top-0 left-1.5 bottom-0 w-px bg-white/10 pointer-events-none" />
+                            <div className="absolute top-0 left-0 bottom-0 w-1 sm:w-1.5 bg-black/40 pointer-events-none" />
+                            <div className="absolute top-0 left-1 sm:left-1.5 bottom-0 w-px bg-white/10 pointer-events-none" />
 
                             {/* Bookmark Ribbon on top */}
-                            <div className="absolute -top-1 right-2 z-10 w-3 h-6 bg-gradient-to-b from-pink-500 to-rose-600 shadow-md [clip-path:polygon(0_0,100%_0,100%_100%,50%_75%,0_100%)] opacity-90 group-hover:h-7 transition-all" />
+                            <div className="absolute -top-0.5 right-1 sm:right-2 z-10 w-2 h-3.5 sm:w-2.5 sm:h-5 bg-gradient-to-b from-pink-500 to-rose-600 shadow-md [clip-path:polygon(0_0,100%_0,100%_100%,50%_75%,0_100%)] opacity-90 group-hover:h-5 sm:group-hover:h-6 transition-all" />
 
                             {/* Top Card Bar */}
-                            <div className="relative z-10 flex items-center justify-between">
+                            <div className="relative z-10 flex items-center justify-between gap-0.5">
                               <button
                                 onClick={(e) => onToggleFavorite(book.id, e)}
-                                className="p-1 rounded-full bg-black/50 backdrop-blur-md text-white/70 hover:text-[var(--accent-pink)] transition"
+                                className="p-0.5 sm:p-1 rounded-full bg-black/50 backdrop-blur-md text-white/70 hover:text-[var(--accent-pink)] transition"
                                 title={book.favorite ? 'Quitar de favoritos' : 'Añadir a favoritos'}
                               >
                                 <Heart
-                                  className={`w-3 h-3 ${
+                                  className={`w-2.5 h-2.5 sm:w-3 sm:h-3 ${
                                     book.favorite
                                       ? 'fill-[var(--accent-pink)] text-[var(--accent-pink)]'
                                       : ''
@@ -1309,7 +1313,7 @@ export const Bookshelf: React.FC<BookshelfProps> = ({
                                 />
                               </button>
 
-                              <span className="text-[8px] sm:text-[9px] font-mono uppercase bg-black/60 backdrop-blur-md px-1.5 py-0.5 rounded-full text-[var(--accent-purple)] border border-white/5">
+                              <span className="text-[6px] sm:text-[8px] font-mono uppercase bg-black/60 backdrop-blur-md px-1 sm:px-1.5 py-0.2 rounded-full text-[var(--accent-purple)] border border-white/5 leading-tight">
                                 {book.type === 'epub'
                                   ? 'EPUB'
                                   : book.type === 'pdf'
@@ -1319,25 +1323,25 @@ export const Bookshelf: React.FC<BookshelfProps> = ({
                             </div>
 
                             {/* Center Cover Graphic */}
-                            <div className="relative z-10 text-center my-auto py-1">
-                              <span className="text-2xl sm:text-3xl filter drop-shadow-[0_3px_6px_rgba(0,0,0,0.8)] transform group-hover:scale-105 transition-transform block">
+                            <div className="relative z-10 text-center my-auto py-0.5">
+                              <span className="text-base sm:text-xl md:text-2xl filter drop-shadow-[0_2px_4px_rgba(0,0,0,0.8)] transform group-hover:scale-105 transition-transform block leading-none">
                                 {normalizeBookEmoji(book.emoji)}
                               </span>
-                              <h4 className="dark-reborn-font font-bold text-[10px] sm:text-xs text-white line-clamp-2 mt-1 px-0.5 leading-tight group-hover:text-[var(--accent-pink)] transition">
+                              <h4 className="dark-reborn-font font-bold text-[8px] sm:text-[10px] md:text-[11px] text-white line-clamp-2 mt-0.5 sm:mt-1 px-0.5 leading-tight group-hover:text-[var(--accent-pink)] transition">
                                 {book.title}
                               </h4>
-                              <p className="text-[9px] text-[var(--text-muted)] line-clamp-1 mt-0.5">
+                              <p className="hidden sm:block text-[8px] md:text-[9px] text-[var(--text-muted)] line-clamp-1 mt-0.5">
                                 {book.author}
                               </p>
                             </div>
 
                             {/* Bottom: Reading Progress Indicator */}
                             <div className="relative z-10">
-                              <div className="flex items-center justify-between text-[9px] font-mono text-[var(--text-muted)] mb-0.5">
+                              <div className="flex items-center justify-between text-[7px] sm:text-[8px] font-mono text-[var(--text-muted)] mb-0.5 leading-none">
                                 <span>{percent}%</span>
-                                <span>Pág. {book.currentPage || 1}</span>
+                                <span className="hidden sm:inline">Pág. {book.currentPage || 1}</span>
                               </div>
-                              <div className="w-full bg-black/60 h-1 rounded-full overflow-hidden border border-white/5">
+                              <div className="w-full bg-black/60 h-[3px] sm:h-1 rounded-full overflow-hidden border border-white/5">
                                 <div
                                   className="h-full bg-gradient-to-r from-[var(--accent-pink)] to-[var(--accent-purple)] transition-all duration-300"
                                   style={{ width: `${percent}%` }}
@@ -1349,7 +1353,7 @@ export const Bookshelf: React.FC<BookshelfProps> = ({
                             {isMarked && (
                               <div
                                 onClick={(e) => e.stopPropagation()}
-                                className="absolute bottom-1.5 inset-x-1.5 z-40 flex items-center justify-around gap-1 bg-black/90 backdrop-blur-md border border-[var(--accent-pink)]/60 rounded-lg py-1 px-1 shadow-xl animate-popIn"
+                                className="absolute bottom-1 inset-x-0.5 sm:inset-x-1.5 z-40 flex items-center justify-around gap-0.5 sm:gap-1 bg-black/90 backdrop-blur-md border border-[var(--accent-pink)]/60 rounded-md sm:rounded-lg py-0.5 sm:py-1 px-0.5 sm:px-1 shadow-xl animate-popIn"
                               >
                                 <button
                                   type="button"

@@ -200,17 +200,22 @@ export function getRandomGothicGradient(index: number): string {
 }
 
 // Convert legacy Tailwind gradient class strings (or missing values) into valid CSS background gradients
+const SAFE_HEX_COLOR_RE = /^#[0-9a-fA-F]{3,8}$/;
+const SAFE_RGB_HSL_RE = /^(?:rgb|hsl)a?\(\s*[0-9.,%\s/+-]+\)$/i;
+const SAFE_GRADIENT_RE = /^(?:linear|radial)-gradient\(\s*[a-zA-Z0-9#%,.\s()-]+\)$/i;
+const UNSAFE_CSS_RE = /[;{}<>\\`]|url\s*\(|expression\s*\(|@import|javascript:|behavior\s*:|binding\s*:/i;
+
 export function resolveCoverGradient(coverGradient?: string, index = 0): string {
-  if (coverGradient) {
+  if (coverGradient && typeof coverGradient === 'string') {
     const trimmed = coverGradient.trim();
-    if (
-      trimmed.startsWith('linear-gradient') ||
-      trimmed.startsWith('radial-gradient') ||
-      trimmed.startsWith('#') ||
-      trimmed.startsWith('rgb') ||
-      trimmed.startsWith('hsl')
-    ) {
-      return trimmed;
+    if (!UNSAFE_CSS_RE.test(trimmed)) {
+      if (
+        SAFE_GRADIENT_RE.test(trimmed) ||
+        SAFE_HEX_COLOR_RE.test(trimmed) ||
+        SAFE_RGB_HSL_RE.test(trimmed)
+      ) {
+        return trimmed;
+      }
     }
     if (trimmed.includes('pink-900')) {
       return 'linear-gradient(135deg, #5b1846 0%, #2a103f 55%, #0c0714 100%)';

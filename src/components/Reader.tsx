@@ -31,6 +31,7 @@ import { parseEpubFile } from '../utils/epubParser';
 import { ReadingSettingsModal } from './ReadingSettingsModal';
 import { MusicShelfModal } from './MusicShelfModal';
 import { musicPlayer } from '../utils/musicManager';
+import { highlightHtmlSafely } from '../utils/sanitizeHtml';
 
 interface PdfTextItem {
   str: string;
@@ -408,32 +409,9 @@ export const Reader: React.FC<ReaderProps> = ({
     return elements;
   };
 
-  // Subrayar citas directamente en el HTML de páginas EPUB
+  // Subrayar citas de forma segura (sanitización XSS + nodos de texto DOM)
   const highlightHtmlContent = (html: string, pageHighlights: TextHighlight[]) => {
-    if (!pageHighlights || pageHighlights.length === 0 || !html) return html;
-    let result = html;
-    const colorStyles: Record<HighlightColor, string> = {
-      pink: 'background-color: rgba(244, 63, 94, 0.4); border-bottom: 2px solid #f43f5e; color: inherit; padding: 1px 4px; border-radius: 4px; font-weight: 600;',
-      purple: 'background-color: rgba(168, 85, 247, 0.4); border-bottom: 2px solid #a855f7; color: inherit; padding: 1px 4px; border-radius: 4px; font-weight: 600;',
-      lila: 'background-color: rgba(192, 132, 252, 0.4); border-bottom: 2px solid #c084fc; color: inherit; padding: 1px 4px; border-radius: 4px; font-weight: 600;',
-      gris: 'background-color: rgba(148, 163, 184, 0.4); border-bottom: 2px solid #94a3b8; color: inherit; padding: 1px 4px; border-radius: 4px; font-weight: 600;',
-      'rosa-pastel': 'background-color: rgba(244, 114, 182, 0.4); border-bottom: 2px solid #f472b6; color: inherit; padding: 1px 4px; border-radius: 4px; font-weight: 600;',
-      rojo: 'background-color: rgba(239, 68, 68, 0.4); border-bottom: 2px solid #ef4444; color: inherit; padding: 1px 4px; border-radius: 4px; font-weight: 600;',
-      gold: 'background-color: rgba(245, 158, 11, 0.4); border-bottom: 2px solid #f59e0b; color: inherit; padding: 1px 4px; border-radius: 4px; font-weight: 600;',
-      emerald: 'background-color: rgba(16, 185, 129, 0.4); border-bottom: 2px solid #10b981; color: inherit; padding: 1px 4px; border-radius: 4px; font-weight: 600;'
-    };
-
-    pageHighlights.forEach((hl) => {
-      if (!hl.text || hl.text.trim().length === 0) return;
-      const escaped = hl.text.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-      try {
-        const reg = new RegExp(`(?![^<]*>)(${escaped})`, 'gi');
-        const style = colorStyles[hl.color] || colorStyles.pink;
-        result = result.replace(reg, `<mark style="${style}" data-hl-id="${hl.id}">$1</mark>`);
-      } catch {}
-    });
-
-    return result;
+    return highlightHtmlSafely(html, pageHighlights);
   };
 
   // Update progress to parent & reset scroll to top
@@ -510,7 +488,7 @@ export const Reader: React.FC<ReaderProps> = ({
             pdfjs.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
           }
 
-          const pdf = await pdfjs.getDocument({ data: arrayBuffer }).promise;
+          const pdf = await pdfjs.getDocument({ data: arrayBuffer, isEvalSupported: false }).promise;
           if (isCancelled) return;
           pdfDocRef.current = pdf;
           setTotalPages(pdf.numPages);

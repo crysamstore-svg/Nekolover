@@ -1,6 +1,12 @@
 import { MusicTrack } from '../types';
 import { saveFileToDB, getFileFromDB, deleteFileFromDB } from './db';
 import { soundscape } from './audio';
+import { safeJsonParse } from './sanitizeHtml';
+
+const MAX_AUDIO_SIZE_BYTES = 50 * 1024 * 1024; // 50 MB
+const isValidTrackList = (val: unknown): val is MusicTrack[] =>
+  Array.isArray(val) &&
+  val.every((item) => item && typeof item === 'object' && typeof (item as MusicTrack).id === 'string' && typeof (item as MusicTrack).title === 'string');
 
 export const DEFAULT_PRESET_TRACKS: MusicTrack[] = [
   {
@@ -91,23 +97,25 @@ class MusicPlayerManager {
   }
 
   public getTracks(): MusicTrack[] {
-    try {
-      const saved = localStorage.getItem('nl_music_shelf_tracks');
-      const customTracks: MusicTrack[] = saved ? JSON.parse(saved) : [];
-      return [...DEFAULT_PRESET_TRACKS, ...customTracks];
-    } catch {
-      return [...DEFAULT_PRESET_TRACKS];
-    }
+    const customTracks = this.getCustomTracks();
+    return [...DEFAULT_PRESET_TRACKS, ...customTracks];
   }
 
   public async uploadCustomTrack(file: File): Promise<MusicTrack> {
+    if (file.size > MAX_AUDIO_SIZE_BYTES) {
+      throw new Error('El archivo de audio supera el límite de 50 MB.');
+    }
+    if (!file.type.startsWith('audio/') && !/\.(mp3|wav|ogg|m4a|aac|flac|opus)$/i.test(file.name)) {
+      throw new Error('Formato de audio no permitido.');
+    }
+
     const id = `user-audio-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
     await saveFileToDB(`music-${id}`, file);
 
     const newTrack: MusicTrack = {
       id,
-      title: file.name.replace(/\.[^/.]+$/, ''),
-      fileName: file.name,
+      title: file.name.replace(/\.[^/.]+$/, '').slice(0, 140),
+      fileName: file.name.slice(0, 180),
       fileSize: `${(file.size / (1024 * 1024)).toFixed(1)} MB`,
       isCustom: true,
       type: 'file',
@@ -133,12 +141,8 @@ class MusicPlayerManager {
   }
 
   private getCustomTracks(): MusicTrack[] {
-    try {
-      const saved = localStorage.getItem('nl_music_shelf_tracks');
-      return saved ? JSON.parse(saved) : [];
-    } catch {
-      return [];
-    }
+    const saved = localStorage.getItem('nl_music_shelf_tracks');
+    return safeJsonParse<MusicTrack[]>(saved, [], isValidTrackList);
   }
 
   public async playTrack(track: MusicTrack) {
