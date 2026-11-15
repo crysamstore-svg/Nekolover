@@ -181,6 +181,17 @@ export const Bookshelf: React.FC<BookshelfProps> = ({
   const bookcaseRef = useRef<HTMLDivElement | null>(null);
   const prevShelfStyleRef = useRef<ShelfStyle>(shelfStyle);
   const [isDepthTransitioning, setIsDepthTransitioning] = useState(false);
+  const [viewportWidth, setViewportWidth] = useState<number>(() =>
+    typeof window !== 'undefined' ? window.innerWidth : 1024
+  );
+
+  useEffect(() => {
+    const handleResize = () => {
+      setViewportWidth(window.innerWidth);
+    };
+    window.addEventListener('resize', handleResize, { passive: true });
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
 
   // Transición de profundidad 3D al cambiar el ShelfStyle
   useEffect(() => {
@@ -522,12 +533,11 @@ export const Bookshelf: React.FC<BookshelfProps> = ({
       const scrollDrift = Math.sin(window.scrollY * 0.0045) * 6;
 
       const backwallY = Math.max(-24, Math.min(24, normalizedFromCenter * -20 - scrollDrift));
-      const booksY = Math.max(-4, Math.min(4, normalizedFromCenter * 2.5 + scrollDrift * 0.18));
-      const plankY = Math.max(-6, Math.min(6, normalizedFromCenter * 4.5 + scrollDrift * 0.35));
+      const shelfForegroundY = Math.max(-5, Math.min(5, normalizedFromCenter * 3.5 + scrollDrift * 0.25));
 
       el.style.setProperty('--shelf-parallax-y', `${backwallY.toFixed(2)}px`);
-      el.style.setProperty('--shelf-books-parallax-y', `${booksY.toFixed(2)}px`);
-      el.style.setProperty('--shelf-plank-parallax-y', `${plankY.toFixed(2)}px`);
+      el.style.setProperty('--shelf-books-parallax-y', `${shelfForegroundY.toFixed(2)}px`);
+      el.style.setProperty('--shelf-plank-parallax-y', `${shelfForegroundY.toFixed(2)}px`);
     };
 
     const onScrollOrResize = () => {
@@ -555,8 +565,28 @@ export const Bookshelf: React.FC<BookshelfProps> = ({
   const abandonedCount = books.filter((b) => b.category === 'abandoned').length;
   const favoritesCount = books.filter((b) => b.favorite).length;
 
-  // Chunk books for shelf levels depending on viewMode
-  const chunkSize = viewMode === 'spines' ? 10 : viewMode === 'covers' ? 6 : 4;
+  // Chunk books per shelf matching the exact columns visible at each screen width
+  // so every single row of books always rests directly on its own shelf plank without wrapping or horizontal scrolling
+  const chunkSize = (() => {
+    if (viewMode === 'covers') {
+      if (viewportWidth < 640) return 3;
+      if (viewportWidth < 768) return 4;
+      if (viewportWidth < 1024) return 5;
+      return 6;
+    }
+    if (viewMode === 'spines') {
+      if (viewportWidth < 420) return 6;
+      if (viewportWidth < 640) return 7;
+      if (viewportWidth < 768) return 8;
+      if (viewportWidth < 1024) return 10;
+      return 12;
+    }
+    // viewMode === 'stacks' (pilas de hasta 4 libros acostados por columna)
+    if (viewportWidth < 640) return 8; // 2 pilas x 4 libros
+    if (viewportWidth < 1024) return 12; // 3 pilas x 4 libros
+    return 16; // 4 pilas x 4 libros
+  })();
+
   const shelves: Book[][] = [];
   for (let i = 0; i < paginatedBooks.length; i += chunkSize) {
     shelves.push(paginatedBooks.slice(i, i + chunkSize));
@@ -1142,7 +1172,7 @@ export const Bookshelf: React.FC<BookshelfProps> = ({
               </div>
 
               {/* Shelves rows */}
-              <div className="space-y-4 relative z-10 mt-2">
+              <div className="space-y-3 sm:space-y-4 relative z-10 mt-2">
                 {shelves.map((shelfBooks, shelfIndex) => (
               <div
                 key={shelfIndex}
@@ -1381,14 +1411,16 @@ export const Bookshelf: React.FC<BookshelfProps> = ({
                   </div>
                 )}
 
-                {/* MODE 2: SPINES VIEW (Lomos verticales alineados descansando en estantería) */}
+                {/* MODE 2: SPINES VIEW (Lomos verticales alineados descansando en estantería sin desbordar en móvil) */}
                 {viewMode === 'spines' && (
-                  <div className="flex items-end justify-center gap-1.5 sm:gap-2.5 px-3 pt-2 pb-0 overflow-x-auto min-h-[185px]">
+                  <div className="flex items-end justify-center gap-1.5 sm:gap-2.5 px-1.5 sm:px-3 pt-2 pb-0 overflow-visible min-h-[168px] sm:min-h-[185px]">
                     {shelfBooks.map((book) => {
                       const isMarked = isBookMarked(book.id);
                       const isTouchingCurrent = touchActiveBookId === book.id;
                       const isDraggingCurrent = draggedBookId === book.id || isTouchingCurrent;
                       const isDropTarget = (dragOverBookId === book.id || touchOverBookId === book.id) && !isDraggingCurrent;
+                      const spineWidth = viewportWidth < 420 ? '32px' : viewportWidth < 640 ? '34px' : '36px';
+                      const spineHeight = viewportWidth < 640 ? '164px' : '175px';
 
                       return (
                         <div
@@ -1417,8 +1449,8 @@ export const Bookshelf: React.FC<BookshelfProps> = ({
                           }}
                           style={{
                             background: resolveCoverGradient(book.coverGradient),
-                            width: '36px',
-                            height: '175px',
+                            width: spineWidth,
+                            height: spineHeight,
                             boxShadow: '3px 0 10px rgba(0,0,0,0.5)',
                             touchAction: 'pan-y',
                             transform: isTouchingCurrent 
@@ -1484,102 +1516,123 @@ export const Bookshelf: React.FC<BookshelfProps> = ({
                   </div>
                 )}
 
-                {/* MODE 3: STACKS VIEW (Libros acostados descansando en estantería) */}
-                {viewMode === 'stacks' && (
-                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2 sm:gap-3 px-2 sm:px-4 pb-0 items-end">
-                    {shelfBooks.map((book) => {
-                      const isMarked = isBookMarked(book.id);
-                      const isTouchingCurrent = touchActiveBookId === book.id;
-                      const isDraggingCurrent = draggedBookId === book.id || isTouchingCurrent;
-                      const isDropTarget = (dragOverBookId === book.id || touchOverBookId === book.id) && !isDraggingCurrent;
+                {/* MODE 3: STACKS VIEW (Libros acostados más pequeños, apilados hasta 4 por pila sobre la repisa) */}
+                {viewMode === 'stacks' && (() => {
+                  const piles: Book[][] = [];
+                  for (let i = 0; i < shelfBooks.length; i += 4) {
+                    piles.push(shelfBooks.slice(i, i + 4));
+                  }
 
-                      return (
+                  return (
+                    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2 sm:gap-3.5 px-1.5 sm:px-3 pt-2 pb-0 items-end">
+                      {piles.map((pileBooks, pileIndex) => (
                         <div
-                          key={book.id}
-                          data-book-id={book.id}
-                          draggable={true}
-                          onDragStart={(e) => handleDragStart(e, book.id)}
-                          onDragOver={(e) => handleDragOver(e, book.id)}
-                          onDragLeave={(e) => handleDragLeave(e, book.id)}
-                          onDrop={(e) => handleDrop(e, book.id)}
-                          onDragEnd={handleDragEnd}
-                          onTouchStart={(e) => handleBookTouchStart(book.id, e)}
-                          onTouchMove={(e) => handleBookTouchMove(book.id, e)}
-                          onTouchEnd={() => handleBookTouchEnd(book.id)}
-                          onTouchCancel={handleBookTouchCancel}
-                          onMouseDown={() => handlePressStart(book.id)}
-                          onMouseUp={handlePressEnd}
-                          onMouseLeave={handlePressEnd}
-                          onClick={() => {
-                            if (suppressClickRef.current) return;
-                            if (markedForDeleteIds.length > 0) {
-                              toggleMarkForDelete(book.id);
-                            } else if (!isTouchDragging.current) {
-                              onOpenBook(book);
-                            }
-                          }}
-                          style={{
-                            background: resolveCoverGradient(book.coverGradient),
-                            touchAction: 'pan-y',
-                            transform: isTouchingCurrent 
-                              ? `translate3d(${touchOffset.x}px, ${touchOffset.y}px, 0)` 
-                              : undefined,
-                            zIndex: isTouchingCurrent ? 60 : undefined,
-                            pointerEvents: isTouchingCurrent ? 'none' : 'auto'
-                          }}
-                          className={`relative group cursor-grab active:cursor-grabbing p-2 sm:p-2.5 rounded-xl border border-white/10 transition-all duration-200 flex items-center justify-between shadow-md select-none ${
-                            isTouchingCurrent 
-                              ? 'scale-105 shadow-[0_20px_45px_rgba(255,121,198,0.7)] ring-2 ring-[var(--accent-pink)] transition-none' 
-                              : ''
-                          } ${
-                            draggedBookId === book.id ? 'opacity-40 scale-95' : ''
-                          } ${
-                            isDropTarget ? 'ring-4 ring-[var(--accent-pink)] scale-105 shadow-[0_0_20px_rgba(255,121,198,0.8)] z-30' : ''
-                          } ${
-                            isMarked
-                              ? 'ring-4 ring-rose-500 rounded-xl scale-[1.02] shadow-[0_0_20px_rgba(244,63,94,0.7)] z-20'
-                              : 'hover:-translate-y-1'
-                          }`}
-                          title={isMarked ? 'Marcado para eliminar (clic para desmarcar)' : 'Mantén presionado para marcar y eliminar, o desliza para mover'}
+                          key={`pile-${shelfIndex}-${pileIndex}`}
+                          className="flex flex-col-reverse gap-[2px] items-stretch justify-start min-w-0"
                         >
-                          {/* Drop target indicator */}
-                          {isDropTarget && (
-                            <div className="absolute inset-0 z-40 bg-[var(--accent-pink)]/20 backdrop-blur-xs rounded-xl flex items-center justify-center pointer-events-none border border-[var(--accent-pink)]">
-                              <span className="text-[10px] font-bold text-white bg-black/90 px-2 py-0.5 rounded-full shadow">
-                                ✨ Soltar aquí
-                              </span>
-                            </div>
-                          )}
+                          {pileBooks.map((book, stackIdx) => {
+                            const isMarked = isBookMarked(book.id);
+                            const isTouchingCurrent = touchActiveBookId === book.id;
+                            const isDraggingCurrent = draggedBookId === book.id || isTouchingCurrent;
+                            const isDropTarget = (dragOverBookId === book.id || touchOverBookId === book.id) && !isDraggingCurrent;
+                            // Pequeño desplazamiento horizontal alternado para dar aspecto real de pila de libros
+                            const stackOffsetPx = stackIdx === 1 ? 2 : stackIdx === 2 ? -2 : stackIdx === 3 ? 1 : 0;
 
-                          {isMarked && (
-                            <button
-                              type="button"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                onDeleteBook(book.id, e);
-                                setMarkedForDeleteIds((prev) => prev.filter((id) => id !== book.id));
-                              }}
-                              className="absolute -top-2 -left-2 z-50 w-6 h-6 rounded-full bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs flex items-center justify-center shadow border border-white cursor-pointer active:scale-90 animate-popIn"
-                              title="Eliminar de la estantería ahora"
-                            >
-                              ✕
-                            </button>
-                          )}
-                          <div className="flex items-center gap-1.5 overflow-hidden">
-                            <span className="text-lg sm:text-xl shrink-0">{normalizeBookEmoji(book.emoji)}</span>
-                            <div className="overflow-hidden">
-                              <h4 className="text-[11px] font-bold text-white truncate">{book.title}</h4>
-                              <p className="text-[9px] text-[var(--text-muted)] truncate">{book.author}</p>
-                            </div>
-                          </div>
-                          <span className="text-[10px] font-mono font-bold text-[var(--accent-pink)] shrink-0 ml-1.5">
-                            {book.progressPercent || 0}%
-                          </span>
+                            return (
+                              <div
+                                key={book.id}
+                                data-book-id={book.id}
+                                draggable={true}
+                                onDragStart={(e) => handleDragStart(e, book.id)}
+                                onDragOver={(e) => handleDragOver(e, book.id)}
+                                onDragLeave={(e) => handleDragLeave(e, book.id)}
+                                onDrop={(e) => handleDrop(e, book.id)}
+                                onDragEnd={handleDragEnd}
+                                onTouchStart={(e) => handleBookTouchStart(book.id, e)}
+                                onTouchMove={(e) => handleBookTouchMove(book.id, e)}
+                                onTouchEnd={() => handleBookTouchEnd(book.id)}
+                                onTouchCancel={handleBookTouchCancel}
+                                onMouseDown={() => handlePressStart(book.id)}
+                                onMouseUp={handlePressEnd}
+                                onMouseLeave={handlePressEnd}
+                                onClick={() => {
+                                  if (suppressClickRef.current) return;
+                                  if (markedForDeleteIds.length > 0) {
+                                    toggleMarkForDelete(book.id);
+                                  } else if (!isTouchDragging.current) {
+                                    onOpenBook(book);
+                                  }
+                                }}
+                                style={{
+                                  background: resolveCoverGradient(book.coverGradient),
+                                  touchAction: 'pan-y',
+                                  transform: isTouchingCurrent
+                                    ? `translate3d(${touchOffset.x}px, ${touchOffset.y}px, 0)`
+                                    : stackOffsetPx !== 0
+                                    ? `translateX(${stackOffsetPx}px)`
+                                    : undefined,
+                                  zIndex: isTouchingCurrent ? 60 : stackIdx + 1,
+                                  pointerEvents: isTouchingCurrent ? 'none' : 'auto'
+                                }}
+                                className={`relative group cursor-grab active:cursor-grabbing px-2 py-1 sm:px-2.5 sm:py-1.5 rounded-md border border-white/15 border-b-2 border-b-black/50 transition-all duration-200 flex items-center justify-between gap-1.5 shadow-[0_2px_5px_rgba(0,0,0,0.65)] select-none min-h-[28px] sm:min-h-[32px] ${
+                                  isTouchingCurrent
+                                    ? 'scale-105 shadow-[0_14px_30px_rgba(255,121,198,0.7)] ring-2 ring-[var(--accent-pink)] transition-none'
+                                    : ''
+                                } ${
+                                  draggedBookId === book.id ? 'opacity-40 scale-95' : ''
+                                } ${
+                                  isDropTarget ? 'ring-2 ring-[var(--accent-pink)] scale-[1.03] shadow-[0_0_16px_rgba(255,121,198,0.8)] z-30' : ''
+                                } ${
+                                  isMarked
+                                    ? 'ring-2 ring-rose-500 scale-[1.02] shadow-[0_0_16px_rgba(244,63,94,0.75)] z-20'
+                                    : 'hover:-translate-y-0.5'
+                                }`}
+                                title={`${book.title} — ${book.author} (${isMarked ? 'Marcado para eliminar' : 'Mantén presionado para opciones o desliza para mover'})`}
+                              >
+                                {/* Borde sutil lateral tipo hojas de libro acostado */}
+                                <div className="absolute right-0.5 top-1 bottom-1 w-[2px] rounded-full bg-amber-100/20 pointer-events-none" />
+
+                                {/* Drop target indicator */}
+                                {isDropTarget && (
+                                  <div className="absolute inset-0 z-40 bg-[var(--accent-pink)]/25 backdrop-blur-xs rounded-md flex items-center justify-center pointer-events-none border border-[var(--accent-pink)]">
+                                    <span className="text-[9px] font-bold text-white bg-black/90 px-1.5 py-0.5 rounded-full shadow">
+                                      ✨ Soltar aquí
+                                    </span>
+                                  </div>
+                                )}
+
+                                {isMarked && (
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      onDeleteBook(book.id, e);
+                                      setMarkedForDeleteIds((prev) => prev.filter((id) => id !== book.id));
+                                    }}
+                                    className="absolute -top-2 -left-1.5 z-50 w-5 h-5 rounded-full bg-rose-600 hover:bg-rose-700 text-white font-bold text-[10px] flex items-center justify-center shadow border border-white cursor-pointer active:scale-90 animate-popIn"
+                                    title="Eliminar de la estantería ahora"
+                                  >
+                                    ✕
+                                  </button>
+                                )}
+
+                                <div className="flex items-center gap-1.5 overflow-hidden min-w-0">
+                                  <span className="text-xs sm:text-sm shrink-0 leading-none">{normalizeBookEmoji(book.emoji)}</span>
+                                  <h4 className="text-[10px] sm:text-[11px] font-bold text-white truncate leading-tight">
+                                    {book.title}
+                                  </h4>
+                                </div>
+                                <span className="text-[9px] font-mono font-bold text-[var(--accent-pink)] shrink-0 pr-1">
+                                  {book.progressPercent || 0}%
+                                </span>
+                              </div>
+                            );
+                          })}
                         </div>
-                      );
-                    })}
-                  </div>
-                )}
+                      ))}
+                    </div>
+                  );
+                })()}
                 </div>
 
                 {/* The Physical 3D Shelf Ledge / Plank with Brackets & Niche Shadow */}
