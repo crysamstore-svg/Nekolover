@@ -100,7 +100,6 @@ interface ReaderProps {
   onUpdateBookProgress: (bookId: string, currentPage: number, totalPages: number) => void;
   currentFont: string;
   onSelectFont?: (font: string) => void;
-  onOpenAudioModal: () => void;
   onOpenMusicShelf?: () => void;
   onRecordReadingSession?: (minutes: number, pagesRead: number) => void;
   readerMode?: ReaderModeId;
@@ -131,7 +130,6 @@ export const Reader: React.FC<ReaderProps> = ({
   onUpdateBookProgress,
   currentFont,
   onSelectFont,
-  onOpenAudioModal,
   onOpenMusicShelf,
   onRecordReadingSession,
   readerMode: propReaderMode,
@@ -181,6 +179,7 @@ export const Reader: React.FC<ReaderProps> = ({
   const pagesVisitedRef = useRef<Set<number>>(new Set([book.currentPage || 1]));
   const [isFullscreen, setIsFullscreen] = useState<boolean>(false);
   const [isStickerDrawerOpen, setIsStickerDrawerOpen] = useState<boolean>(false);
+  const [stickerMenuPosition, setStickerMenuPosition] = useState<{ left: number; top: number } | null>(null);
   const [selectedStickerId, setSelectedStickerId] = useState<string | null>(null);
   const [defaultStickerScale, setDefaultStickerScale] = useState<number>(() => {
     const saved = localStorage.getItem('nl_default_sticker_scale');
@@ -255,6 +254,10 @@ export const Reader: React.FC<ReaderProps> = ({
   const epubRenditionRef = useRef<any>(null);
   const epubBookRef = useRef<any>(null);
   const pageSwipeStartRef = useRef<{ x: number; y: number; time: number } | null>(null);
+  const pendingStickerSpotRef = useRef<{ x: number; y: number } | null>(null);
+  const tapStartRef = useRef<{ x: number; y: number; time: number } | null>(null);
+  const lastTapRef = useRef<{ x: number; y: number; time: number } | null>(null);
+  const lastDoubleTapAtRef = useRef<number>(0);
 
   const pageKey = `${book.id}-p${currentPage}`;
   const currentPageStickers = stickers[pageKey] || [];
@@ -685,11 +688,27 @@ export const Reader: React.FC<ReaderProps> = ({
       return;
     }
 
+    const spot = pendingStickerSpotRef.current;
+    const viewportScrollTop = containerRef.current?.scrollTop || 0;
+    const pageEl = document.getElementById('page-container');
+    const maxStickerY = pageEl ? Math.max(60, pageEl.clientHeight - 60) : viewportScrollTop + 140;
+    const targetX = spot ? spot.x : 60 + Math.random() * 80;
+    const targetY = spot
+      ? Math.min(maxStickerY, spot.y)
+      : Math.min(maxStickerY, viewportScrollTop + 60 + Math.random() * 80);
+
+    if (spot) {
+      pendingStickerSpotRef.current = {
+        x: Math.min((pageEl?.clientWidth || 320) - 48, spot.x + 24),
+        y: Math.min(maxStickerY, spot.y + 18)
+      };
+    }
+
     const newSticker: PageSticker = {
       id: `stk-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
       emoji,
-      x: 60 + Math.random() * 80,
-      y: 60 + Math.random() * 80,
+      x: targetX,
+      y: targetY,
       scale: defaultStickerScale || 1.0,
       rotation: (Math.random() - 0.5) * 20,
       isLocked: false // Starts unlocked so user can position it
@@ -962,6 +981,42 @@ export const Reader: React.FC<ReaderProps> = ({
     onOpenAddQuote(sel || undefined);
   };
 
+  // Excluir controles interactivos para que el doble toque/clic abra los stickers en la lectura
+  const isExcludedStickerMenuTarget = (target: EventTarget | null) => {
+    const el = target as HTMLElement | null;
+    if (!el) return false;
+    return Boolean(
+      el.closest(
+        '.movable-sticker, .sticker-drawer, .sticker-toolbar, .sticker-resize-handle, button, a, input, textarea, select, [role="button"], mark'
+      )
+    );
+  };
+
+  const openStickerMenuAtPoint = (clientX: number, clientY: number) => {
+    window.getSelection()?.removeAllRanges();
+    requestAnimationFrame(() => window.getSelection()?.removeAllRanges());
+    setSelectedText('');
+    setSelectionPos(null);
+    setShowColorPicker(false);
+
+    const pageEl = document.getElementById('page-container');
+    if (pageEl) {
+      const rect = pageEl.getBoundingClientRect();
+      const relX = Math.max(12, Math.min(rect.width - 48, clientX - rect.left - 18));
+      const relY = Math.max(12, Math.min(rect.height - 48, clientY - rect.top - 18));
+      pendingStickerSpotRef.current = { x: Math.round(relX), y: Math.round(relY) };
+    } else {
+      pendingStickerSpotRef.current = null;
+    }
+
+    const drawerWidth = window.innerWidth < 640 ? 288 : 320;
+    const approxDrawerHeight = 320;
+    const left = Math.max(8, Math.min(window.innerWidth - drawerWidth - 8, clientX - drawerWidth / 2));
+    const top = Math.max(64, Math.min(window.innerHeight - approxDrawerHeight - 16, clientY + 14));
+    setStickerMenuPosition({ left: Math.round(left), top: Math.round(top) });
+    setIsStickerDrawerOpen(true);
+  };
+
   return (
     <div 
       className="flex-1 flex flex-col h-[calc(100dvh-62px)] min-h-0 bg-black/95 relative overflow-hidden select-none"
@@ -1003,17 +1058,6 @@ export const Reader: React.FC<ReaderProps> = ({
             <span className="hidden sm:inline">Ajustes</span>
           </button>
 
-          {/* Sonido Ambiental Lo-Fi */}
-          <button
-            type="button"
-            onClick={onOpenAudioModal}
-            className="px-2 sm:px-2.5 py-1.5 rounded-xl text-xs font-cute font-bold bg-black/40 border border-[var(--border-color)] text-[var(--text-muted)] hover:text-[var(--accent-pink)] hover:border-[var(--accent-pink)] transition flex items-center gap-1 shadow-md active:scale-95"
-            title="Sonido Ambiental Lo-Fi: Lluvia Gótica y Ronroneo Neko"
-          >
-            <span className="text-sm">🌧️</span>
-            <span className="hidden md:inline">Sonido</span>
-          </button>
-
           {/* Estantería de Música (Función VIP) */}
           <button
             type="button"
@@ -1045,7 +1089,11 @@ export const Reader: React.FC<ReaderProps> = ({
 
           {/* Sticker Drawer Button */}
           <button
-            onClick={() => setIsStickerDrawerOpen(!isStickerDrawerOpen)}
+            onClick={() => {
+              setStickerMenuPosition(null);
+              pendingStickerSpotRef.current = null;
+              setIsStickerDrawerOpen(!isStickerDrawerOpen);
+            }}
             className={`px-2.5 py-1.5 rounded-xl text-xs font-semibold flex items-center space-x-1 transition ${
               isStickerDrawerOpen
                 ? 'bg-[var(--accent-pink)] text-black font-bold shadow-md'
@@ -1098,7 +1146,16 @@ export const Reader: React.FC<ReaderProps> = ({
 
       {/* Movable Sticker Floating Palette Drawer */}
       {isStickerDrawerOpen && (
-        <div className="sticker-drawer absolute top-14 right-2 sm:right-6 z-40 bg-[var(--card-bg)] border border-[var(--border-color)] p-3 rounded-2xl shadow-2xl w-72 sm:w-80 modal-animate backdrop-blur-md">
+        <div
+          className={`sticker-drawer ${
+            stickerMenuPosition ? 'fixed z-50' : 'absolute top-14 right-2 sm:right-6 z-40'
+          } bg-[var(--card-bg)] border border-[var(--border-color)] p-3 rounded-2xl shadow-2xl w-72 sm:w-80 modal-animate backdrop-blur-md`}
+          style={
+            stickerMenuPosition
+              ? { left: `${stickerMenuPosition.left}px`, top: `${stickerMenuPosition.top}px` }
+              : undefined
+          }
+        >
           <div className="flex items-center justify-between border-b border-[var(--border-color)] pb-2 mb-2">
             <div className="flex items-center gap-1.5">
               <span className="text-base">🐾</span>
@@ -1107,7 +1164,10 @@ export const Reader: React.FC<ReaderProps> = ({
               </span>
             </div>
             <button
-              onClick={() => setIsStickerDrawerOpen(false)}
+              onClick={() => {
+                setIsStickerDrawerOpen(false);
+                setStickerMenuPosition(null);
+              }}
               className="text-xs text-[var(--text-muted)] hover:text-white"
             >
               <X className="w-4 h-4" />
@@ -1485,7 +1545,48 @@ export const Reader: React.FC<ReaderProps> = ({
           if ((e.target as HTMLElement).closest('.movable-sticker') || (e.target as HTMLElement).closest('.sticker-drawer')) return;
           if (selectedStickerId) setSelectedStickerId(null);
         }}
-        className="flex-1 relative overflow-auto flex justify-center items-start p-2 sm:p-5"
+        onDoubleClick={(e) => {
+          if (loadingFile || fileError) return;
+          if (Date.now() - lastDoubleTapAtRef.current < 550) return;
+          if (isExcludedStickerMenuTarget(e.target)) return;
+          openStickerMenuAtPoint(e.clientX, e.clientY);
+        }}
+        onTouchStart={(e) => {
+          if (loadingFile || fileError) return;
+          if (e.touches.length === 1 && !activeDragRef.current && !activeResizeRef.current && !isExcludedStickerMenuTarget(e.target)) {
+            tapStartRef.current = {
+              x: e.touches[0].clientX,
+              y: e.touches[0].clientY,
+              time: Date.now()
+            };
+          } else {
+            tapStartRef.current = null;
+          }
+        }}
+        onTouchEnd={(e) => {
+          const tapStart = tapStartRef.current;
+          tapStartRef.current = null;
+          if (!tapStart || loadingFile || fileError || activeDragRef.current || activeResizeRef.current) return;
+          if (isExcludedStickerMenuTarget(e.target)) return;
+          const touch = e.changedTouches[0];
+          if (!touch) return;
+          const now = Date.now();
+          const elapsed = now - tapStart.time;
+          const moveDist = Math.hypot(touch.clientX - tapStart.x, touch.clientY - tapStart.y);
+          if (elapsed > 320 || moveDist > 24) {
+            lastTapRef.current = null;
+            return;
+          }
+          const prevTap = lastTapRef.current;
+          if (prevTap && now - prevTap.time <= 450 && Math.hypot(touch.clientX - prevTap.x, touch.clientY - prevTap.y) <= 60) {
+            lastTapRef.current = null;
+            lastDoubleTapAtRef.current = now;
+            openStickerMenuAtPoint(touch.clientX, touch.clientY);
+          } else {
+            lastTapRef.current = { x: touch.clientX, y: touch.clientY, time: now };
+          }
+        }}
+        className="flex-1 relative overflow-auto flex justify-center items-start p-2 sm:p-5 touch-manipulation"
       >
         {loadingFile ? (
           <div className="my-auto text-center py-20">

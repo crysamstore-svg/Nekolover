@@ -21,6 +21,7 @@ import {
 import { vipManager, VipSubscriptionData } from '../utils/vipManager';
 import { LegalTab } from './LegalModal';
 import { PayPalSubscriptionButton } from './PayPalSubscriptionButton';
+import { PagoMovilPanel } from './PagoMovilPanel';
 
 interface VipClubPageProps {
   onBack: () => void;
@@ -41,6 +42,7 @@ export const VipClubPage: React.FC<VipClubPageProps> = ({
   const [acceptTermsAndRefund, setAcceptTermsAndRefund] = useState(false);
   const [acceptPrivacy, setAcceptPrivacy] = useState(false);
   
+  const [paymentMethodTab, setPaymentMethodTab] = useState<'paypal' | 'pago_movil'>('paypal');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
@@ -133,7 +135,7 @@ export const VipClubPage: React.FC<VipClubPageProps> = ({
             <span>NekoLover VIP Club</span>
           </h2>
           <p className="text-[11px] text-[var(--text-muted)]">
-            Acceso Premium mensual con pasarela exclusiva de PayPal ($2.00 USD/mes)
+            Acceso Premium mensual con PayPal o Pago Móvil Venezuela ($2.00 USD/mes)
           </p>
         </div>
       </div>
@@ -296,18 +298,18 @@ export const VipClubPage: React.FC<VipClubPageProps> = ({
             {/* Price Box */}
             <div className="text-center pb-3 border-b border-white/10 space-y-1.5">
               <span className="inline-flex items-center gap-1.5 px-3 py-0.5 rounded-full bg-emerald-500/20 border border-emerald-400/50 text-emerald-300 text-[11px] font-extrabold tracking-wide">
-                🎁 ¡3 días de prueba gratis!
+                🎁 ¡3 días gratis en PayPal o pago directo en Bs.!
               </span>
               <span className="text-[11px] font-bold text-amber-300 uppercase tracking-widest block">
                 Suscripción Mensual
               </span>
               <div className="flex items-baseline justify-center gap-1.5">
-                <span className="text-xs text-white/70">Luego</span>
+                <span className="text-xs text-white/70">Solo</span>
                 <span className="text-3xl font-extrabold text-white">$2.00</span>
                 <span className="text-xs font-semibold text-amber-300">USD / mes</span>
               </div>
               <span className="text-[11px] text-white/70 block">
-                Pago exclusivo por PayPal • Cancela antes de 3 días sin cobro
+                PayPal Internacional • Pago Móvil Banesco (Venezuela)
               </span>
             </div>
 
@@ -326,11 +328,47 @@ export const VipClubPage: React.FC<VipClubPageProps> = ({
               </div>
             )}
 
-            {/* PayPal Subscription Form */}
+            {/* PayPal & Pago Móvil Subscription Form */}
             <form onSubmit={handlePayPalSubmit} className="space-y-4">
-              <p className="text-[11px] text-[var(--text-muted)] bg-black/40 border border-white/10 rounded-xl px-3 py-2">
-                🔒 Pago directo y seguro en PayPal: la aplicación no te solicita correo electrónico ni datos bancarios.
-              </p>
+              {/* Method Selector Tabs */}
+              <div className="grid grid-cols-2 gap-2 p-1 rounded-2xl bg-black/60 border border-white/10">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPaymentMethodTab('paypal');
+                    setErrorMessage(null);
+                  }}
+                  className={`py-2 px-3 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer ${
+                    paymentMethodTab === 'paypal'
+                      ? 'bg-blue-600 text-white shadow-md'
+                      : 'text-[var(--text-muted)] hover:text-white'
+                  }`}
+                >
+                  <span>🅿️</span>
+                  <span>PayPal (3d gratis)</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPaymentMethodTab('pago_movil');
+                    setErrorMessage(null);
+                  }}
+                  className={`py-2 px-3 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer ${
+                    paymentMethodTab === 'pago_movil'
+                      ? 'bg-emerald-500 text-black shadow-md'
+                      : 'text-[var(--text-muted)] hover:text-white'
+                  }`}
+                >
+                  <span>🇻🇪</span>
+                  <span>Pago Móvil</span>
+                </button>
+              </div>
+
+              {paymentMethodTab === 'paypal' && (
+                <p className="text-[11px] text-[var(--text-muted)] bg-black/40 border border-white/10 rounded-xl px-3 py-2">
+                  🔒 Pago directo y seguro en PayPal: la aplicación no te solicita datos bancarios.
+                </p>
+              )}
 
               {/* 2 CASILLAS SEPARADAS OBLIGATORIAS */}
               <div className="p-3.5 rounded-2xl bg-black/50 border border-white/10 space-y-2.5 text-[11px]">
@@ -385,28 +423,43 @@ export const VipClubPage: React.FC<VipClubPageProps> = ({
                     >
                       Política de Privacidad
                     </button>
-                    {' '}y autorizo la gestión segura de mi suscripción a través de la pasarela oficial de PayPal.
+                    {' '}y autorizo el tratamiento de los datos mínimos necesarios para verificar mi pago por PayPal o Pago Móvil y activar mi acceso VIP.
                   </span>
                 </label>
               </div>
 
-              {/* BOTÓN OFICIAL DE PAYPAL (Plan P-0GH31223S1526604TNLUBBEQ) */}
-              <div className="pt-1">
-                <PayPalSubscriptionButton 
-                  onSuccess={handlePayPalApprove}
-                  onError={() => setErrorMessage('La ventana emergente de PayPal fue bloqueada por el navegador. Pulsa el botón azul «Iniciar 3 días gratis con PayPal» abajo para completar la suscripción.')}
-                  onCheckoutClick={() => {
-                    if (acceptTermsAndRefund || acceptPrivacy) {
-                      vipManager.saveConsentLog({
-                        consentType: 'vip_checkout_paypal',
-                        termsAccepted: acceptTermsAndRefund,
-                        privacyAccepted: acceptPrivacy,
-                        refundPolicyAccepted: acceptTermsAndRefund
-                      });
+              {/* PAGO SEGÚN MÉTODO SELECCIONADO */}
+              {paymentMethodTab === 'paypal' ? (
+                <div className="pt-1">
+                  <PayPalSubscriptionButton 
+                    onSuccess={handlePayPalApprove}
+                    onError={() => setErrorMessage('La ventana emergente de PayPal fue bloqueada por el navegador. Pulsa el botón azul «Iniciar 3 días gratis con PayPal» abajo para completar la suscripción.')}
+                    onCheckoutClick={() => {
+                      if (acceptTermsAndRefund || acceptPrivacy) {
+                        vipManager.saveConsentLog({
+                          consentType: 'vip_checkout_paypal',
+                          termsAccepted: acceptTermsAndRefund,
+                          privacyAccepted: acceptPrivacy,
+                          refundPolicyAccepted: acceptTermsAndRefund
+                        });
+                      }
+                    }}
+                  />
+                </div>
+              ) : (
+                <PagoMovilPanel
+                  acceptTermsAndRefund={acceptTermsAndRefund}
+                  acceptPrivacy={acceptPrivacy}
+                  onValidateConsent={() => {
+                    if (!acceptTermsAndRefund || !acceptPrivacy) {
+                      setErrorMessage('Debes marcar ambas casillas legales arriba antes de reportar tu Pago Móvil.');
+                      return false;
                     }
+                    setErrorMessage(null);
+                    return true;
                   }}
                 />
-              </div>
+              )}
             </form>
 
             {/* SECCIÓN OBLIGATORIA: INSERTAR CÓDIGO DE ACTIVACIÓN VIP */}

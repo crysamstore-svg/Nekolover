@@ -35,7 +35,6 @@ import { vipManager } from '../utils/vipManager';
 
 export interface HeaderButtonsConfig {
   showNightMode: boolean;
-  showAudio: boolean;
   showMusic: boolean;
   showTheme: boolean;
   showStats: boolean;
@@ -575,7 +574,6 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             <div className="space-y-3 pt-2">
               {[
                 { key: 'showNightMode' as const, label: 'Botón de Modo Noche Rápido (Sol / Luna)', desc: 'Interruptor directo para alternar alto contraste OLED', icon: '🌙' },
-                { key: 'showAudio' as const, label: 'Botón de Sonido Ambiental Lo-Fi', desc: 'Control de lluvia gótica y ronroneo de gato', icon: '🌧️' },
                 { key: 'showMusic' as const, label: 'Botón de Reproductor de Música (VIP)', desc: 'Acceso rápido a tus canciones y pistas de fondo', icon: '🎶' },
                 { key: 'showTheme' as const, label: 'Botón de Selector de Temas', desc: 'Acceso rápido al modal de paletas de color', icon: '🎨' },
                 { key: 'showStats' as const, label: 'Pestaña de Estadísticas', desc: 'Acceso a minutos de lectura, rachas y gráficos', icon: '📊' },
@@ -952,7 +950,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 <div className="p-3 rounded-xl bg-black/50 border border-white/10">
                   <span className="font-bold text-emerald-300">2. Política de Privacidad & 7. Minimización de Datos:</span>
                   <p className="text-[11px] text-white/80 mt-0.5">
-                    No se recopilan libros, lecturas ni datos personales en la app. El pago de la suscripción ($2/mes) se procesa directamente en la plataforma segura de PayPal.
+                    No se recopilan libros ni datos de lectura. En <strong>PayPal</strong> no se solicitan datos bancarios en la app; en <strong>Pago Móvil (Venezuela)</strong> solo se solicita banco, teléfono emisor, referencia y contacto para validar la transferencia y entregar tu código VIP.
                   </p>
                 </div>
 
@@ -966,7 +964,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 <div className="p-3 rounded-xl bg-black/50 border border-white/10">
                   <span className="font-bold text-amber-300">4. Formulario con 2 Casillas Separadas:</span>
                   <p className="text-[11px] text-white/80 mt-0.5">
-                    El checkout VIP de PayPal presenta de manera obligatoria e independiente una casilla para Términos + Reembolso, y otra casilla separada para Privacidad.
+                    El checkout VIP (PayPal y Pago Móvil) exige de forma obligatoria e independiente una casilla para Términos + Reembolso y otra casilla separada para Privacidad.
                   </p>
                 </div>
 
@@ -980,7 +978,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 <div className="p-3 rounded-xl bg-black/50 border border-white/10">
                   <span className="font-bold text-rose-300">6. Política de Cancelación y Reembolso:</span>
                   <p className="text-[11px] text-white/80 mt-0.5">
-                    Incluye <strong>3 días de prueba gratis</strong> antes del primer cobro mensual (cancelable sin cargo durante la prueba desde PayPal). Las ventas de bienes digitales posteriores son definitivas. En caso de incidencia técnica sin recepción de código, soporte directo en <a href="mailto:nekolover.online@nekolover.Online" className="text-amber-300 underline font-mono">nekolover.online@nekolover.Online</a> para activación manual.
+                    <strong>PayPal</strong> incluye 3 días de prueba gratis cancelables sin cobro. <strong>Pago Móvil</strong> funciona como pago único de 30 días sin renovación automática. Las ventas de bienes digitales entregados son definitivas; ante incidencias de activación, soporte directo en <a href="mailto:nekolover.online@nekolover.Online" className="text-amber-300 underline font-mono">nekolover.online@nekolover.Online</a> o WhatsApp.
                   </p>
                 </div>
 
@@ -1025,7 +1023,13 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                   {vipManager.getConsentLogs().slice(0, 2).map((log) => (
                     <div key={log.id} className="p-2.5 rounded-xl bg-black/60 border border-white/10 text-[10px] space-y-1">
                       <div className="flex items-center justify-between font-bold text-amber-300">
-                        <span>{log.consentType === 'vip_checkout_paypal' ? 'Checkout PayPal ($2/mes)' : 'Cartel de Cookies & Privacidad'}</span>
+                        <span>
+                          {log.consentType === 'vip_checkout_paypal'
+                            ? 'Checkout PayPal ($2/mes)'
+                            : log.consentType === 'vip_checkout_pago_movil'
+                              ? 'Checkout Pago Móvil ($2/mes)'
+                              : 'Cartel de Cookies & Privacidad'}
+                        </span>
                         <span className="text-[var(--text-muted)] font-mono">{log.formattedDate}</span>
                       </div>
                       <div className="text-white/80 font-mono">

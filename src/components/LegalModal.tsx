@@ -166,21 +166,22 @@ export const LegalModal: React.FC<LegalModalProps> = ({
                   <span>3.</span> Privacidad y Datos Locales
                 </h4>
                 <p className="text-[11px] text-white/80">
-                  Para tu total tranquilidad, la aplicación no recopila ni envía tus libros a servidores externos. Todos tus archivos, notas, subrayados, imágenes de estantería y configuraciones se procesan y guardan únicamente dentro del almacenamiento interno de tu propio teléfono móvil o navegador. Los datos de contacto (correo electrónico) proporcionados por PayPal al momento de la compra serán utilizados única y exclusivamente para el envío automatizado del código de activación Premium y comunicaciones relacionadas con la gestión de su suscripción.
+                  Para tu total tranquilidad, la aplicación no recopila ni envía tus libros a servidores externos. Todos tus archivos, notas, subrayados, imágenes de estantería y configuraciones se procesan y guardan únicamente dentro del almacenamiento interno de tu propio teléfono móvil o navegador. Los datos de contacto proporcionados a través de PayPal o reportados voluntariamente en el formulario de <strong>Pago Móvil (Venezuela)</strong> se utilizan única y exclusivamente para verificar tu pago, entregar tu código de activación VIP y atender soporte relacionado con tu membresía.
                 </p>
               </div>
 
               <div className="bg-black/40 border border-white/10 p-3.5 rounded-2xl">
                 <h4 className="font-bold text-sm text-[var(--accent-pink)] mb-1 flex items-center gap-1.5">
-                  <span>4.</span> Suscripción Premium y Pagos por PayPal ($2.00 USD/mes)
+                  <span>4.</span> Suscripción Premium ($2.00 USD/mes — PayPal o Pago Móvil)
                 </h4>
                 <p className="text-[11px] text-white/80 mb-2">
-                  El acceso a las funciones avanzadas (uso de más de 4 tipografías, colección completa de stickers no felinos, personalización de estantería desde tus archivos, notas ilimitadas, más de 3 colores de subrayado y reproductor de música con subida de archivos) requiere una suscripción mensual activa procesada de forma segura exclusivamente por <strong>PayPal</strong>.
+                  El acceso a las funciones avanzadas (uso de más de 4 tipografías, colección completa de stickers no felinos, personalización de estantería desde tus archivos, notas ilimitadas, más de 3 colores de subrayado y reproductor de música con subida de archivos) requiere una membresía mensual activa procesada mediante <strong>PayPal</strong> (recurrente) o <strong>Pago Móvil en Venezuela</strong> (pago único mensual en Bs. a tasa BCV).
                 </p>
                 <ul className="list-disc list-inside space-y-1 text-[11px] text-white/80 pl-1">
-                  <li>El usuario puede cancelar el cobro recurrente en cualquier momento directamente desde su propia cuenta de PayPal.</li>
-                  <li>Al cancelar, se conservarán las funciones Premium hasta que venza el ciclo de 30 días ya pagado.</li>
-                  <li>No se realizan reembolsos por periodos ya facturados (ver Política de Reembolso).</li>
+                  <li>En suscripciones por PayPal, puedes cancelar el cobro recurrente en cualquier momento desde tu cuenta de PayPal.</li>
+                  <li>En pagos por Pago Móvil no existen cobros automáticos; el acceso dura 30 días tras validar tu referencia.</li>
+                  <li>Al finalizar o cancelar, conservas las funciones Premium hasta que venza el ciclo de 30 días activo.</li>
+                  <li>No se realizan reembolsos por periodos ya facturados o códigos ya activados (ver Política de Reembolso).</li>
                 </ul>
               </div>
             </div>
@@ -200,13 +201,13 @@ export const LegalModal: React.FC<LegalModalProps> = ({
                   <div className="p-2.5 rounded-xl bg-black/60 border border-emerald-500/30">
                     <span className="text-emerald-300 font-bold block text-[11px]">✅ Lo que recopilamos:</span>
                     <span className="text-[10px] text-white/70 block mt-1">
-                      La app no solicita correo electrónico ni datos personales. Tu pago de suscripción ($2/mes) es procesado directamente por PayPal y validado mediante tu código de activación.
+                      Si pagas con <strong>PayPal</strong>, no solicitamos datos personales en la app. Si optas por <strong>Pago Móvil (Venezuela)</strong>, únicamente guardamos tu reporte de pago (banco emisor, teléfono emisor, número de referencia, monto en Bs. y correo/WhatsApp de contacto) para validar la transferencia y enviarte tu código VIP.
                     </span>
                   </div>
                   <div className="p-2.5 rounded-xl bg-black/60 border border-red-500/30">
                     <span className="text-red-300 font-bold block text-[11px]">❌ Lo que NUNCA recopilamos:</span>
                     <span className="text-[10px] text-white/70 block mt-1">
-                      No leemos tus libros, ni tus notas privadas, ni tu ubicación geográfica, ni tus contraseñas o datos de tarjeta bancaria (gestionados al 100% por PayPal).
+                      No leemos tus libros, ni tus notas privadas, ni tu ubicación geográfica, ni contraseñas o claves bancarias. Tampoco vendemos ni cedemos información de contacto a terceros.
                     </span>
                   </div>
                 </div>
@@ -265,7 +266,7 @@ export const LegalModal: React.FC<LegalModalProps> = ({
                     <strong className="text-amber-300">🅿️ PayPal:</strong> Al hacer clic en el enlace de suscripción, el usuario interactúa con la plataforma web oficial de PayPal. PayPal utiliza sus propias cookies estrictamente necesarias para procesar el pago de forma segura, mitigar fraudes y autenticar la cuenta del comprador. Estas cookies se rigen bajo la Política de Privacidad de PayPal.
                   </div>
                   <div className="p-2.5 rounded-xl bg-black/50 border border-white/5">
-                    <strong className="text-emerald-300">⚡ Supabase:</strong> La infraestructura técnica en la nube realiza consultas técnicas para validar la legitimidad de los códigos de acceso, sin rastrear la actividad comercial o de lectura del usuario.
+                    <strong className="text-emerald-300">⚡ Supabase y WhatsApp (Validación de Pagos):</strong> Supabase almacena de forma privada el registro técnico de consentimiento, verifica los códigos de activación y recibe los reportes de Pago Móvil enviados por el usuario (sin acceso público de lectura). Si el usuario pulsa el botón opcional de WhatsApp, enviará su comprobante directamente al soporte oficial para agilizar la entrega del código.
                   </div>
                 </div>
               </div>
@@ -296,20 +297,17 @@ export const LegalModal: React.FC<LegalModalProps> = ({
                 {/* 2. Cancelación de la Suscripción */}
                 <div className="p-3.5 rounded-xl bg-black/50 border border-white/10 space-y-2">
                   <h5 className="font-bold text-xs text-amber-300 flex items-center gap-1.5">
-                    <span>2.</span> Cancelación de la Suscripción
+                    <span>2.</span> Cancelación de la Suscripción y Modalidades
                   </h5>
                   <p className="text-[11px] text-white/80 leading-relaxed">
-                    La suscripción incluye <strong>3 días de prueba gratis</strong> antes del primer cobro mensual ($2.00 USD/mes). El usuario tiene el control total sobre su suscripción y puede cancelarla en cualquier momento para evitar futuros cobros automáticos:
+                    El usuario mantiene el control sobre su membresía mensual ($2.00 USD/mes) según el método elegido:
                   </p>
                   <ul className="list-disc list-inside space-y-1.5 text-[11px] text-white/80 pl-1">
                     <li>
-                      <strong>Periodo de Prueba (3 días):</strong> Si cancelas desde PayPal antes de concluir los 3 días de prueba gratuita, no se realizará ningún cargo.
+                      <strong>PayPal (3 días de prueba gratis y renovación automática):</strong> Si cancelas desde tu cuenta de <strong>PayPal</strong> (<em>Suscripciones / Pagos con aprobación previa</em>) antes de concluir los 3 días de prueba, no se realizará ningún cargo. Si cancelas luego, conservarás el VIP hasta terminar el mes pagado.
                     </li>
                     <li>
-                      <strong>Procedimiento:</strong> La cancelación debe gestionarse directamente por el usuario desde su propia cuenta de <strong>PayPal</strong> (en la sección de <em>Pagos con aprobación previa</em> o <em>Suscripciones</em>).
-                    </li>
-                    <li>
-                      <strong>Efecto de la cancelación:</strong> Al cancelar la suscripción en PayPal, el usuario mantendrá el acceso a las funciones Premium de la aplicación hasta que finalice el periodo actual (de prueba o mensual facturado). Una vez terminado dicho periodo, la aplicación volverá automáticamente al modo gratuito.
+                      <strong>Pago Móvil Venezuela (30 días sin renovación automática):</strong> Es un pago único manual de 30 días en Bolívares a tasa BCV; no genera cobros automáticos ni requiere cancelación posterior. Una vez validada la referencia y entregado el código VIP, el servicio digital queda suministrado y no admite reembolso.
                     </li>
                   </ul>
                 </div>
@@ -320,14 +318,14 @@ export const LegalModal: React.FC<LegalModalProps> = ({
                     <span>3.</span> Excepciones de Soporte
                   </h5>
                   <p className="text-[11px] text-white/90 leading-relaxed">
-                    Si el usuario experimenta un problema técnico donde PayPal procesó el cobro pero el sistema de automatización no entregó el código de activación por correo electrónico, el usuario deberá contactar al soporte a través de{' '}
+                    Si realizaste un pago por PayPal o Pago Móvil y aún no recibes tu código de activación, contáctanos a través de{' '}
                     <a 
                       href="mailto:nekolover.online@nekolover.Online" 
                       className="text-amber-300 underline font-mono font-bold hover:text-white"
                     >
                       nekolover.online@nekolover.Online
                     </a>{' '}
-                    adjuntando su comprobante de pago de PayPal para registrar e ingresar su código de acceso manualmente en la aplicación.
+                    o por WhatsApp (+58 412-8432704) adjuntando tu comprobante o número de referencia para validar y entregar tu acceso manualmente.
                   </p>
                 </div>
               </div>
@@ -364,7 +362,13 @@ export const LegalModal: React.FC<LegalModalProps> = ({
                       <div className="flex items-center justify-between text-[11px]">
                         <span className="font-bold text-amber-300 flex items-center gap-1">
                           <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
-                          <span>{log.consentType === 'vip_checkout_paypal' ? 'Checkout PayPal VIP ($2/mes)' : 'Cartel de Cookies & Privacidad'}</span>
+                          <span>
+                            {log.consentType === 'vip_checkout_paypal'
+                              ? 'Checkout PayPal VIP ($2/mes)'
+                              : log.consentType === 'vip_checkout_pago_movil'
+                                ? 'Checkout Pago Móvil VIP ($2/mes)'
+                                : 'Cartel de Cookies & Privacidad'}
+                          </span>
                         </span>
                         <span className="text-[10px] text-[var(--text-muted)] font-mono">
                           {log.formattedDate}

@@ -14,7 +14,6 @@ import { StatsPanel } from './components/StatsPanel';
 import { ThemeModal } from './components/ThemeModal';
 import { FontModal } from './components/FontModal';
 import { AddQuoteModal } from './components/AddQuoteModal';
-import { AmbientAudioModal } from './components/AmbientAudioModal';
 import { MusicShelfModal } from './components/MusicShelfModal';
 import { VipSubscriptionModal } from './components/VipSubscriptionModal';
 import { VipClubPage } from './components/VipClubPage';
@@ -97,7 +96,6 @@ export default function App() {
 
   const DEFAULT_HEADER_CONFIG: HeaderButtonsConfig = {
     showNightMode: false,
-    showAudio: false,
     showMusic: false,
     showTheme: false,
     showStats: false,
@@ -157,11 +155,9 @@ export default function App() {
   const [isFontModalOpen, setIsFontModalOpen] = useState(false);
   const [isAddQuoteOpen, setIsAddQuoteOpen] = useState(false);
   const [isAudioModalOpen, setIsAudioModalOpen] = useState(false);
-  const [isAmbientModalOpen, setIsAmbientModalOpen] = useState(false);
   const [isBookmarksOpen, setIsBookmarksOpen] = useState(false);
   const [quoteSelectedText, setQuoteSelectedText] = useState<string | undefined>(undefined);
   const [isAudioPlaying, setIsAudioPlaying] = useState(false);
-  const [isAmbientPlaying, setIsAmbientPlaying] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [bookToDelete, setBookToDelete] = useState<Book | null>(null);
 
@@ -806,8 +802,6 @@ export default function App() {
               }
             }}
             isAudioPlaying={isAudioPlaying}
-            onOpenAmbientAudioModal={() => setIsAmbientModalOpen(true)}
-            isAmbientPlaying={isAmbientPlaying}
             headerConfig={headerConfig}
             shelfStyle={shelfStyle}
             onShelfStyleChange={(s) => {
@@ -851,7 +845,6 @@ export default function App() {
             onUpdateBookProgress={handleUpdateBookProgress}
             currentFont={currentFont}
             onSelectFont={setCurrentFont}
-            onOpenAudioModal={() => setIsAmbientModalOpen(true)}
             onOpenMusicShelf={() => {
               if (!isVip) {
                 openVipModal('music');
@@ -1034,12 +1027,6 @@ export default function App() {
         isOpen={isAudioModalOpen}
         onClose={() => setIsAudioModalOpen(false)}
         onToast={showToast}
-      />
-
-      <AmbientAudioModal
-        isOpen={isAmbientModalOpen}
-        onClose={() => setIsAmbientModalOpen(false)}
-        onAudioStateChange={(playing) => setIsAmbientPlaying(playing)}
       />
 
       <BookmarksDrawer

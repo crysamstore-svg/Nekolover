@@ -62,8 +62,6 @@ interface BookshelfProps {
   onOpenThemeModal?: () => void;
   onOpenAudioModal?: () => void;
   isAudioPlaying?: boolean;
-  onOpenAmbientAudioModal?: () => void;
-  isAmbientPlaying?: boolean;
   headerConfig?: HeaderButtonsConfig;
   // Shelf config
   shelfStyle?: ShelfStyle;
@@ -97,8 +95,6 @@ export const Bookshelf: React.FC<BookshelfProps> = ({
   onOpenThemeModal,
   onOpenAudioModal,
   isAudioPlaying = false,
-  onOpenAmbientAudioModal,
-  isAmbientPlaying = false,
   headerConfig,
   shelfStyle: propShelfStyle,
   onShelfStyleChange,
@@ -845,25 +841,6 @@ export const Bookshelf: React.FC<BookshelfProps> = ({
               >
                 {isNightMode ? <Sun className="w-3.5 h-3.5 text-black" /> : <Moon className="w-3.5 h-3.5 text-gray-300" />}
                 <span className="hidden sm:inline font-cute">{isNightMode ? 'Día' : 'Noche'}</span>
-              </button>
-            )}
-
-            {/* Sonido Ambiental Lo-Fi (Lluvia Gótica & Ronroneo Neko) */}
-            {Boolean(headerConfig?.showAudio) && onOpenAmbientAudioModal && (
-              <button
-                onClick={onOpenAmbientAudioModal}
-                className={`px-2.5 py-1.5 rounded-xl text-xs flex items-center gap-1.5 border transition active:scale-95 shrink-0 shadow-sm ${
-                  isAmbientPlaying
-                    ? 'bg-[var(--accent-pink)]/25 text-[var(--accent-pink)] border-[var(--accent-pink)] animate-pulse'
-                    : 'bg-black/40 text-[var(--text-muted)] border-[var(--border-color)] hover:text-white hover:border-[var(--accent-pink)]'
-                }`}
-                title="Sonido Ambiental Lo-Fi: Lluvia Gótica y Ronroneo Neko"
-              >
-                <span className="text-sm leading-none">🌧️</span>
-                <span className="font-cute">Sonido</span>
-                {isAmbientPlaying && (
-                  <span className="w-1.5 h-1.5 rounded-full bg-[var(--accent-pink)]" />
-                )}
               </button>
             )}
 

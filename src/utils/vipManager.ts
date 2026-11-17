@@ -1,4 +1,4 @@
-import { verificarCodigo, revalidarCodigoSilencioso, registrarConsentimientoEnSupabase } from './supabase';
+import { verificarCodigo, revalidarCodigoSilencioso, registrarConsentimientoEnSupabase, getOrCreateDeviceId } from './supabase';
 import { safeJsonParse } from './sanitizeHtml';
 
 export interface VipSubscriptionData {
@@ -19,7 +19,7 @@ export interface ConsentLogRecord {
   formattedDate: string;
   isoDate: string;
   legalVersion: string;
-  consentType: 'cookie_banner' | 'vip_checkout_paypal';
+  consentType: 'cookie_banner' | 'vip_checkout_paypal' | 'vip_checkout_pago_movil';
   termsAccepted: boolean;
   privacyAccepted: boolean;
   refundPolicyAccepted: boolean;
@@ -52,6 +52,7 @@ function computeVipIntegrityTag(sub: {
 }): string {
   const payload = [
     INTEGRITY_SALT,
+    getOrCreateDeviceId(),
     sub.isVip ? '1' : '0',
     String(sub.subscribedAt ?? 0),
     String(sub.expiresAt ?? 0),
