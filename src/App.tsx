@@ -28,6 +28,8 @@ import { saveFileToDB, deleteFileFromDB, saveBooksToDB, getBooksFromDB, getSmart
 import { soundscape } from './utils/audio';
 import { loadReadingStats, logReadingSession, resetReadingStatsToZero } from './utils/stats';
 import { parseEpubFile } from './utils/epubParser';
+import { compressCoverImage, autoEnrichBookFromNetwork } from './utils/bookMetadata';
+import { BookDetailModal } from './components/BookDetailModal';
 import { safeJsonParse, sanitizeImageUrl } from './utils/sanitizeHtml';
 
 const MAX_BOOK_FILE_BYTES = 100 * 1024 * 1024; // 100 MB (PDF/EPUB)
@@ -36,11 +38,27 @@ const MAX_TEXT_FILE_BYTES = 20 * 1024 * 1024;  // 20 MB (TXT/MD)
 const isPlainRecord = (val: unknown): val is Record<string, any> =>
   Boolean(val) && typeof val === 'object' && !Array.isArray(val);
 
+const hydrateDemoBookMetadata = (list: Book[]): Book[] =>
+  list.map((b) => {
+    if (b.type !== 'demo') return b;
+    const def = DEFAULT_BOOKS.find((d) => d.id === b.id);
+    if (!def) return b;
+    return {
+      ...b,
+      genres: b.genres && b.genres.length > 0 ? b.genres : def.genres,
+      description: b.description || def.description,
+      publisher: b.publisher || def.publisher,
+      publishedYear: b.publishedYear || def.publishedYear,
+      metadataSource: b.metadataSource || def.metadataSource
+    };
+  });
+
 export default function App() {
   // App State initialized with localStorage caching
   const [books, setBooks] = useState<Book[]>(() => {
     const saved = localStorage.getItem('nl_books');
-    return safeJsonParse<Book[]>(saved, DEFAULT_BOOKS, (v): v is Book[] => Array.isArray(v));
+    const parsed = safeJsonParse<Book[]>(saved, DEFAULT_BOOKS, (v): v is Book[] => Array.isArray(v));
+    return hydrateDemoBookMetadata(parsed);
   });
 
   const [quotes, setQuotes] = useState<Quote[]>(() => {
@@ -149,6 +167,7 @@ export default function App() {
   // Navigation & Active Reading
   const [currentView, setCurrentView] = useState<'library' | 'quotes' | 'bookmarks' | 'stats' | 'reader' | 'settings' | 'vip'>('library');
   const [activeBook, setActiveBook] = useState<Book | null>(null);
+  const [previewBookId, setPreviewBookId] = useState<string | null>(null);
 
   // Modals & Notifications
   const [isThemeModalOpen, setIsThemeModalOpen] = useState(false);
@@ -263,7 +282,7 @@ export default function App() {
     getBooksFromDB()
       .then((stored) => {
         if (isMounted && stored && stored.length > 0) {
-          setBooks(stored);
+          setBooks(hydrateDemoBookMetadata(stored));
         }
         isDbInitializedRef.current = true;
       })
@@ -283,8 +302,12 @@ export default function App() {
 
     saveBooksToDB(books);
     try {
-      // Lightweight title index in localStorage for fast splash boot (first 40 items without content)
-      const lightCache = books.slice(0, 40).map((b) => ({ ...b, content: undefined }));
+      // Lightweight title index in localStorage for fast splash boot (first 40 items without heavy blobs)
+      const lightCache = books.slice(0, 40).map((b) => ({
+        ...b,
+        content: undefined,
+        coverImage: b.coverImage && b.coverImage.startsWith('data:') ? undefined : b.coverImage
+      }));
       localStorage.setItem('nl_books', JSON.stringify(lightCache));
     } catch {}
   }, [books]);
@@ -361,6 +384,12 @@ export default function App() {
         let epubPages: string[] = [];
         let detectedTitle = rawTitle;
         let detectedAuthor = 'Autor EPUB';
+        let detectedCover: string | undefined;
+        let detectedDescription: string | undefined;
+        let detectedGenres: string[] | undefined;
+        let detectedPublisher: string | undefined;
+        let detectedYear: string | undefined;
+        let detectedLang: string | undefined;
 
         try {
           const arrayBuffer = await file.arrayBuffer();
@@ -369,6 +398,15 @@ export default function App() {
           if (parsed.pages && parsed.pages.length > 0) epubPages = parsed.pages;
           if (parsed.title) detectedTitle = parsed.title;
           if (parsed.author) detectedAuthor = parsed.author;
+          if (parsed.description) detectedDescription = parsed.description;
+          if (parsed.genres) detectedGenres = parsed.genres;
+          if (parsed.publisher) detectedPublisher = parsed.publisher;
+          if (parsed.publishedYear) detectedYear = parsed.publishedYear;
+          if (parsed.language) detectedLang = parsed.language;
+          if (parsed.coverImage) {
+            const compressed = await compressCoverImage(parsed.coverImage, 360);
+            if (compressed) detectedCover = compressed;
+          }
         } catch {
           await saveFileToDB(bookId, file);
         }
@@ -382,6 +420,14 @@ export default function App() {
           emoji: smartEmoji,
           type: 'epub',
           coverGradient: gradient,
+          coverImage: detectedCover,
+          description: detectedDescription,
+          genres: detectedGenres,
+          publisher: detectedPublisher,
+          publishedYear: detectedYear,
+          language: detectedLang,
+          metadataSource:
+            detectedCover || detectedDescription || detectedGenres ? 'epub' : undefined,
           content: epubPages.length > 0 ? epubPages : undefined,
           fileName: file.name,
           currentPage: 1,
@@ -449,6 +495,26 @@ export default function App() {
 
     setSyncState({ isSyncing: false, current: 0, total: 0, currentFile: '' });
     showToast(`🐾 ¡Sincronización completada! ${newBooksToAdd.length} libro(s) colocados automáticamente en tu estantería.`);
+
+    // Automatically enrich newly uploaded books from the web in background (up to 15 per batch)
+    const booksToEnrich = newBooksToAdd
+      .filter((b) => !b.coverImage || !b.description || !b.genres || b.genres.length === 0)
+      .slice(0, 15);
+
+    if (booksToEnrich.length > 0) {
+      void (async () => {
+        for (const item of booksToEnrich) {
+          try {
+            const { updated, matched } = await autoEnrichBookFromNetwork(item);
+            if (matched || updated.coverImage) {
+              setBooks((prev) => prev.map((b) => (b.id === updated.id ? { ...b, ...updated } : b)));
+            }
+          } catch {
+            // Ignore transient network errors during background enrichment
+          }
+        }
+      })();
+    }
   };
 
   // File Upload Handler (EPUB, PDF, TXT, MD)
@@ -515,12 +581,25 @@ export default function App() {
     showToast('✨ Estantería reorganizada.');
   };
 
-  // Open Book in Reader
+  // Open Book Biography / Detail Preview before entering Reader
   const handleOpenBook = (book: Book) => {
+    setPreviewBookId(book.id);
+  };
+
+  // Enter Reader directly from BookDetailModal
+  const handleEnterReaderFromPreview = (book: Book) => {
+    setPreviewBookId(null);
     setActiveBook(book);
     setCurrentView('reader');
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
+
+  // Update Book Metadata (Public API / PDF / Manual bio or cover edits)
+  const handleUpdateBookMetadata = useCallback((updatedBook: Book, toastMsg?: string) => {
+    setBooks((prev) => prev.map((b) => (b.id === updatedBook.id ? updatedBook : b)));
+    setActiveBook((prev) => (prev && prev.id === updatedBook.id ? updatedBook : prev));
+    if (toastMsg) showToast(toastMsg);
+  }, [showToast]);
 
   // Favorite toggle
   const handleToggleFavorite = (id: string, e: React.MouseEvent) => {
@@ -1061,6 +1140,24 @@ export default function App() {
       <CookieConsentBanner
         onOpenLegalModal={handleOpenLegalModal}
       />
+
+      {/* Pre-Reader Book Biography / Profile Modal */}
+      {(() => {
+        const previewBook = previewBookId ? books.find((b) => b.id === previewBookId) : null;
+        if (!previewBook) return null;
+        return (
+          <BookDetailModal
+            book={previewBook}
+            quotesCountForBook={quotes.filter((q) => q.bookId === previewBook.id).length}
+            bookmarksCountForBook={bookmarks.filter((bm) => bm.bookId === previewBook.id).length}
+            onClose={() => setPreviewBookId(null)}
+            onEnterReader={handleEnterReaderFromPreview}
+            onUpdateBook={handleUpdateBookMetadata}
+            onToggleFavorite={handleToggleFavorite}
+            onChangeCategory={handleChangeCategory}
+          />
+        );
+      })()}
 
       {/* In-App Gothic Delete Book Confirmation Modal */}
       {bookToDelete && (

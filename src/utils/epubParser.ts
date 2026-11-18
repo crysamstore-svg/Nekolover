@@ -16,9 +16,24 @@ export interface ParsedEpub {
   title: string;
   author: string;
   coverImage?: string;
+  description?: string;
+  genres?: string[];
+  publisher?: string;
+  publishedYear?: string;
+  language?: string;
   chapters: ParsedEpubChapter[];
   pages: string[]; // Formatted readable pages/segments
 }
+
+const stripHtmlTagsToText = (raw: string): string => {
+  if (!raw) return '';
+  try {
+    const doc = new DOMParser().parseFromString(raw, 'text/html');
+    return (doc.body.textContent || raw).replace(/\s+/g, ' ').trim();
+  } catch {
+    return raw.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+  }
+};
 
 /**
  * Robust EPUB Parser using pure JSZip and DOMParser.
@@ -57,15 +72,36 @@ export async function parseEpubFile(data: ArrayBuffer | Blob): Promise<ParsedEpu
   // Metadata
   const title = opfDoc.querySelector('title')?.textContent?.trim() || 'Libro EPUB';
   const author = opfDoc.querySelector('creator')?.textContent?.trim() || 'Autor Desconocido';
+  const rawDescription = opfDoc.querySelector('description')?.textContent?.trim() || '';
+  const description = rawDescription ? stripHtmlTagsToText(rawDescription) : undefined;
+  const publisher = opfDoc.querySelector('publisher')?.textContent?.trim() || undefined;
+  const language = opfDoc.querySelector('language')?.textContent?.trim() || undefined;
+  const rawDate = opfDoc.querySelector('date')?.textContent?.trim() || '';
+  const yearMatch = rawDate.match(/\b(1[4-9]\d{2}|20\d{2})\b/);
+  const publishedYear = yearMatch ? yearMatch[1] : undefined;
+
+  const subjectSet = new Set<string>();
+  opfDoc.querySelectorAll('subject').forEach((el) => {
+    const raw = el.textContent?.trim();
+    if (!raw) return;
+    raw.split(/[;,/|]+/).forEach((part) => {
+      const clean = part.trim();
+      if (clean && clean.length >= 2 && clean.length <= 42) {
+        subjectSet.add(clean);
+      }
+    });
+  });
+  const genres = Array.from(subjectSet).slice(0, 6);
 
   // Manifest items
-  const manifestItems: Record<string, { href: string; mediaType: string }> = {};
+  const manifestItems: Record<string, { href: string; mediaType: string; properties: string }> = {};
   opfDoc.querySelectorAll('manifest > item').forEach((item) => {
     const id = item.getAttribute('id');
     const href = item.getAttribute('href');
     const mediaType = item.getAttribute('media-type') || '';
+    const properties = item.getAttribute('properties') || '';
     if (id && href) {
-      manifestItems[id] = { href, mediaType };
+      manifestItems[id] = { href, mediaType, properties };
     }
   });
 
@@ -276,9 +312,47 @@ export async function parseEpubFile(data: ArrayBuffer | Blob): Promise<ParsedEpu
     pages.push('<p>El archivo EPUB no contiene texto legible.</p>');
   }
 
+  // Extract embedded EPUB cover image if present in OPF metadata/manifest
+  let coverImage: string | undefined;
+  try {
+    let coverHref: string | undefined;
+    const coverMeta = opfDoc.querySelector('meta[name="cover"]');
+    const coverId = coverMeta?.getAttribute('content');
+    if (coverId && manifestItems[coverId]?.mediaType.startsWith('image/')) {
+      coverHref = manifestItems[coverId].href;
+    }
+    if (!coverHref) {
+      const propCover = Object.values(manifestItems).find(
+        (m) => m.properties.split(/\s+/).includes('cover-image') && m.mediaType.startsWith('image/')
+      );
+      if (propCover) coverHref = propCover.href;
+    }
+    if (!coverHref) {
+      const heuristicCover = Object.entries(manifestItems).find(
+        ([id, m]) =>
+          m.mediaType.startsWith('image/') &&
+          (id.toLowerCase().includes('cover') || m.href.toLowerCase().includes('cover'))
+      );
+      if (heuristicCover) coverHref = heuristicCover[1].href;
+    }
+    if (coverHref) {
+      const fullCoverPath = resolveZipPath(coverHref);
+      const dataUrl = await getImageDataUrl(fullCoverPath.split('/').pop() || fullCoverPath, fullCoverPath);
+      if (dataUrl) coverImage = dataUrl;
+    }
+  } catch {
+    // Cover extraction is optional
+  }
+
   return {
     title,
     author,
+    coverImage,
+    description,
+    genres: genres.length > 0 ? genres : undefined,
+    publisher,
+    publishedYear,
+    language,
     chapters,
     pages
   };

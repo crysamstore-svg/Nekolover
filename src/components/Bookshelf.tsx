@@ -137,6 +137,7 @@ export const Bookshelf: React.FC<BookshelfProps> = ({
 
   // Modo de eliminación por mantener presionado (Long-Press to Mark for Deletion)
   const [markedForDeleteIds, setMarkedForDeleteIds] = useState<string[]>([]);
+  const [brokenCoverIds, setBrokenCoverIds] = useState<Record<string, boolean>>({});
   const [draggedBookId, setDraggedBookId] = useState<string | null>(null);
   const [dragOverBookId, setDragOverBookId] = useState<string | null>(null);
   const longPressTimerRef = useRef<any>(null);
@@ -465,7 +466,8 @@ export const Bookshelf: React.FC<BookshelfProps> = ({
     const matchesSearch =
       query === '' ||
       book.title.toLowerCase().includes(query) ||
-      book.author.toLowerCase().includes(query);
+      book.author.toLowerCase().includes(query) ||
+      (book.genres || []).some((g) => g.toLowerCase().includes(query));
 
     if (!matchesSearch) return false;
 
@@ -766,7 +768,7 @@ export const Bookshelf: React.FC<BookshelfProps> = ({
                 setSearchQuery(e.target.value);
                 setCurrentPage(1);
               }}
-              placeholder="Buscador de libro: título o autor..."
+              placeholder="Buscador: título, autor o género..."
               className="w-full h-9 bg-black/50 border border-[var(--border-color)] rounded-xl pl-8 pr-8 py-1.5 text-xs leading-normal text-white placeholder-[var(--text-muted)] focus:outline-none focus:border-[var(--accent-pink)] transition shadow-inner font-sans"
             />
             {searchQuery && (
@@ -1259,13 +1261,32 @@ export const Bookshelf: React.FC<BookshelfProps> = ({
                                 <span className="hidden sm:inline">Opciones</span>
                               </div>
                             )}
-                            {/* Background cover gradient */}
+                            {/* Background cover gradient & real public/embedded cover if available */}
                             <div
                               className="absolute inset-0 opacity-95 group-hover:scale-105 transition-transform duration-300"
                               style={{
                                 background: resolveCoverGradient(book.coverGradient)
                               }}
                             />
+                            {(() => {
+                              const safeCover = !brokenCoverIds[book.id] ? sanitizeImageUrl(book.coverImage) : null;
+                              if (!safeCover) return null;
+                              return (
+                                <>
+                                  <img
+                                    src={safeCover}
+                                    alt={book.title}
+                                    referrerPolicy="no-referrer"
+                                    loading="lazy"
+                                    onError={() =>
+                                      setBrokenCoverIds((prev) => ({ ...prev, [book.id]: true }))
+                                    }
+                                    className="absolute inset-0 w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                                  />
+                                  <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/15 to-black/45 pointer-events-none" />
+                                </>
+                              );
+                            })()}
 
                             {/* Subtle Spine Ledge line */}
                             <div className="absolute top-0 left-0 bottom-0 w-1 sm:w-1.5 bg-black/40 pointer-events-none" />
@@ -1299,18 +1320,26 @@ export const Bookshelf: React.FC<BookshelfProps> = ({
                               </span>
                             </div>
 
-                            {/* Center Cover Graphic */}
-                            <div className="relative z-10 text-center my-auto py-0.5">
-                              <span className="text-base sm:text-xl md:text-2xl filter drop-shadow-[0_2px_4px_rgba(0,0,0,0.8)] transform group-hover:scale-105 transition-transform block leading-none">
-                                {normalizeBookEmoji(book.emoji)}
-                              </span>
-                              <h4 className="dark-reborn-font font-bold text-[8px] sm:text-[10px] md:text-[11px] text-white line-clamp-2 mt-0.5 sm:mt-1 px-0.5 leading-tight group-hover:text-[var(--accent-pink)] transition">
-                                {book.title}
-                              </h4>
-                              <p className="hidden sm:block text-[8px] md:text-[9px] text-[var(--text-muted)] line-clamp-1 mt-0.5">
-                                {book.author}
-                              </p>
-                            </div>
+                            {/* Center Cover Graphic (only when no public/embedded cover image is active) */}
+                            {(!book.coverImage || brokenCoverIds[book.id] || !sanitizeImageUrl(book.coverImage)) ? (
+                              <div className="relative z-10 text-center my-auto py-0.5">
+                                <span className="text-base sm:text-xl md:text-2xl filter drop-shadow-[0_2px_4px_rgba(0,0,0,0.8)] transform group-hover:scale-105 transition-transform block leading-none">
+                                  {normalizeBookEmoji(book.emoji)}
+                                </span>
+                                <h4 className="dark-reborn-font font-bold text-[8px] sm:text-[10px] md:text-[11px] text-white line-clamp-2 mt-0.5 sm:mt-1 px-0.5 leading-tight group-hover:text-[var(--accent-pink)] transition">
+                                  {book.title}
+                                </h4>
+                                <p className="hidden sm:block text-[8px] md:text-[9px] text-[var(--text-muted)] line-clamp-1 mt-0.5">
+                                  {book.author}
+                                </p>
+                              </div>
+                            ) : (
+                              <div className="relative z-10 mt-auto pb-0.5 text-left">
+                                <h4 className="font-semibold text-[8px] sm:text-[10px] text-white/95 line-clamp-1 leading-tight drop-shadow">
+                                  {book.title}
+                                </h4>
+                              </div>
+                            )}
 
                             {/* Bottom: Reading Progress Indicator */}
                             <div className="relative z-10">

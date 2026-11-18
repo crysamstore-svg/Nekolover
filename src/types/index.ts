@@ -16,6 +16,15 @@ export interface Book {
   type: BookType;
   content?: string[]; // Array of page texts for demo/text books
   coverGradient?: string;
+  coverImage?: string; // Public HTTPS URL or compressed local Data URL cover
+  genres?: string[];
+  description?: string;
+  publisher?: string;
+  publishedYear?: string;
+  language?: string;
+  isbn?: string;
+  metadataSource?: 'epub' | 'pdf' | 'public_api' | 'manual' | 'default';
+  metadataFetchedAt?: number;
   fileName?: string;
   fileSize?: string;
   currentPage: number;
