@@ -34,7 +34,7 @@ export interface VerificarCodigoResult {
   data?: SupabaseSuscripcion;
 }
 
-const VALID_CODE_REGEX = /^[A-Za-z0-9._-]{4,64}$/;
+const VALID_CODE_REGEX = /^[A-Za-z0-9._:/+#-]{4,64}$/;
 const VALID_DEVICE_ID_REGEX = /^[A-Za-z0-9_-]{12,80}$/;
 const DEVICE_ID_STORAGE_KEY = 'nl_device_id';
 let memoryFallbackDeviceId: string | null = null;
@@ -172,7 +172,7 @@ export async function verificarCodigo(codigo: string): Promise<VerificarCodigoRe
     };
   }
 
-  const cleanCode = codigo.trim();
+  const cleanCode = codigo.replace(/\s+/g, '').trim();
   const upperCode = cleanCode.toUpperCase();
 
   if (cleanCode.length < 4 || cleanCode.length > 64) {
@@ -190,10 +190,16 @@ export async function verificarCodigo(codigo: string): Promise<VerificarCodigoRe
   }
 
   const deviceId = getOrCreateDeviceId();
-  const rpcResult = await callRedeemCodeRpc(upperCode, deviceId, 8000);
+  let rpcResult = await callRedeemCodeRpc(upperCode, deviceId, 8000);
+  if (rpcResult.state === 'not_found' && cleanCode !== upperCode) {
+    const exactCaseResult = await callRedeemCodeRpc(cleanCode, deviceId, 8000);
+    if (exactCaseResult.state !== 'not_found') {
+      rpcResult = exactCaseResult;
+    }
+  }
 
   if (rpcResult.state === 'ok') {
-    const matchedCode = rpcResult.matchedCode || upperCode;
+    const matchedCode = rpcResult.matchedCode || cleanCode;
     return {
       success: true,
       message: `¡Código [${matchedCode}] verificado y vinculado a este dispositivo con éxito! Membresía VIP activada.`,
@@ -203,7 +209,7 @@ export async function verificarCodigo(codigo: string): Promise<VerificarCodigoRe
   if (rpcResult.state === 'already_used') {
     return {
       success: false,
-      message: 'Este código ya fue activado en otro dispositivo. Cada código VIP es personal (válido para 1 solo dispositivo).'
+      message: 'Este código ya fue activado en otro dispositivo o navegador. Cada código VIP es válido para 1 solo dispositivo.'
     };
   }
   if (rpcResult.state === 'inactive') {
@@ -303,14 +309,20 @@ export async function verificarCodigo(codigo: string): Promise<VerificarCodigoRe
  * Verifica tanto si el código sigue activo como si sigue perteneciendo a este dispositivo.
  */
 export async function revalidarCodigoSilencioso(codigo: string): Promise<'active' | 'invalid' | 'network_error'> {
-  const cleanCode = typeof codigo === 'string' ? codigo.trim() : '';
+  const cleanCode = typeof codigo === 'string' ? codigo.replace(/\s+/g, '').trim() : '';
   if (!cleanCode || !VALID_CODE_REGEX.test(cleanCode)) {
     return 'invalid';
   }
   const upperCode = cleanCode.toUpperCase();
   const deviceId = getOrCreateDeviceId();
 
-  const rpcResult = await callRedeemCodeRpc(upperCode, deviceId, 6000);
+  let rpcResult = await callRedeemCodeRpc(upperCode, deviceId, 6000);
+  if (rpcResult.state === 'not_found' && cleanCode !== upperCode) {
+    const exactCaseResult = await callRedeemCodeRpc(cleanCode, deviceId, 6000);
+    if (exactCaseResult.state !== 'not_found') {
+      rpcResult = exactCaseResult;
+    }
+  }
   if (rpcResult.state === 'ok') return 'active';
   if (rpcResult.state === 'already_used' || rpcResult.state === 'inactive' || rpcResult.state === 'not_found') {
     return 'invalid';

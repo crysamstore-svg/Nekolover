@@ -85,6 +85,7 @@ function isValidVipObject(val: unknown): val is VipSubscriptionData {
 class VipManager {
   private listeners: Set<(isVip: boolean) => void> = new Set();
   private approvedPayPalIds: Set<string> = new Set();
+  private memorySubscription: VipSubscriptionData | null = null;
 
   constructor() {
     if (typeof window !== 'undefined') {
@@ -104,6 +105,9 @@ class VipManager {
     try {
       const saved = localStorage.getItem(STORAGE_KEY);
       if (!saved) {
+        if (this.memorySubscription?.isVip) {
+          return this.memorySubscription;
+        }
         // Rechazar flag suelto usuario_premium='true' sin registro íntegro
         if (localStorage.getItem(LEGACY_PREMIUM_KEY) === 'true') {
           localStorage.removeItem(LEGACY_PREMIUM_KEY);
@@ -181,8 +185,13 @@ class VipManager {
       integrityTag
     };
 
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(signedData));
-    localStorage.setItem(LEGACY_PREMIUM_KEY, 'true');
+    this.memorySubscription = signedData;
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(signedData));
+      localStorage.setItem(LEGACY_PREMIUM_KEY, 'true');
+    } catch (e) {
+      console.warn('No se pudo persistir VIP en localStorage, manteniendo sesión en memoria:', e);
+    }
     this.notify(true);
     return signedData;
   }
@@ -207,7 +216,7 @@ class VipManager {
    * Consulta en tiempo real la base de datos de Supabase mediante GET fetch en la tabla "suscripciones".
    */
   public async activateWithCodeAsync(code: string, email?: string): Promise<{ success: boolean; message: string; sub?: VipSubscriptionData }> {
-    const cleanCode = code.trim();
+    const cleanCode = code.replace(/\s+/g, '').trim();
     if (!cleanCode) {
       return { 
         success: false, 
@@ -225,7 +234,7 @@ class VipManager {
     try {
       const supRes = await verificarCodigo(cleanCode);
       if (supRes.success) {
-        const matchedCode = (supRes.matchedCode || cleanCode).toUpperCase();
+        const matchedCode = supRes.matchedCode || cleanCode;
         const now = Date.now();
         const thirtyDays = 30 * 24 * 60 * 60 * 1000;
         const subData = this.persistVerifiedSubscription({
@@ -320,8 +329,11 @@ class VipManager {
   }
 
   public cancel(): void {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...FREE_PLAN_DATA }));
-    localStorage.removeItem(LEGACY_PREMIUM_KEY);
+    this.memorySubscription = null;
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...FREE_PLAN_DATA }));
+      localStorage.removeItem(LEGACY_PREMIUM_KEY);
+    } catch {}
     this.notify(false);
   }
 

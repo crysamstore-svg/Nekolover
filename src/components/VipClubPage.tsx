@@ -44,6 +44,7 @@ export const VipClubPage: React.FC<VipClubPageProps> = ({
   
   const [paymentMethodTab, setPaymentMethodTab] = useState<'paypal' | 'pago_movil'>('paypal');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [codeErrorMessage, setCodeErrorMessage] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [confirmingCancel, setConfirmingCancel] = useState(false);
@@ -86,10 +87,11 @@ export const VipClubPage: React.FC<VipClubPageProps> = ({
   const handleActivateManualCode = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     setErrorMessage(null);
+    setCodeErrorMessage(null);
     setSuccessMessage(null);
 
     if (!manualCode.trim()) {
-      setErrorMessage('Por favor introduce tu código de activación en la casilla.');
+      setCodeErrorMessage('Por favor introduce tu código de activación en la casilla.');
       return;
     }
 
@@ -101,10 +103,10 @@ export const VipClubPage: React.FC<VipClubPageProps> = ({
         setSuccessMessage(res.message);
         onSubscribed?.();
       } else {
-        setErrorMessage(res.message);
+        setCodeErrorMessage(res.message);
       }
-    } catch (err) {
-      setErrorMessage('Error de conexión al verificar el código con el servidor de Supabase.');
+    } catch {
+      setCodeErrorMessage('Error de conexión al verificar el código con el servidor de Supabase.');
     } finally {
       setIsProcessing(false);
     }
@@ -493,13 +495,22 @@ export const VipClubPage: React.FC<VipClubPageProps> = ({
                 </a>.
               </p>
 
+              {codeErrorMessage && (
+                <div className="p-2.5 rounded-xl bg-red-950/70 border border-red-500/60 text-xs text-red-200 leading-snug">
+                  {codeErrorMessage}
+                </div>
+              )}
+
               <form onSubmit={handleActivateManualCode} className="flex flex-col sm:flex-row gap-2 pt-1">
                 <input
                   type="text"
                   placeholder="Ingresa tu código de activación VIP"
                   value={manualCode}
-                  onChange={(e) => setManualCode(e.target.value.toUpperCase())}
-                  className="flex-1 bg-black/90 border border-amber-400/50 rounded-xl px-3.5 py-2 text-xs text-white uppercase font-mono focus:border-amber-400 focus:outline-none placeholder-white/30"
+                  onChange={(e) => {
+                    setManualCode(e.target.value);
+                    if (codeErrorMessage) setCodeErrorMessage(null);
+                  }}
+                  className="flex-1 bg-black/90 border border-amber-400/50 rounded-xl px-3.5 py-2 text-xs text-white font-mono focus:border-amber-400 focus:outline-none placeholder-white/30"
                 />
                 <button
                   type="submit"

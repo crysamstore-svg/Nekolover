@@ -41,6 +41,7 @@ export const VipSubscriptionModal: React.FC<VipSubscriptionModalProps> = ({
   const [manualCode, setManualCode] = useState('');
   const [showCodeInput, setShowCodeInput] = useState(false);
   const [codeSuccessMessage, setCodeSuccessMessage] = useState<string | null>(null);
+  const [codeErrorMessage, setCodeErrorMessage] = useState<string | null>(null);
   
   // Mandatory separate legal checkboxes (Two separate boxes as strictly required)
   const [acceptTermsAndRefund, setAcceptTermsAndRefund] = useState(false);
@@ -102,16 +103,18 @@ export const VipSubscriptionModal: React.FC<VipSubscriptionModalProps> = ({
     setSubscription(vipManager.getSubscription());
     setConfirmingCancel(false);
     setCodeSuccessMessage(null);
+    setCodeErrorMessage(null);
     setValidationError(null);
   };
 
   const handleActivateManualCode = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     setValidationError(null);
+    setCodeErrorMessage(null);
     setCodeSuccessMessage(null);
 
     if (!manualCode.trim()) {
-      setValidationError('Por favor introduce tu código de activación en la casilla.');
+      setCodeErrorMessage('Por favor introduce tu código de activación en la casilla.');
       return;
     }
 
@@ -129,10 +132,10 @@ export const VipSubscriptionModal: React.FC<VipSubscriptionModalProps> = ({
           setSuccessAnimation(false);
         }, 4000);
       } else {
-        setValidationError(res.message);
+        setCodeErrorMessage(res.message);
       }
-    } catch (err: any) {
-      setValidationError('Error de conexión al validar código con Supabase.');
+    } catch {
+      setCodeErrorMessage('Error de conexión al validar código con Supabase.');
     } finally {
       setIsProcessing(false);
     }
@@ -613,9 +616,16 @@ export const VipSubscriptionModal: React.FC<VipSubscriptionModalProps> = ({
                     }}
                   />
                 )}
+              </form>
+            )}
 
-                {/* SECCIÓN OBLIGATORIA: INSERTAR CÓDIGO DE ACTIVACIÓN VIP */}
-                <div className="pt-3 border-t border-amber-400/30 space-y-2.5 bg-gradient-to-br from-amber-950/40 via-black/80 to-black/90 p-3.5 rounded-2xl border border-amber-400/40 shadow-inner">
+            {/* SECCIÓN OBLIGATORIA: INSERTAR CÓDIGO DE ACTIVACIÓN VIP (formulario independiente) */}
+            {!isVip && (
+              <div className="space-y-3">
+                <form
+                  onSubmit={handleActivateManualCode}
+                  className="pt-3 border-t border-amber-400/30 space-y-2.5 bg-gradient-to-br from-amber-950/40 via-black/80 to-black/90 p-3.5 rounded-2xl border border-amber-400/40 shadow-inner"
+                >
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
                       <div className="p-1.5 rounded-lg bg-amber-400/20 text-amber-300">
@@ -651,25 +661,39 @@ export const VipSubscriptionModal: React.FC<VipSubscriptionModalProps> = ({
                     </div>
                   )}
 
+                  {codeErrorMessage && (
+                    <div className="bg-red-950/80 border border-red-500/60 p-2.5 rounded-xl text-xs text-red-200 leading-snug">
+                      {codeErrorMessage}
+                    </div>
+                  )}
+
+                  {codeSuccessMessage && (
+                    <div className="bg-emerald-950/80 border border-emerald-500/60 p-2.5 rounded-xl text-xs text-emerald-200 leading-snug">
+                      {codeSuccessMessage}
+                    </div>
+                  )}
+
                   <div className="flex flex-col gap-2 pt-1">
                     <input
                       type="text"
                       placeholder="Ingresa tu código de activación VIP"
                       value={manualCode}
-                      onChange={(e) => setManualCode(e.target.value.toUpperCase())}
-                      className="w-full bg-black/90 border border-amber-400/50 rounded-xl px-3.5 py-2.5 text-xs text-white uppercase font-mono focus:border-amber-400 focus:outline-none placeholder-white/30"
+                      onChange={(e) => {
+                        setManualCode(e.target.value);
+                        if (codeErrorMessage) setCodeErrorMessage(null);
+                      }}
+                      className="w-full bg-black/90 border border-amber-400/50 rounded-xl px-3.5 py-2.5 text-xs text-white font-mono focus:border-amber-400 focus:outline-none placeholder-white/30"
                     />
                     <button
-                      type="button"
+                      type="submit"
                       disabled={isProcessing}
-                      onClick={handleActivateManualCode}
-                      className="w-full px-4 py-2 bg-gradient-to-r from-amber-400 to-amber-500 hover:from-amber-300 hover:to-amber-400 disabled:opacity-50 text-black text-xs font-extrabold rounded-xl shadow-[0_2px_12px_rgba(245,158,11,0.4)] active:scale-95 transition flex items-center justify-center gap-1.5 cursor-pointer"
+                      className="w-full min-h-[40px] px-4 py-2 bg-gradient-to-r from-amber-400 to-amber-500 hover:from-amber-300 hover:to-amber-400 disabled:opacity-50 text-black text-xs font-extrabold rounded-xl shadow-[0_2px_12px_rgba(245,158,11,0.4)] active:scale-95 transition flex items-center justify-center gap-1.5 cursor-pointer"
                     >
                       <Crown className="w-3.5 h-3.5 fill-black" />
                       <span>{isProcessing ? 'Verificando en Supabase...' : 'Activar Membresía VIP'}</span>
                     </button>
                   </div>
-                </div>
+                </form>
 
                 {/* Additional Trust & Transparency badges */}
                 <div className="flex items-center justify-between text-[10px] text-[var(--text-muted)] pt-1 px-1">
@@ -688,7 +712,7 @@ export const VipSubscriptionModal: React.FC<VipSubscriptionModalProps> = ({
                     <span>📜 Registro de Consentimiento</span>
                   </button>
                 </div>
-              </form>
+              </div>
             )}
           </div>
         )}
