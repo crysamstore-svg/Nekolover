@@ -1,5 +1,6 @@
 import React from 'react';
 import { ArrowLeft, Crown } from 'lucide-react';
+import { PWAInstallButton } from './PWAInstallButton';
 
 interface HeaderProps {
   currentView: 'library' | 'quotes' | 'bookmarks' | 'stats' | 'settings' | 'vip';
@@ -37,6 +38,8 @@ export const Header: React.FC<HeaderProps> = ({
 
       {/* Right side: Clean minimal status & Return to library when in other views */}
       <div className="flex items-center gap-2">
+        <PWAInstallButton />
+
         {currentView !== 'library' && (
           <button
             onClick={() => onSwitchView('library')}

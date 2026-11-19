@@ -157,7 +157,7 @@ export const LegalModal: React.FC<LegalModalProps> = ({
                   El Desarrollador <strong>no almacena, no aloja, no distribuye ni provee ningún tipo de libro, texto o material de lectura</strong>. Es responsabilidad única y exclusiva del usuario final garantizar que posee los derechos de autor, licencias legítimas o que los archivos cargados desde su almacenamiento son de dominio público. El desarrollador se deslinda de cualquier uso ilegal o infracción de propiedad intelectual cometida por los usuarios.
                 </p>
                 <div className="bg-pink-950/40 border border-pink-500/30 p-2.5 rounded-xl text-[10px] text-pink-200">
-                  <strong>🖼️ Verificación de Derechos de Imágenes de la App:</strong> Todas las ilustraciones, emojis y stickers del sistema son de diseño propio o estándar Unicode libre. Los fondos predeterminados provienen de Unsplash bajo licencia libre comercial sin regalías obligatorias. Para las fotos que el usuario suba a su estantería, el usuario garantiza tener la titularidad o autorización de uso correspondiente.
+                  <strong>🖼️ Verificación de Derechos de Imágenes:</strong> Todas las ilustraciones, emojis y stickers del sistema son de diseño propio o estándar Unicode libre. Los fondos predeterminados provienen de Unsplash bajo licencia libre. Para las fotos de fondo que el usuario suba a su estantería, el usuario garantiza tener la titularidad o autorización correspondiente.
                 </div>
               </div>
 
@@ -166,7 +166,7 @@ export const LegalModal: React.FC<LegalModalProps> = ({
                   <span>3.</span> Privacidad y Datos Locales
                 </h4>
                 <p className="text-[11px] text-white/80">
-                  Para tu total tranquilidad, la aplicación no recopila ni envía tus libros a servidores externos. Todos tus archivos, notas, subrayados, imágenes de estantería y configuraciones se procesan y guardan únicamente dentro del almacenamiento interno de tu propio teléfono móvil o navegador. Los datos de contacto proporcionados a través de PayPal o reportados voluntariamente en el formulario de <strong>Pago Móvil (Venezuela)</strong> se utilizan única y exclusivamente para verificar tu pago, entregar tu código de activación VIP y atender soporte relacionado con tu membresía.
+                  Para tu total tranquilidad, la aplicación no recopila ni envía tus libros a servidores externos. Todos tus archivos, notas, subrayados, imágenes de estantería y configuraciones se procesan y guardan únicamente dentro del almacenamiento interno de tu dispositivo. Los datos de contacto proporcionados a través de PayPal o reportados voluntariamente en el formulario de <strong>Pago Móvil (Venezuela)</strong> se utilizan única y exclusivamente para verificar tu pago, entregar tu código de activación VIP y atender soporte.
                 </p>
               </div>
 
@@ -215,10 +215,10 @@ export const LegalModal: React.FC<LegalModalProps> = ({
 
               <div className="bg-black/40 border border-white/10 p-3.5 rounded-2xl">
                 <h4 className="font-bold text-sm text-[var(--accent-pink)] mb-1">
-                  Almacenamiento Local en tu Dispositivo
+                  Almacenamiento Local (Sin Nube)
                 </h4>
                 <p className="text-[11px] text-white/80 leading-relaxed">
-                  Todos tus libros en PDF/EPUB, tus notas en el Baúl, tus stickers pegados y tus pistas musicales se almacenan dentro del motor interno de base de datos del navegador (IndexedDB) y almacenamiento local (LocalStorage) de tu dispositivo. No salen jamás a la nube del desarrollador.
+                  Todos tus libros en PDF/EPUB, tus notas en el Baúl, tus stickers pegados y tus pistas musicales se almacenan dentro del motor interno del navegador (IndexedDB) y almacenamiento local (LocalStorage) de tu dispositivo. Jamás salen hacia servidores externos ni pueden ser vistos por el desarrollador.
                 </p>
               </div>
 

@@ -28,11 +28,37 @@ export interface ParsedEpub {
 const stripHtmlTagsToText = (raw: string): string => {
   if (!raw) return '';
   try {
-    const doc = new DOMParser().parseFromString(raw, 'text/html');
-    return (doc.body.textContent || raw).replace(/\s+/g, ' ').trim();
+    const withBreaks = raw
+      .replace(/<br\s*\/?>/gi, '\n')
+      .replace(/<\/(p|div|li|h[1-6])>/gi, '\n');
+    const doc = new DOMParser().parseFromString(withBreaks, 'text/html');
+    return (doc.body.textContent || raw)
+      .replace(/[ \t]+/g, ' ')
+      .replace(/\n\s*\n+/g, '\n\n')
+      .trim();
   } catch {
     return raw.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
   }
+};
+
+const getOpfTagTexts = (opfDoc: Document, localName: string): string[] => {
+  const results: string[] = [];
+  const nsNodes = Array.from(opfDoc.getElementsByTagNameNS('*', localName));
+  if (nsNodes.length > 0) {
+    for (const node of nsNodes) {
+      const txt = node.textContent?.trim();
+      if (txt) results.push(txt);
+    }
+    return results;
+  }
+  const fallbackNodes = Array.from(
+    opfDoc.querySelectorAll(`${localName}, dc\\:${localName}`)
+  );
+  for (const node of fallbackNodes) {
+    const txt = node.textContent?.trim();
+    if (txt) results.push(txt);
+  }
+  return results;
 };
 
 /**
@@ -69,21 +95,19 @@ export async function parseEpubFile(data: ArrayBuffer | Blob): Promise<ParsedEpu
   const opfXml = await opfFile.async('text');
   const opfDoc = parser.parseFromString(opfXml, 'application/xml');
 
-  // Metadata
-  const title = opfDoc.querySelector('title')?.textContent?.trim() || 'Libro EPUB';
-  const author = opfDoc.querySelector('creator')?.textContent?.trim() || 'Autor Desconocido';
-  const rawDescription = opfDoc.querySelector('description')?.textContent?.trim() || '';
+  // Metadata (XML namespace-safe for EPUB 2 & EPUB 3 dc:* tags)
+  const title = getOpfTagTexts(opfDoc, 'title')[0] || 'Libro EPUB';
+  const author = getOpfTagTexts(opfDoc, 'creator')[0] || 'Autor Desconocido';
+  const rawDescription = getOpfTagTexts(opfDoc, 'description')[0] || '';
   const description = rawDescription ? stripHtmlTagsToText(rawDescription) : undefined;
-  const publisher = opfDoc.querySelector('publisher')?.textContent?.trim() || undefined;
-  const language = opfDoc.querySelector('language')?.textContent?.trim() || undefined;
-  const rawDate = opfDoc.querySelector('date')?.textContent?.trim() || '';
+  const publisher = getOpfTagTexts(opfDoc, 'publisher')[0] || undefined;
+  const language = getOpfTagTexts(opfDoc, 'language')[0] || undefined;
+  const rawDate = getOpfTagTexts(opfDoc, 'date')[0] || '';
   const yearMatch = rawDate.match(/\b(1[4-9]\d{2}|20\d{2})\b/);
   const publishedYear = yearMatch ? yearMatch[1] : undefined;
 
   const subjectSet = new Set<string>();
-  opfDoc.querySelectorAll('subject').forEach((el) => {
-    const raw = el.textContent?.trim();
-    if (!raw) return;
+  getOpfTagTexts(opfDoc, 'subject').forEach((raw) => {
     raw.split(/[;,/|]+/).forEach((part) => {
       const clean = part.trim();
       if (clean && clean.length >= 2 && clean.length <= 42) {

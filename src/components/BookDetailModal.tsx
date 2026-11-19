@@ -7,12 +7,12 @@ import {
   Edit3,
   Check,
   X,
-  Upload,
   RefreshCw,
   Loader2,
   Bookmark as BookmarkIcon,
   Quote as QuoteIcon,
   Globe,
+  Upload,
   RotateCcw
 } from 'lucide-react';
 import { Book } from '../types';
@@ -20,11 +20,12 @@ import { resolveCoverGradient, normalizeBookEmoji } from '../utils/db';
 import { sanitizeImageUrl } from '../utils/sanitizeHtml';
 import {
   PublicBookCandidate,
-  searchPublicBookCatalog,
+  searchPublicBookCatalogWithStatus,
   applyCandidateToBook,
   autoEnrichBookFromNetwork,
+  cleanBookSearchParts,
   compressCoverImage,
-  cleanBookSearchParts
+  isGenericAuthor
 } from '../utils/bookMetadata';
 
 interface BookDetailModalProps {
@@ -51,6 +52,7 @@ export const BookDetailModal: React.FC<BookDetailModalProps> = ({
   const [imgError, setImgError] = useState(false);
   const [isSearching, setIsSearching] = useState(false);
   const [searchError, setSearchError] = useState<string | null>(null);
+  const [autoLookupNote, setAutoLookupNote] = useState<'none' | 'not_found' | 'network_error'>('none');
   const [showCatalogSearch, setShowCatalogSearch] = useState(false);
   const [candidates, setCandidates] = useState<PublicBookCandidate[]>([]);
   const [customQuery, setCustomQuery] = useState(() => {
@@ -68,8 +70,8 @@ export const BookDetailModal: React.FC<BookDetailModalProps> = ({
   const [editDescription, setEditDescription] = useState(book.description || '');
   const [expandBio, setExpandBio] = useState(false);
 
-  const coverUploadRef = useRef<HTMLInputElement | null>(null);
   const autoFetchedIdRef = useRef<string | null>(null);
+  const coverUploadRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
     setImgError(false);
@@ -92,9 +94,10 @@ export const BookDetailModal: React.FC<BookDetailModalProps> = ({
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [onClose]);
 
-  // Automatic enrichment on open when book lacks public cover/bio/genres
+  // Automatic enrichment on open when book lacks real title/bio/cover/genres
   useEffect(() => {
-    if (book.id === 'demo-neko-1') return;
+    if (book.type === 'demo') return;
+    if (book.metadataSource === 'manual') return;
     if (autoFetchedIdRef.current === book.id) return;
 
     const missingImportant =
@@ -102,13 +105,13 @@ export const BookDetailModal: React.FC<BookDetailModalProps> = ({
       !book.coverImage ||
       !book.genres ||
       book.genres.length === 0 ||
-      book.author === 'Documento PDF' ||
-      book.author === 'Autor EPUB' ||
-      book.author === 'Archivo Local';
+      isGenericAuthor(book.author);
 
     if (!missingImportant) return;
-    // If we already fetched via public_api previously and got a cover/description, don't re-run automatically
-    if (book.metadataFetchedAt && book.metadataSource === 'public_api' && book.coverImage) return;
+    // If we already got rich public metadata with description & cover, skip automatic re-fetch
+    if (book.metadataFetchedAt && book.metadataSource === 'public_api' && book.description && book.coverImage) {
+      return;
+    }
 
     autoFetchedIdRef.current = book.id;
     let cancelled = false;
@@ -116,12 +119,26 @@ export const BookDetailModal: React.FC<BookDetailModalProps> = ({
     const runAutoEnrich = async () => {
       setIsSearching(true);
       setSearchError(null);
+      setAutoLookupNote('none');
+
       const result = await autoEnrichBookFromNetwork(book);
       if (cancelled) return;
 
       if (result.candidates.length > 0) {
         setCandidates(result.candidates);
       }
+
+      if (result.networkError && !result.matched) {
+        setAutoLookupNote('network_error');
+      } else if (!result.matched && !result.updated.description) {
+        setAutoLookupNote('not_found');
+      }
+
+      if (!result.matched) {
+        const cleaned = cleanBookSearchParts(result.updated.title, result.updated.author);
+        setCustomQuery(cleaned.title);
+      }
+
       onUpdateBook(result.updated);
       setIsSearching(false);
     };
@@ -139,7 +156,7 @@ export const BookDetailModal: React.FC<BookDetailModalProps> = ({
     setSearchError(null);
     setShowCatalogSearch(true);
 
-    const results = await searchPublicBookCatalog(
+    const { candidates: results, networkError } = await searchPublicBookCatalogWithStatus(
       book.title,
       book.author,
       customQuery.trim() || undefined
@@ -148,8 +165,17 @@ export const BookDetailModal: React.FC<BookDetailModalProps> = ({
     setIsSearching(false);
     if (results.length === 0) {
       setCandidates([]);
-      setSearchError('No encontramos coincidencias exactas. Prueba solo con el título o el apellido del autor.');
+      if (networkError) {
+        setSearchError(
+          'Error de conexión al consultar los catálogos públicos. Puedes reintentar o completar la ficha manualmente en «Editar ficha».'
+        );
+      } else {
+        setSearchError(
+          'No encontramos coincidencias exactas. Prueba escribir solo el título principal o edítalo manualmente en «Editar ficha».'
+        );
+      }
     } else {
+      setAutoLookupNote('none');
       setCandidates(results);
     }
   };
@@ -157,49 +183,10 @@ export const BookDetailModal: React.FC<BookDetailModalProps> = ({
   const handleSelectCandidate = (candidate: PublicBookCandidate) => {
     const updated = applyCandidateToBook(book, candidate, true);
     setImgError(false);
-    onUpdateBook(updated, '📚 Ficha y portada pública aplicadas al libro.');
+    setAutoLookupNote('none');
+    setSearchError(null);
+    onUpdateBook(updated, '📚 Título, sinopsis y portada aplicados al libro.');
     setShowCatalogSearch(false);
-  };
-
-  const handleUploadCustomCover = async (files: FileList | null) => {
-    const file = files?.[0];
-    if (!file) return;
-    if (!file.type.startsWith('image/')) {
-      setSearchError('Selecciona una imagen válida (JPG, PNG o WEBP).');
-      return;
-    }
-
-    const reader = new FileReader();
-    reader.onload = async () => {
-      const raw = typeof reader.result === 'string' ? reader.result : '';
-      if (!raw) return;
-      const compressed = await compressCoverImage(raw, 400);
-      if (compressed) {
-        setImgError(false);
-        onUpdateBook(
-          {
-            ...book,
-            coverImage: compressed,
-            metadataSource: 'manual',
-            metadataFetchedAt: Date.now()
-          },
-          '🖼️ Portada personalizada guardada.'
-        );
-      }
-    };
-    reader.readAsDataURL(file);
-  };
-
-  const handleClearCover = () => {
-    setImgError(false);
-    onUpdateBook(
-      {
-        ...book,
-        coverImage: undefined,
-        metadataSource: 'manual'
-      },
-      'Portada restaurada al estilo de estantería.'
-    );
   };
 
   const handleSaveManualEdit = (e: React.FormEvent) => {
@@ -225,6 +212,40 @@ export const BookDetailModal: React.FC<BookDetailModalProps> = ({
       '✨ Biografía y ficha del libro guardadas.'
     );
     setIsEditing(false);
+  };
+
+  const handleUploadCustomCover = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file || !file.type.startsWith('image/')) return;
+
+    const reader = new FileReader();
+    reader.onload = async () => {
+      if (typeof reader.result !== 'string') return;
+      const compressed = await compressCoverImage(reader.result, 360);
+      if (!compressed) return;
+      setImgError(false);
+      onUpdateBook(
+        {
+          ...book,
+          coverImage: compressed,
+          metadataSource: book.metadataSource || 'manual'
+        },
+        '🖼️ Portada personalizada guardada.'
+      );
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleClearCover = () => {
+    setImgError(false);
+    onUpdateBook(
+      {
+        ...book,
+        coverImage: undefined
+      },
+      'Portada restaurada al estilo predeterminado.'
+    );
   };
 
   const safeCover = !imgError ? sanitizeImageUrl(book.coverImage) : null;
@@ -349,38 +370,35 @@ export const BookDetailModal: React.FC<BookDetailModalProps> = ({
               <div className="absolute inset-y-0 left-2 w-px bg-white/15 pointer-events-none" />
             </div>
 
-            {/* Cover Controls */}
             <input
               ref={coverUploadRef}
               type="file"
-              accept="image/png,image/jpeg,image/webp"
+              accept="image/*"
+              onChange={handleUploadCustomCover}
               className="hidden"
-              onChange={(e) => {
-                void handleUploadCustomCover(e.target.files);
-                e.target.value = '';
-              }}
             />
-            <div className="flex items-center justify-center gap-2 w-full">
+
+            <div className="flex items-center gap-2 w-full">
               <button
                 type="button"
                 onClick={() => coverUploadRef.current?.click()}
-                className="flex-1 min-h-[40px] px-2.5 py-2 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-xs text-[var(--text-muted)] hover:text-white flex items-center justify-center gap-1.5 transition whitespace-nowrap cursor-pointer"
-                title="Subir una portada desde tu dispositivo"
+                className="flex-1 min-h-[44px] px-3 py-2 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-xs font-medium text-white flex items-center justify-center gap-1.5 transition cursor-pointer"
+                title="Cargar portada desde tu dispositivo"
               >
-                <Upload className="w-3.5 h-3.5" />
+                <Upload className="w-3.5 h-3.5 text-[var(--accent-pink)]" />
                 <span>Portada</span>
               </button>
-
-              {safeCover ? (
+              {book.coverImage && (
                 <button
                   type="button"
                   onClick={handleClearCover}
-                  className="min-h-[40px] min-w-[40px] px-2.5 py-2 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-xs text-[var(--text-muted)] hover:text-white flex items-center justify-center transition cursor-pointer"
-                  title="Quitar imagen de portada"
+                  className="min-h-[44px] min-w-[44px] px-2.5 py-2 rounded-xl bg-white/5 hover:bg-rose-500/20 border border-white/10 hover:border-rose-400/40 text-xs text-[var(--text-muted)] hover:text-rose-200 flex items-center justify-center transition cursor-pointer"
+                  title="Quitar portada actual"
+                  aria-label="Quitar portada actual"
                 >
                   <RotateCcw className="w-3.5 h-3.5" />
                 </button>
-              ) : null}
+              )}
             </div>
 
             {/* Reading Progress Summary */}
@@ -582,7 +600,7 @@ export const BookDetailModal: React.FC<BookDetailModalProps> = ({
                   {isSearching && !bioText ? (
                     <div className="py-4 text-xs sm:text-sm text-[var(--text-muted)] flex items-center gap-2.5">
                       <Loader2 className="w-4 h-4 animate-spin text-[var(--accent-pink)] shrink-0" />
-                      <span>Extrayendo autor, género, sinopsis y portada pública...</span>
+                      <span>Buscando título real, autor, géneros y sinopsis...</span>
                     </div>
                   ) : bioText ? (
                     <div className="space-y-2">
@@ -600,8 +618,41 @@ export const BookDetailModal: React.FC<BookDetailModalProps> = ({
                       )}
                     </div>
                   ) : (
-                    <div className="py-3 text-xs sm:text-sm text-[var(--text-muted)] leading-relaxed">
-                      Este tomo todavía no tiene sinopsis guardada. Puedes buscar su ficha y portada pública automáticamente o escribir una manualmente en <strong>Editar ficha</strong>.
+                    <div className="py-3 space-y-3">
+                      <p className="text-xs sm:text-sm text-[var(--text-muted)] leading-relaxed">
+                        {autoLookupNote === 'network_error'
+                          ? 'No se pudo conectar con el catálogo automático para traer la sinopsis.'
+                          : autoLookupNote === 'not_found'
+                          ? 'No encontramos una sinopsis automática exacta para este archivo.'
+                          : 'Este tomo todavía no tiene sinopsis guardada.'}{' '}
+                        Puedes buscar otro título manualmente o escribirlo tú mismo.
+                      </p>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setShowCatalogSearch(true);
+                            if (candidates.length === 0) {
+                              void handleManualPublicSearch();
+                            }
+                          }}
+                          className="min-h-[40px] px-3.5 py-2 rounded-xl bg-white/10 hover:bg-white/15 border border-white/10 text-xs font-semibold text-white flex items-center gap-1.5 transition cursor-pointer"
+                        >
+                          <Search className="w-3.5 h-3.5 text-[var(--accent-purple)]" />
+                          <span>Buscar otro título</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setIsEditing(true);
+                            setShowCatalogSearch(false);
+                          }}
+                          className="min-h-[40px] px-3.5 py-2 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-xs font-semibold text-[var(--accent-pink)] flex items-center gap-1.5 transition cursor-pointer"
+                        >
+                          <Edit3 className="w-3.5 h-3.5" />
+                          <span>Editar título y sinopsis manual</span>
+                        </button>
+                      </div>
                     </div>
                   )}
                 </div>
@@ -616,7 +667,7 @@ export const BookDetailModal: React.FC<BookDetailModalProps> = ({
                           type="text"
                           value={customQuery}
                           onChange={(e) => setCustomQuery(e.target.value)}
-                          placeholder="Buscar por título o autor..."
+                          placeholder="Escribe el título real del libro o autor..."
                           className="w-full h-11 pl-9 pr-3 rounded-xl bg-black/50 border border-[var(--border-color)] text-xs sm:text-sm text-white focus:outline-none focus:border-[var(--accent-pink)]"
                         />
                       </div>
@@ -631,12 +682,25 @@ export const BookDetailModal: React.FC<BookDetailModalProps> = ({
                     </form>
 
                     {searchError && (
-                      <p className="text-xs text-rose-300">{searchError}</p>
+                      <div className="p-3 rounded-xl bg-rose-950/30 border border-rose-500/30 space-y-2">
+                        <p className="text-xs text-rose-200 leading-relaxed">{searchError}</p>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setIsEditing(true);
+                            setShowCatalogSearch(false);
+                          }}
+                          className="min-h-[36px] px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-xs font-semibold text-white inline-flex items-center gap-1.5 transition cursor-pointer"
+                        >
+                          <Edit3 className="w-3.5 h-3.5 text-[var(--accent-pink)]" />
+                          <span>Editar manualmente ahora</span>
+                        </button>
+                      </div>
                     )}
 
                     {candidates.length > 0 && (
-                      <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
-                        {candidates.slice(0, 5).map((cand) => (
+                      <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
+                        {candidates.slice(0, 6).map((cand) => (
                           <button
                             key={cand.id}
                             type="button"
@@ -648,26 +712,37 @@ export const BookDetailModal: React.FC<BookDetailModalProps> = ({
                                 src={cand.coverImage}
                                 alt={cand.title}
                                 referrerPolicy="no-referrer"
-                                className="w-10 h-14 object-cover rounded shrink-0 bg-black/50"
+                                className="w-11 h-16 object-cover rounded shrink-0 bg-black/50"
                               />
                             ) : (
-                              <div className="w-10 h-14 rounded bg-white/5 flex items-center justify-center text-base shrink-0">
+                              <div className="w-11 h-16 rounded bg-white/5 flex items-center justify-center text-base shrink-0">
                                 📖
                               </div>
                             )}
-                            <div className="min-w-0 flex-1">
+                            <div className="min-w-0 flex-1 space-y-0.5">
                               <p className="text-xs sm:text-sm font-semibold text-white truncate">
                                 {cand.title}
                               </p>
                               <p className="text-xs text-[var(--accent-pink)] truncate">
                                 {cand.author}
                                 {cand.publishedYear ? ` · ${cand.publishedYear}` : ''}
+                                {` · ${
+                                  cand.source === 'apple_books'
+                                    ? 'Apple Books'
+                                    : cand.source === 'openlibrary'
+                                    ? 'Open Library'
+                                    : 'Google Books'
+                                }`}
                               </p>
-                              {cand.genres.length > 0 && (
-                                <p className="text-[11px] text-[var(--text-muted)] truncate mt-0.5">
+                              {cand.description ? (
+                                <p className="text-[11px] text-[var(--text-muted)] line-clamp-2 leading-snug">
+                                  {cand.description}
+                                </p>
+                              ) : cand.genres.length > 0 ? (
+                                <p className="text-[11px] text-[var(--text-muted)] truncate">
                                   {cand.genres.slice(0, 3).join(' · ')}
                                 </p>
-                              )}
+                              ) : null}
                             </div>
                             <span className="text-[11px] font-semibold text-[var(--accent-purple)] shrink-0 self-center">
                               Usar

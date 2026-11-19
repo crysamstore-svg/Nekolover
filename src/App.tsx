@@ -30,6 +30,7 @@ import { loadReadingStats, logReadingSession, resetReadingStatsToZero } from './
 import { parseEpubFile } from './utils/epubParser';
 import { compressCoverImage, autoEnrichBookFromNetwork } from './utils/bookMetadata';
 import { BookDetailModal } from './components/BookDetailModal';
+import { OfflineIndicator } from './components/PWAInstallButton';
 import { safeJsonParse, sanitizeImageUrl } from './utils/sanitizeHtml';
 
 const MAX_BOOK_FILE_BYTES = 100 * 1024 * 1024; // 100 MB (PDF/EPUB)
@@ -1198,6 +1199,8 @@ export default function App() {
           <span className="text-xs font-semibold leading-snug">{toastMessage}</span>
         </div>
       )}
+
+      <OfflineIndicator />
     </div>
   );
 }

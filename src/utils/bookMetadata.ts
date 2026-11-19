@@ -17,6 +17,11 @@ export interface PublicBookCandidate {
   source: 'apple_books' | 'openlibrary' | 'google_books';
 }
 
+export interface CatalogSearchResult {
+  candidates: PublicBookCandidate[];
+  networkError: boolean;
+}
+
 export interface LocalPdfMetadata {
   title?: string;
   author?: string;
@@ -34,7 +39,82 @@ const GENERIC_AUTHOR_SET = new Set([
   'unknown',
   'desconocido',
   'sin autor',
+  'anonimo',
+  'anónimo',
+  'varios',
+  'varios autores',
+  'admin',
+  'usuario',
+  'user',
+  'n/a',
+  'none',
 ]);
+
+export function isGenericAuthor(rawAuthor?: string): boolean {
+  const clean = (rawAuthor || '').trim().toLowerCase();
+  if (!clean || clean.length < 2) return true;
+  if (GENERIC_AUTHOR_SET.has(clean)) return true;
+  return /^(calibre|epublibre|lectulandia|z-?lib|annas?-?archive|scanner|adobe|microsoft|libreoffice|pdf|epub)\b/i.test(
+    clean
+  );
+}
+
+const normalizeFold = (val: string): string =>
+  val
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+const tokenizeFold = (val: string): string[] => {
+  const stopWords = new Set(['el', 'la', 'los', 'las', 'de', 'del', 'y', 'en', 'un', 'una', 'the', 'of', 'and', 'a', 'to', 'in']);
+  return normalizeFold(val)
+    .split(' ')
+    .filter((w) => w.length >= 2 && !stopWords.has(w));
+};
+
+const cleanCatalogTitle = (rawTitle: string): string => {
+  return rawTitle
+    .replace(/\s*\((?:edici[oó]n\s+(?:espa[ñn]ola|mexicana|castellana|argentina|en\s+espa[ñn]ol)|spanish\s+edition|english\s+edition)\)\s*/gi, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+};
+
+export function looksLikeRawFilename(title: string, fileName?: string): boolean {
+  const t = (title || '').trim();
+  if (!t) return true;
+  if (fileName) {
+    const stem = fileName.replace(/\.[^/.]+$/, '').trim();
+    if (stem && t === stem && (/[_.]/.test(stem) || /\[[^\]]+\]/.test(stem) || /^\d{1,3}[\s._-]/.test(stem) || stem === stem.toLowerCase())) {
+      return true;
+    }
+  }
+  if (/\.(epub|pdf|txt|md)$/i.test(t)) return true;
+  if (/[_]/.test(t)) return true;
+  if (/\[[^\]]+\]/.test(t)) return true;
+  if (/\b(?:z-?lib|epublibre|lectulandia|annas?-?archive)\b/i.test(t)) return true;
+  if ((t.match(/\./g) || []).length >= 2 && !/\s/.test(t)) return true;
+  if (t === t.toLowerCase() && t.length > 3) return true;
+  return false;
+}
+
+const isStrongTitleMatch = (bookTitle: string, candidateTitle: string): boolean => {
+  const normBook = normalizeFold(bookTitle);
+  const normCand = normalizeFold(candidateTitle);
+  if (!normBook || !normCand) return false;
+  if (normBook === normCand) return true;
+  if (normBook.length >= 5 && (normCand.includes(normBook) || normBook.includes(normCand))) {
+    return true;
+  }
+  const bookTokens = tokenizeFold(bookTitle);
+  const candTokens = tokenizeFold(candidateTitle);
+  if (bookTokens.length === 0 || candTokens.length === 0) return false;
+  const candSet = new Set(candTokens);
+  const overlap = bookTokens.filter((w) => candSet.has(w)).length;
+  return overlap / bookTokens.length >= 0.65;
+};
 
 /**
  * Cleans uploaded filenames/titles so public book APIs match the real book.
@@ -43,18 +123,29 @@ export function cleanBookSearchParts(rawTitle: string, rawAuthor?: string): { ti
   let cleanTitle = (rawTitle || '')
     .replace(/\.(epub|pdf|txt|md)$/i, '')
     .replace(/\[[^\]]*\]/g, ' ')
-    .replace(/\((?:z-lib(?:\.org)?|zlib|annas?-archive|epub|pdf|spanish|español|esp|complete|completo|1st|edici[oó]n|\d{4})[^)]*\)/gi, ' ')
-    .replace(/[_]+/g, ' ')
-    .replace(/\s+-\s+(?=[A-Za-zÁÉÍÓÚÑÜ])/g, ' ')
+    .replace(
+      /\((?:z-?lib(?:\.org)?|zlib|annas?-?archive|epublibre|lectulandia|epub|pdf|mobi|azw3|spanish(?:\s+edition)?|espa[ñn]ol|esp|complete|completo|ilustrado|illustrated|traducido|edici[oó]n[^)]*|\d{4})[^)]*\)/gi,
+      ' '
+    )
+    .replace(/[_]+/g, ' ');
+
+  // Replace dot-separated filename words (e.g. "Cien.anos.de.soledad") without breaking decimals/initials
+  cleanTitle = cleanTitle.replace(/([A-Za-zÁÉÍÓÚÑÜáéíóúñü0-9])\.(?=[A-Za-zÁÉÍÓÚÑÜáéíóúñü]{2,})/g, '$1 ');
+
+  // Strip leading list/book indices like "01. " or "02 - " while keeping years like "1984"
+  cleanTitle = cleanTitle.replace(/^0?\d{1,2}(?:[.)]|\s+-)\s+(?=[A-Za-zÁÉÍÓÚÑÜáéíóúñü])/, '');
+
+  cleanTitle = cleanTitle
+    .replace(/\s+[-–—]+\s+(?=[A-Za-zÁÉÍÓÚÑÜáéíóúñü])/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
 
   if (!cleanTitle) {
-    cleanTitle = rawTitle.trim();
+    cleanTitle = (rawTitle || '').replace(/\.(epub|pdf|txt|md)$/i, '').trim();
   }
 
   let cleanAuthor = (rawAuthor || '').trim();
-  if (GENERIC_AUTHOR_SET.has(cleanAuthor.toLowerCase())) {
+  if (isGenericAuthor(cleanAuthor)) {
     cleanAuthor = '';
   }
 
@@ -119,8 +210,15 @@ export async function extractPdfMetadataFromDB(bookId: string): Promise<LocalPdf
     const metaResult = await pdf.getMetadata().catch(() => null);
     const info = metaResult?.info || {};
 
-    const title = typeof info.Title === 'string' && info.Title.trim() ? info.Title.trim() : undefined;
-    const author = typeof info.Author === 'string' && info.Author.trim() ? info.Author.trim() : undefined;
+    const rawPdfTitle = typeof info.Title === 'string' && info.Title.trim() ? info.Title.trim() : undefined;
+    // Ignore garbage PDF tool titles like "Microsoft Word - ..." or "Untitled"
+    const title =
+      rawPdfTitle && !/^(untitled|sin t[ií]tulo|microsoft word|adobe|calibre|document)/i.test(rawPdfTitle)
+        ? rawPdfTitle
+        : undefined;
+
+    const rawPdfAuthor = typeof info.Author === 'string' && info.Author.trim() ? info.Author.trim() : undefined;
+    const author = rawPdfAuthor && !isGenericAuthor(rawPdfAuthor) ? rawPdfAuthor : undefined;
 
     const genreCandidates = new Set<string>();
     const addTags = (raw?: unknown) => {
@@ -167,7 +265,12 @@ export async function extractPdfMetadataFromDB(bookId: string): Promise<LocalPdf
   }
 }
 
-const normalizeGoogleCover = (links?: { thumbnail?: string; smallThumbnail?: string; medium?: string; large?: string }): string | undefined => {
+const normalizeGoogleCover = (links?: {
+  thumbnail?: string;
+  smallThumbnail?: string;
+  medium?: string;
+  large?: string;
+}): string | undefined => {
   const raw = links?.large || links?.medium || links?.thumbnail || links?.smallThumbnail;
   if (!raw) return undefined;
   let url = raw.replace(/^http:\/\//i, 'https://');
@@ -178,31 +281,86 @@ const normalizeGoogleCover = (links?: { thumbnail?: string; smallThumbnail?: str
   return sanitizeImageUrl(url) || undefined;
 };
 
+const NAMED_HTML_ENTITIES: Record<string, string> = {
+  amp: '&',
+  lt: '<',
+  gt: '>',
+  quot: '"',
+  apos: "'",
+  nbsp: ' ',
+  xa0: ' ',
+  laquo: '«',
+  raquo: '»',
+  ldquo: '“',
+  rdquo: '”',
+  lsquo: '‘',
+  rsquo: '’',
+  mdash: '—',
+  ndash: '–',
+  hellip: '…',
+  copy: '©',
+  reg: '®',
+  aacute: 'á',
+  eacute: 'é',
+  iacute: 'í',
+  oacute: 'ó',
+  uacute: 'ú',
+  uuml: 'ü',
+  ntilde: 'ñ',
+  Aacute: 'Á',
+  Eacute: 'É',
+  Iacute: 'Í',
+  Oacute: 'Ó',
+  Uacute: 'Ú',
+  Uuml: 'Ü',
+  Ntilde: 'Ñ',
+  iquest: '¿',
+  iexcl: '¡',
+};
+
+const decodeHtmlEntities = (input: string): string => {
+  return input
+    .replace(/&#x([0-9a-f]+);/gi, (_, hex) => {
+      const code = parseInt(hex, 16);
+      if (code === 160) return ' ';
+      return Number.isFinite(code) && code > 0 ? String.fromCodePoint(code) : '';
+    })
+    .replace(/&#(\d+);/g, (_, dec) => {
+      const code = parseInt(dec, 10);
+      if (code === 160) return ' ';
+      return Number.isFinite(code) && code > 0 ? String.fromCodePoint(code) : '';
+    })
+    .replace(/&([a-zA-Z]+);/g, (full, name) => NAMED_HTML_ENTITIES[name] ?? full);
+};
+
 const cleanDescription = (raw?: string): string | undefined => {
   if (!raw || typeof raw !== 'string') return undefined;
-  const cleaned = raw
+  const withoutTags = raw
     .replace(/<br\s*\/?>/gi, '\n')
-    .replace(/<\/p>/gi, '\n')
-    .replace(/<[^>]+>/g, ' ')
+    .replace(/<\/(p|div|li|h[1-6])>/gi, '\n')
+    .replace(/<[^>]+>/g, ' ');
+  const decoded = decodeHtmlEntities(withoutTags)
+    .replace(/\u00a0/g, ' ')
     .replace(/[ \t]+/g, ' ')
     .replace(/\n\s*\n+/g, '\n\n')
     .trim();
-  return cleaned.length > 0 ? cleaned : undefined;
+  return decoded.length > 0 ? decoded : undefined;
 };
 
-async function fetchAppleBooks(query: string): Promise<PublicBookCandidate[]> {
-  const queryStore = async (country: 'es' | 'us'): Promise<PublicBookCandidate[]> => {
+async function fetchAppleBooks(query: string): Promise<{ items: PublicBookCandidate[]; ok: boolean }> {
+  const queryStore = async (country: 'es' | 'mx' | 'us'): Promise<{ items: PublicBookCandidate[]; ok: boolean }> => {
     try {
-      const url = `https://itunes.apple.com/search?media=ebook&entity=ebook&limit=5&country=${country}&term=${encodeURIComponent(query)}`;
+      const url = `https://itunes.apple.com/search?media=ebook&entity=ebook&limit=6&country=${country}&term=${encodeURIComponent(query)}`;
       const res = await fetch(url, { signal: AbortSignal.timeout(7000) });
-      if (!res.ok) return [];
+      if (!res.ok) return { items: [], ok: false };
       const json = await res.json();
       const items = Array.isArray(json?.results) ? json.results : [];
 
       const mapped: PublicBookCandidate[] = [];
       for (const item of items) {
-        const title = item?.trackName || item?.trackCensoredName;
-        if (!title) continue;
+        const rawTrackTitle = item?.trackName || item?.trackCensoredName;
+        if (!rawTrackTitle) continue;
+        const title = cleanCatalogTitle(String(rawTrackTitle));
         const rawArt = item?.artworkUrl100 || item?.artworkUrl60;
         const highResArt =
           typeof rawArt === 'string'
@@ -221,32 +379,41 @@ async function fetchAppleBooks(query: string): Promise<PublicBookCandidate[]> {
 
         mapped.push({
           id: `ab-${country}-${item.trackId || mapped.length}`,
-          title: String(title).trim(),
+          title,
           author: item?.artistName ? String(item.artistName).trim() : 'Autor Desconocido',
           genres,
           description: cleanDescription(item?.description),
           coverImage: sanitizeImageUrl(highResArt) || undefined,
           publishedYear: yearMatch ? yearMatch[1] : undefined,
-          language: country === 'es' ? 'ES' : 'EN',
+          language: country === 'us' ? 'EN' : 'ES',
           source: 'apple_books',
         });
       }
-      return mapped;
+      return { items: mapped, ok: true };
     } catch {
-      return [];
+      return { items: [], ok: false };
     }
   };
 
-  const esResults = await queryStore('es');
-  if (esResults.length > 0) return esResults;
-  return queryStore('us');
+  const [esRes, mxRes] = await Promise.all([queryStore('es'), queryStore('mx')]);
+  const combinedEs = [...esRes.items, ...mxRes.items];
+  // Also query US store if ES/MX didn't yield rich results with descriptions
+  const hasRichEs = combinedEs.some((c) => c.description && c.description.length > 50 && c.coverImage);
+  if (hasRichEs && combinedEs.length >= 2) {
+    return { items: combinedEs, ok: esRes.ok || mxRes.ok };
+  }
+  const usRes = await queryStore('us');
+  return {
+    items: [...combinedEs, ...usRes.items],
+    ok: esRes.ok || mxRes.ok || usRes.ok,
+  };
 }
 
-async function fetchGoogleBooks(query: string): Promise<PublicBookCandidate[]> {
+async function fetchGoogleBooks(query: string): Promise<{ items: PublicBookCandidate[]; ok: boolean }> {
   try {
     const url = `https://www.googleapis.com/books/v1/volumes?q=${encodeURIComponent(query)}&maxResults=5`;
-    const res = await fetch(url, { signal: AbortSignal.timeout(5000) });
-    if (!res.ok) return [];
+    const res = await fetch(url, { signal: AbortSignal.timeout(4500) });
+    if (!res.ok) return { items: [], ok: false };
     const json = await res.json();
     const items = Array.isArray(json?.items) ? json.items : [];
 
@@ -267,7 +434,7 @@ async function fetchGoogleBooks(query: string): Promise<PublicBookCandidate[]> {
 
       results.push({
         id: `gb-${item.id || results.length}`,
-        title: String(info.title).trim(),
+        title: cleanCatalogTitle(String(info.title)),
         author: Array.isArray(info.authors) && info.authors.length > 0 ? info.authors.join(', ') : 'Autor Desconocido',
         genres,
         description: cleanDescription(info.description),
@@ -280,29 +447,32 @@ async function fetchGoogleBooks(query: string): Promise<PublicBookCandidate[]> {
         source: 'google_books',
       });
     }
-    return results;
+    return { items: results, ok: true };
   } catch {
-    return [];
+    return { items: [], ok: false };
   }
 }
 
-async function fetchOpenLibrary(query: string): Promise<PublicBookCandidate[]> {
+async function fetchOpenLibrary(query: string): Promise<{ items: PublicBookCandidate[]; ok: boolean }> {
   try {
-    const url = `https://openlibrary.org/search.json?q=${encodeURIComponent(query)}&limit=5&fields=key,title,author_name,first_publish_year,cover_i,subject,publisher,isbn,language,number_of_pages_median`;
+    const url = `https://openlibrary.org/search.json?q=${encodeURIComponent(query)}&limit=6&fields=key,title,author_name,first_publish_year,cover_i,subject,publisher,isbn,language,number_of_pages_median`;
     const res = await fetch(url, { signal: AbortSignal.timeout(7000) });
-    if (!res.ok) return [];
+    if (!res.ok) return { items: [], ok: false };
     const json = await res.json();
     const docs = Array.isArray(json?.docs) ? json.docs : [];
 
-    const results: PublicBookCandidate[] = [];
-    for (let i = 0; i < docs.length; i++) {
-      const doc = docs[i];
-      if (!doc?.title) continue;
+    // Fetch /works/*.json synopses in parallel for up to 3 top candidates
+    const descByKey = new Map<string, string>();
+    const workKeys: string[] = (docs as any[])
+      .slice(0, 4)
+      .map((d) => (typeof d?.key === 'string' && d.key.startsWith('/works/') ? (d.key as string) : null))
+      .filter((k): k is string => Boolean(k))
+      .slice(0, 3);
 
-      let description: string | undefined;
-      if (i === 0 && typeof doc.key === 'string' && doc.key.startsWith('/works/')) {
+    await Promise.all(
+      workKeys.map(async (wk: string) => {
         try {
-          const workRes = await fetch(`https://openlibrary.org${doc.key}.json`, {
+          const workRes = await fetch(`https://openlibrary.org${wk}.json`, {
             signal: AbortSignal.timeout(4500),
           });
           if (workRes.ok) {
@@ -311,12 +481,19 @@ async function fetchOpenLibrary(query: string): Promise<PublicBookCandidate[]> {
               typeof workJson?.description === 'string'
                 ? workJson.description
                 : workJson?.description?.value;
-            description = cleanDescription(rawDesc);
+            const cleaned = cleanDescription(rawDesc);
+            if (cleaned) descByKey.set(wk, cleaned);
           }
         } catch {
-          // Optional work description fetch
+          // Optional description lookup
         }
-      }
+      })
+    );
+
+    const results: PublicBookCandidate[] = [];
+    for (let i = 0; i < docs.length; i++) {
+      const doc = docs[i];
+      if (!doc?.title) continue;
 
       const coverUrl =
         typeof doc.cover_i === 'number' && doc.cover_i > 0
@@ -338,7 +515,7 @@ async function fetchOpenLibrary(query: string): Promise<PublicBookCandidate[]> {
             ? doc.author_name.slice(0, 3).join(', ')
             : 'Autor Desconocido',
         genres,
-        description,
+        description: typeof doc.key === 'string' ? descByKey.get(doc.key) : undefined,
         coverImage: coverUrl,
         publisher:
           Array.isArray(doc.publisher) && doc.publisher.length > 0
@@ -358,68 +535,156 @@ async function fetchOpenLibrary(query: string): Promise<PublicBookCandidate[]> {
         source: 'openlibrary',
       });
     }
-    return results;
+    return { items: results, ok: true };
   } catch {
-    return [];
+    return { items: [], ok: false };
   }
 }
 
+const isSummaryOrGuide = (title: string, genres: string[] = []): boolean =>
+  /^(?:summary|resumen|analysis|an[aá]lisis|study guide|gu[ií]a de lectura|workbook|review)\b/i.test(
+    title.trim()
+  ) ||
+  genres.some((g) => /^(?:educaci[oó]n|study aids|gu[ií]as de estudio|t[eé]cnicos y profesionales)$/i.test(g.trim()));
+
+const looksSpanishText = (text: string): boolean => {
+  const matches = text.match(
+    /\b(?:el|la|los|las|una|unos|unas|para|con|por|que|sus|entre|historia|novela|vida|mundo|cuando|sobre|pero|esta|este|desde|hasta)\b/gi
+  );
+  return (matches?.length || 0) >= 3;
+};
+
+const looksForeignNonEsEn = (text: string): boolean =>
+  /[őűąćęłńśźżğıİışčšžřěůďťňľĺŕăşţ]/i.test(text) ||
+  /(?:\b(?:książka|zawiera|opisy|szexuális|befolyásolom|története|kitap|romanı|dokážem|manipulovať)\b)/i.test(
+    text
+  );
+
 /**
- * Searches Apple Books + Open Library (+ Google Books bonus) concurrently and ranks
- * rich matches (those with cover image, synopsis, genres, and author) at the top.
+ * Searches Apple Books (ES/MX/US) + Open Library (+ Google Books bonus)
+ * and reports whether providers succeeded or experienced network failure.
  */
-export async function searchPublicBookCatalog(
+export async function searchPublicBookCatalogWithStatus(
   rawTitle: string,
   rawAuthor?: string,
   explicitQuery?: string
-): Promise<PublicBookCandidate[]> {
+): Promise<CatalogSearchResult> {
   const cleaned = cleanBookSearchParts(rawTitle, rawAuthor);
-  const query = (explicitQuery && explicitQuery.trim()) ||
+  const query =
+    (explicitQuery && explicitQuery.trim()) ||
     [cleaned.title, cleaned.author].filter(Boolean).join(' ');
 
-  if (!query || query.length < 2) return [];
+  if (!query || query.length < 2) {
+    return { candidates: [], networkError: false };
+  }
 
+  let anySuccess = false;
   const runProviders = async (q: string): Promise<PublicBookCandidate[]> => {
-    const [abResults, olResults, gbResults] = await Promise.all([
+    const [abRes, olRes, gbRes] = await Promise.all([
       fetchAppleBooks(q),
       fetchOpenLibrary(q),
       fetchGoogleBooks(q),
     ]);
-    return [...abResults, ...olResults, ...gbResults];
+    if (abRes.ok || olRes.ok || gbRes.ok) {
+      anySuccess = true;
+    }
+    return [...abRes.items, ...olRes.items, ...gbRes.items];
   };
 
-  let combined = await runProviders(query);
-  // Fallback to title-only search if title+author was too restrictive
-  if (combined.length === 0 && !explicitQuery && cleaned.author && cleaned.title.length >= 3) {
-    combined = await runProviders(cleaned.title);
-  }
+  // If title contains " - " (e.g. "Title - Author" or "01 - Title") also search left segment
+  const dashSplit = !explicitQuery ? cleaned.title : '';
+  const hasExplicitAuthor = Boolean(cleaned.author) && query !== cleaned.title;
+
+  const [primaryHits, titleOnlyHits] = await Promise.all([
+    runProviders(query),
+    hasExplicitAuthor ? runProviders(cleaned.title) : Promise.resolve([] as PublicBookCandidate[]),
+  ]);
+
+  const combined = [...primaryHits, ...titleOnlyHits];
+  const targetTitle = explicitQuery?.trim() || dashSplit || cleaned.title;
+  const targetTokens = tokenizeFold(targetTitle);
+  const targetAuthorTokens = tokenizeFold(cleaned.author);
+  const queryHasForeignScript = looksForeignNonEsEn(targetTitle);
 
   const score = (c: PublicBookCandidate): number => {
     let s = 0;
+    const candTokens = tokenizeFold(c.title);
+    const candSet = new Set(candTokens);
+
+    // Title token overlap (critical for real matches)
+    if (targetTokens.length > 0) {
+      const matchedTokens = targetTokens.filter((w) => candSet.has(w)).length;
+      const ratio = matchedTokens / targetTokens.length;
+      s += Math.round(ratio * 10);
+      if (ratio === 0) s -= 8;
+    }
+
+    if (normalizeFold(c.title) === normalizeFold(targetTitle)) {
+      s += 4;
+    }
+
+    // Author token overlap (against explicit author OR author name embedded in filename/title)
+    if (!isGenericAuthor(c.author)) {
+      const authorTokens = tokenizeFold(c.author);
+      if (targetAuthorTokens.length > 0) {
+        const authorSet = new Set(authorTokens);
+        const authorMatches = targetAuthorTokens.filter((w) => authorSet.has(w)).length;
+        if (authorMatches > 0) s += 6;
+      } else if (authorTokens.length > 0) {
+        const titleTokenSet = new Set(targetTokens);
+        const embeddedAuthorMatches = authorTokens.filter((w) => titleTokenSet.has(w)).length;
+        if (embeddedAuthorMatches > 0) s += Math.min(8, embeddedAuthorMatches * 3);
+      }
+    }
+
     if (c.coverImage) s += 4;
-    if (c.description && c.description.length > 40) s += 4;
+    if (c.description && c.description.length > 60) s += 5;
+    else if (c.description && c.description.length > 20) s += 2;
     if (c.genres.length > 0) s += 2;
-    if (c.author && !GENERIC_AUTHOR_SET.has(c.author.toLowerCase())) s += 2;
-    if (c.source === 'apple_books' && c.language === 'ES') s += 2;
+    if (!isGenericAuthor(c.author)) s += 2;
     if (c.publishedYear) s += 1;
-    if (cleaned.title.length >= 4 && c.title.toLowerCase().includes(cleaned.title.toLowerCase().slice(0, 12))) s += 2;
+
+    // Strongly prefer Spanish descriptions, penalize non-ES/EN translations and academic study guides
+    if (c.description && looksSpanishText(c.description)) s += 5;
+    if (c.source === 'apple_books' && c.language === 'ES') s += 3;
+    if (!queryHasForeignScript && c.description && looksForeignNonEsEn(c.description)) s -= 12;
+    if (!isSummaryOrGuide(targetTitle) && isSummaryOrGuide(c.title, c.genres)) s -= 9;
+
     return s;
   };
 
   combined.sort((a, b) => score(b) - score(a));
 
-  // Deduplicate near-identical title+author entries, preferring higher-scored ones
   const seen = new Set<string>();
   const deduped: PublicBookCandidate[] = [];
   for (const cand of combined) {
-    const key = `${cand.title.toLowerCase().slice(0, 28)}|${cand.author.toLowerCase().slice(0, 18)}`;
+    // Skip clearly irrelevant zero-overlap junk when searching automatically
+    if (!explicitQuery && targetTokens.length >= 2) {
+      const candSet = new Set(tokenizeFold(cand.title));
+      const overlap = targetTokens.filter((w) => candSet.has(w)).length;
+      if (overlap === 0) continue;
+    }
+
+    const key = `${normalizeFold(cand.title).slice(0, 30)}|${normalizeFold(cand.author).slice(0, 18)}`;
     if (seen.has(key)) continue;
     seen.add(key);
     deduped.push(cand);
     if (deduped.length >= 8) break;
   }
 
-  return deduped;
+  return {
+    candidates: deduped,
+    networkError: !anySuccess,
+  };
+}
+
+export async function searchPublicBookCatalog(
+  rawTitle: string,
+  rawAuthor?: string,
+  explicitQuery?: string
+): Promise<PublicBookCandidate[]> {
+  const { candidates } = await searchPublicBookCatalogWithStatus(rawTitle, rawAuthor, explicitQuery);
+  return candidates;
 }
 
 /**
@@ -431,14 +696,22 @@ export function applyCandidateToBook(
   candidate: PublicBookCandidate,
   overwriteManualFields = false
 ): Book {
-  const hasGenericAuthor = !book.author || GENERIC_AUTHOR_SET.has(book.author.toLowerCase());
+  const hasGenericAuthor = isGenericAuthor(book.author);
   const nextAuthor =
     overwriteManualFields || hasGenericAuthor
       ? candidate.author || book.author
       : book.author;
 
+  const shouldUpdateTitle =
+    Boolean(candidate.title) &&
+    (overwriteManualFields ||
+      (book.type !== 'demo' &&
+        (looksLikeRawFilename(book.title, book.fileName) ||
+          isStrongTitleMatch(book.title, candidate.title))));
+
   return {
     ...book,
+    title: shouldUpdateTitle ? candidate.title : book.title,
     author: nextAuthor,
     coverImage:
       overwriteManualFields || !book.coverImage
@@ -471,25 +744,32 @@ export function applyCandidateToBook(
 
 /**
  * Automatically extracts local PDF metadata + public web catalog metadata
- * (author, genres, synopsis/bio, and public cover) for any uploaded book.
+ * (real title, author, genres, synopsis/bio, and public cover) for any uploaded book.
  */
 export async function autoEnrichBookFromNetwork(
   book: Book
-): Promise<{ updated: Book; candidates: PublicBookCandidate[]; matched: boolean }> {
+): Promise<{
+  updated: Book;
+  candidates: PublicBookCandidate[];
+  matched: boolean;
+  networkError: boolean;
+}> {
   let workingBook: Book = { ...book };
 
   // Step 1: Extract embedded PDF metadata & page-1 fallback thumbnail
-  if (workingBook.type === 'pdf' && (!workingBook.coverImage || workingBook.author === 'Documento PDF')) {
+  if (workingBook.type === 'pdf' && (!workingBook.coverImage || isGenericAuthor(workingBook.author))) {
     const pdfMeta = await extractPdfMetadataFromDB(workingBook.id);
     if (pdfMeta) {
       workingBook = {
         ...workingBook,
         title:
-          pdfMeta.title && workingBook.title === workingBook.fileName?.replace(/\.[^/.]+$/, '')
+          pdfMeta.title &&
+          (looksLikeRawFilename(workingBook.title, workingBook.fileName) ||
+            workingBook.title === workingBook.fileName?.replace(/\.[^/.]+$/, ''))
             ? pdfMeta.title
             : workingBook.title,
         author:
-          pdfMeta.author && workingBook.author === 'Documento PDF'
+          pdfMeta.author && isGenericAuthor(workingBook.author)
             ? pdfMeta.author
             : workingBook.author,
         genres:
@@ -506,15 +786,19 @@ export async function autoEnrichBookFromNetwork(
     }
   }
 
-  // Step 2: Fetch public info from Apple Books + Open Library
-  const candidates = await searchPublicBookCatalog(workingBook.title, workingBook.author);
+  // Step 2: Fetch public info from Apple Books + Open Library (+ Google Books)
+  const { candidates, networkError } = await searchPublicBookCatalogWithStatus(
+    workingBook.title,
+    workingBook.author
+  );
+
   if (candidates.length > 0) {
     const top = candidates[0];
     const merged = applyCandidateToBook(workingBook, top, false);
     if (top.coverImage && workingBook.metadataSource === 'pdf') {
       merged.coverImage = top.coverImage;
     }
-    return { updated: merged, candidates, matched: true };
+    return { updated: merged, candidates, matched: true, networkError: false };
   }
 
   return {
@@ -524,5 +808,6 @@ export async function autoEnrichBookFromNetwork(
     },
     candidates: [],
     matched: false,
+    networkError,
   };
 }
