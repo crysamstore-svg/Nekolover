@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef, lazy, Suspense } from 'react';
 import { Trash2, FolderSync, Loader2 } from 'lucide-react';
 import { Book, Quote, PageSticker, Bookmark, ThemeId, ReadingStatsData, TextHighlight, ReaderModeId, ShelfStyle, ShelfViewMode, ShelfBackgroundConfig } from './types';
 import { 
@@ -8,30 +8,33 @@ import {
 } from './data/defaultBooks';
 import { Header } from './components/Header';
 import { Bookshelf } from './components/Bookshelf';
-import { Reader } from './components/Reader';
-import { QuotesVault } from './components/QuotesVault';
-import { StatsPanel } from './components/StatsPanel';
 import { ThemeModal } from './components/ThemeModal';
 import { FontModal } from './components/FontModal';
 import { AddQuoteModal } from './components/AddQuoteModal';
-import { MusicShelfModal } from './components/MusicShelfModal';
-import { VipSubscriptionModal } from './components/VipSubscriptionModal';
-import { VipClubPage } from './components/VipClubPage';
 import { musicPlayer } from './utils/musicManager';
 import { vipManager } from './utils/vipManager';
 import { BookmarksDrawer } from './components/BookmarksDrawer';
-import { SettingsView, HeaderButtonsConfig } from './components/SettingsView';
+import type { HeaderButtonsConfig } from './components/SettingsView';
 import { DEFAULT_SHELF_BG } from './components/ShelfBackgroundModal';
-import { LegalModal, LegalTab } from './components/LegalModal';
+import type { LegalTab } from './components/LegalModal';
 import { CookieConsentBanner } from './components/CookieConsentBanner';
 import { saveFileToDB, deleteFileFromDB, saveBooksToDB, getBooksFromDB, getSmartEmojiForTitle, getRandomGothicGradient } from './utils/db';
 import { soundscape } from './utils/audio';
 import { loadReadingStats, logReadingSession, resetReadingStatsToZero } from './utils/stats';
 import { parseEpubFile } from './utils/epubParser';
 import { compressCoverImage, autoEnrichBookFromNetwork } from './utils/bookMetadata';
-import { BookDetailModal } from './components/BookDetailModal';
 import { OfflineIndicator } from './components/PWAInstallButton';
 import { safeJsonParse, sanitizeImageUrl } from './utils/sanitizeHtml';
+
+const Reader = lazy(() => import('./components/Reader').then((m) => ({ default: m.Reader })));
+const QuotesVault = lazy(() => import('./components/QuotesVault').then((m) => ({ default: m.QuotesVault })));
+const StatsPanel = lazy(() => import('./components/StatsPanel').then((m) => ({ default: m.StatsPanel })));
+const MusicShelfModal = lazy(() => import('./components/MusicShelfModal').then((m) => ({ default: m.MusicShelfModal })));
+const VipSubscriptionModal = lazy(() => import('./components/VipSubscriptionModal').then((m) => ({ default: m.VipSubscriptionModal })));
+const VipClubPage = lazy(() => import('./components/VipClubPage').then((m) => ({ default: m.VipClubPage })));
+const SettingsView = lazy(() => import('./components/SettingsView').then((m) => ({ default: m.SettingsView })));
+const LegalModal = lazy(() => import('./components/LegalModal').then((m) => ({ default: m.LegalModal })));
+const BookDetailModal = lazy(() => import('./components/BookDetailModal').then((m) => ({ default: m.BookDetailModal })));
 
 const MAX_BOOK_FILE_BYTES = 100 * 1024 * 1024; // 100 MB (PDF/EPUB)
 const MAX_TEXT_FILE_BYTES = 20 * 1024 * 1024;  // 20 MB (TXT/MD)
@@ -902,8 +905,9 @@ export default function App() {
         )}
 
         {currentView === 'reader' && activeBook && (
-          <Reader
-            book={activeBook}
+          <Suspense fallback={<div className="flex items-center justify-center py-24"><Loader2 className="w-7 h-7 animate-spin text-[var(--accent-pink)]" /></div>}>
+            <Reader
+              book={activeBook}
             onBackToLibrary={() => setCurrentView('library')}
             onOpenFontModal={() => setIsFontModalOpen(true)}
             onOpenThemeModal={() => setIsThemeModalOpen(true)}
@@ -953,124 +957,133 @@ export default function App() {
               setFontSize(fs);
               localStorage.setItem('nl_font_size', String(fs));
             }}
-            isVip={isVip}
-            onOpenVipModal={openVipModal}
-            quotesCount={quotes.length}
-          />
+              isVip={isVip}
+              onOpenVipModal={openVipModal}
+              quotesCount={quotes.length}
+            />
+          </Suspense>
         )}
 
         {currentView === 'quotes' && (
-          <QuotesVault
-            quotes={quotes}
-            highlights={highlights}
-            books={books}
-            onOpenAddQuote={(defaultText?: string) => {
-              if (!isVip && quotes.length >= 3) {
-                openVipModal('notes');
-                showToast('👑 Límite de 3 notas alcanzado. Pásate a VIP ($2/mes) para notas infinitas.');
-                return;
-              }
-              setQuoteSelectedText(defaultText);
-              setIsAddQuoteOpen(true);
-            }}
-            onDeleteQuote={handleDeleteQuote}
-            onDeleteHighlight={(pageKey, id) => {
-              setHighlights((prev) => {
-                const next = (prev[pageKey] || []).filter((h) => h.id !== id);
-                if (next.length === 0) {
-                  const copy = { ...prev };
-                  delete copy[pageKey];
-                  return copy;
+          <Suspense fallback={<div className="flex items-center justify-center py-24"><Loader2 className="w-7 h-7 animate-spin text-[var(--accent-pink)]" /></div>}>
+            <QuotesVault
+              quotes={quotes}
+              highlights={highlights}
+              books={books}
+              onOpenAddQuote={(defaultText?: string) => {
+                if (!isVip && quotes.length >= 3) {
+                  openVipModal('notes');
+                  showToast('👑 Límite de 3 notas alcanzado. Pásate a VIP ($2/mes) para notas infinitas.');
+                  return;
                 }
-                return { ...prev, [pageKey]: next };
-              });
-              showToast('Subrayado eliminado.');
-            }}
-            isVip={isVip}
-            onOpenVipModal={() => openVipModal('notes')}
-          />
+                setQuoteSelectedText(defaultText);
+                setIsAddQuoteOpen(true);
+              }}
+              onDeleteQuote={handleDeleteQuote}
+              onDeleteHighlight={(pageKey, id) => {
+                setHighlights((prev) => {
+                  const next = (prev[pageKey] || []).filter((h) => h.id !== id);
+                  if (next.length === 0) {
+                    const copy = { ...prev };
+                    delete copy[pageKey];
+                    return copy;
+                  }
+                  return { ...prev, [pageKey]: next };
+                });
+                showToast('Subrayado eliminado.');
+              }}
+              isVip={isVip}
+              onOpenVipModal={() => openVipModal('notes')}
+            />
+          </Suspense>
         )}
 
         {currentView === 'stats' && (
-          <StatsPanel
-            stats={readingStats}
-            books={books}
-            onUpdateStats={setReadingStats}
-            onNavigateToLibrary={() => setCurrentView('library')}
-          />
+          <Suspense fallback={<div className="flex items-center justify-center py-24"><Loader2 className="w-7 h-7 animate-spin text-[var(--accent-pink)]" /></div>}>
+            <StatsPanel
+              stats={readingStats}
+              books={books}
+              onUpdateStats={setReadingStats}
+              onNavigateToLibrary={() => setCurrentView('library')}
+            />
+          </Suspense>
         )}
 
         {currentView === 'settings' && (
-          <SettingsView
-            currentTheme={currentTheme}
-            onSelectTheme={setCurrentTheme}
-            currentFont={currentFont}
-            onSelectFont={setCurrentFont}
-            isNightMode={isNightMode}
-            onToggleNightMode={handleToggleNightMode}
-            readerMode={readerMode}
-            onSelectReaderMode={(mode) => {
-              setReaderMode(mode);
-              localStorage.setItem('nl_reader_mode', mode);
-            }}
-            containerWidth={containerWidth}
-            onChangeContainerWidth={(w: 'narrow' | 'normal' | 'wide') => {
-              setContainerWidth(w);
-              localStorage.setItem('nl_container_width', w);
-            }}
-            lineHeight={lineHeight}
-            onChangeLineHeight={(lh: number) => {
-              setLineHeight(lh);
-              localStorage.setItem('nl_line_height', String(lh));
-            }}
-            fontSize={fontSize}
-            onChangeFontSize={(fs: number) => {
-              setFontSize(fs);
-              localStorage.setItem('nl_font_size', String(fs));
-            }}
-            headerConfig={headerConfig}
-            onUpdateHeaderConfig={(key: keyof HeaderButtonsConfig, value: boolean) => {
-              setHeaderConfig((prev) => {
-                const updated = { ...prev, [key]: value };
-                localStorage.setItem('nl_header_config', JSON.stringify(updated));
-                return updated;
-              });
-            }}
-            shelfStyle={shelfStyle}
-            onChangeShelfStyle={(style: ShelfStyle) => {
-              setShelfStyle(style);
-              localStorage.setItem('nl_shelf_style', style);
-            }}
-            viewMode={viewMode}
-            onChangeViewMode={(mode: ShelfViewMode) => {
-              setViewMode(mode);
-              localStorage.setItem('nl_shelf_view_mode', mode);
-            }}
-            shelfBgConfig={shelfBgConfig}
-            onUpdateShelfBgConfig={handleUpdateShelfBgConfig}
-            onResetStatsToZero={() => {
-              const fresh = resetReadingStatsToZero();
-              setReadingStats(fresh);
-              showToast('✨ Estadísticas reiniciadas a cero. Comenzarán con tu primera lectura.');
-            }}
-            onBack={() => setCurrentView('library')}
-            onOpenLegalModal={handleOpenLegalModal}
-            onOpenStats={() => setCurrentView('stats')}
-            onOpenQuotes={() => setCurrentView('quotes')}
-            quotesCount={quotes.length}
-            highlightsCount={Object.values(highlights).reduce((acc, list) => acc + (list?.length || 0), 0)}
-          />
+          <Suspense fallback={<div className="flex items-center justify-center py-24"><Loader2 className="w-7 h-7 animate-spin text-[var(--accent-pink)]" /></div>}>
+            <SettingsView
+              currentTheme={currentTheme}
+              onSelectTheme={setCurrentTheme}
+              currentFont={currentFont}
+              onSelectFont={setCurrentFont}
+              isNightMode={isNightMode}
+              onToggleNightMode={handleToggleNightMode}
+              readerMode={readerMode}
+              onSelectReaderMode={(mode) => {
+                setReaderMode(mode);
+                localStorage.setItem('nl_reader_mode', mode);
+              }}
+              containerWidth={containerWidth}
+              onChangeContainerWidth={(w: 'narrow' | 'normal' | 'wide') => {
+                setContainerWidth(w);
+                localStorage.setItem('nl_container_width', w);
+              }}
+              lineHeight={lineHeight}
+              onChangeLineHeight={(lh: number) => {
+                setLineHeight(lh);
+                localStorage.setItem('nl_line_height', String(lh));
+              }}
+              fontSize={fontSize}
+              onChangeFontSize={(fs: number) => {
+                setFontSize(fs);
+                localStorage.setItem('nl_font_size', String(fs));
+              }}
+              headerConfig={headerConfig}
+              onUpdateHeaderConfig={(key: keyof HeaderButtonsConfig, value: boolean) => {
+                setHeaderConfig((prev) => {
+                  const updated = { ...prev, [key]: value };
+                  localStorage.setItem('nl_header_config', JSON.stringify(updated));
+                  return updated;
+                });
+              }}
+              shelfStyle={shelfStyle}
+              onChangeShelfStyle={(style: ShelfStyle) => {
+                setShelfStyle(style);
+                localStorage.setItem('nl_shelf_style', style);
+              }}
+              viewMode={viewMode}
+              onChangeViewMode={(mode: ShelfViewMode) => {
+                setViewMode(mode);
+                localStorage.setItem('nl_shelf_view_mode', mode);
+              }}
+              shelfBgConfig={shelfBgConfig}
+              onUpdateShelfBgConfig={handleUpdateShelfBgConfig}
+              onResetStatsToZero={() => {
+                const fresh = resetReadingStatsToZero();
+                setReadingStats(fresh);
+                showToast('✨ Estadísticas reiniciadas a cero. Comenzarán con tu primera lectura.');
+              }}
+              onBack={() => setCurrentView('library')}
+              onOpenLegalModal={handleOpenLegalModal}
+              onOpenStats={() => setCurrentView('stats')}
+              onOpenQuotes={() => setCurrentView('quotes')}
+              quotesCount={quotes.length}
+              highlightsCount={Object.values(highlights).reduce((acc, list) => acc + (list?.length || 0), 0)}
+            />
+          </Suspense>
         )}
 
         {currentView === 'vip' && (
-          <VipClubPage
-            onBack={() => setCurrentView('library')}
-            onOpenLegalModal={handleOpenLegalModal}
-            onSubscribed={() => {
-              setIsVip(true);
-              showToast('👑 ¡Membresía VIP Activada! Disfruta de música, fotos, tipografías y notas ilimitadas.');
-            }}
-          />
+          <Suspense fallback={<div className="flex items-center justify-center py-24"><Loader2 className="w-7 h-7 animate-spin text-[var(--accent-pink)]" /></div>}>
+            <VipClubPage
+              onBack={() => setCurrentView('library')}
+              onOpenLegalModal={handleOpenLegalModal}
+              onSubscribed={() => {
+                setIsVip(true);
+                showToast('👑 ¡Membresía VIP Activada! Disfruta de música, fotos, tipografías y notas ilimitadas.');
+              }}
+            />
+          </Suspense>
         )}
       </main>
 
@@ -1103,11 +1116,15 @@ export default function App() {
         currentPage={activeBook?.currentPage || 1}
       />
 
-      <MusicShelfModal
-        isOpen={isAudioModalOpen}
-        onClose={() => setIsAudioModalOpen(false)}
-        onToast={showToast}
-      />
+      {isAudioModalOpen && (
+        <Suspense fallback={null}>
+          <MusicShelfModal
+            isOpen={isAudioModalOpen}
+            onClose={() => setIsAudioModalOpen(false)}
+            onToast={showToast}
+          />
+        </Suspense>
+      )}
 
       <BookmarksDrawer
         isOpen={isBookmarksOpen}
@@ -1119,23 +1136,31 @@ export default function App() {
       />
 
       {/* NekoLover VIP Club Subscription Modal ($2.00 USD/month - Solo PayPal) */}
-      <VipSubscriptionModal
-        isOpen={isVipModalOpen}
-        onClose={() => setIsVipModalOpen(false)}
-        onSubscribed={() => {
-          setIsVip(true);
-          showToast('👑 ¡Membresía VIP Activada! Disfruta de música, fotos, tipografías y notas ilimitadas.');
-        }}
-        onOpenLegalModal={handleOpenLegalModal}
-        featureReason={vipFeatureReason}
-      />
+      {isVipModalOpen && (
+        <Suspense fallback={null}>
+          <VipSubscriptionModal
+            isOpen={isVipModalOpen}
+            onClose={() => setIsVipModalOpen(false)}
+            onSubscribed={() => {
+              setIsVip(true);
+              showToast('👑 ¡Membresía VIP Activada! Disfruta de música, fotos, tipografías y notas ilimitadas.');
+            }}
+            onOpenLegalModal={handleOpenLegalModal}
+            featureReason={vipFeatureReason}
+          />
+        </Suspense>
+      )}
 
       {/* Centro Legal y Transparencia Modal (Términos, Privacidad, Cookies, Reembolso, Auditoría) */}
-      <LegalModal
-        isOpen={isLegalModalOpen}
-        onClose={() => setIsLegalModalOpen(false)}
-        initialTab={legalModalTab}
-      />
+      {isLegalModalOpen && (
+        <Suspense fallback={null}>
+          <LegalModal
+            isOpen={isLegalModalOpen}
+            onClose={() => setIsLegalModalOpen(false)}
+            initialTab={legalModalTab}
+          />
+        </Suspense>
+      )}
 
       {/* Banner de Consentimiento de Almacenamiento Local y Cookies */}
       <CookieConsentBanner
@@ -1147,16 +1172,18 @@ export default function App() {
         const previewBook = previewBookId ? books.find((b) => b.id === previewBookId) : null;
         if (!previewBook) return null;
         return (
-          <BookDetailModal
-            book={previewBook}
-            quotesCountForBook={quotes.filter((q) => q.bookId === previewBook.id).length}
-            bookmarksCountForBook={bookmarks.filter((bm) => bm.bookId === previewBook.id).length}
-            onClose={() => setPreviewBookId(null)}
-            onEnterReader={handleEnterReaderFromPreview}
-            onUpdateBook={handleUpdateBookMetadata}
-            onToggleFavorite={handleToggleFavorite}
-            onChangeCategory={handleChangeCategory}
-          />
+          <Suspense fallback={null}>
+            <BookDetailModal
+              book={previewBook}
+              quotesCountForBook={quotes.filter((q) => q.bookId === previewBook.id).length}
+              bookmarksCountForBook={bookmarks.filter((bm) => bm.bookId === previewBook.id).length}
+              onClose={() => setPreviewBookId(null)}
+              onEnterReader={handleEnterReaderFromPreview}
+              onUpdateBook={handleUpdateBookMetadata}
+              onToggleFavorite={handleToggleFavorite}
+              onChangeCategory={handleChangeCategory}
+            />
+          </Suspense>
         );
       })()}
 
