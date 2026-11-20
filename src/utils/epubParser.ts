@@ -298,7 +298,20 @@ export async function parseEpubFile(data: ArrayBuffer | Blob): Promise<ParsedEpu
         // Paginate chapter if it's too long (> 2500 chars), so reading feels like turning real book pages
         if (textContent.length > 2500) {
           const sanitizedDoc = parser.parseFromString(bodyHtml, 'text/html');
-          const paragraphs = Array.from((sanitizedDoc.body || body).children);
+          let container: Element = sanitizedDoc.body || body;
+          for (let depth = 0; depth < 5; depth++) {
+            const kids = Array.from(container.children);
+            if (
+              kids.length === 1 &&
+              ['div', 'section', 'article', 'main'].includes(kids[0].tagName.toLowerCase())
+            ) {
+              container = kids[0];
+            } else {
+              break;
+            }
+          }
+
+          const paragraphs = Array.from(container.children);
           if (paragraphs.length > 1) {
             let currentChunk = '';
             let currentLen = 0;

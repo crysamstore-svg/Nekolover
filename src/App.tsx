@@ -300,20 +300,39 @@ export default function App() {
     };
   }, []);
 
-  // Save books to IndexedDB only AFTER initial load completes, updating lightweight cache
+  const latestBooksRef = useRef<Book[]>(books);
+  latestBooksRef.current = books;
+
+  // Save books to IndexedDB only AFTER initial load completes, debounced so rapid page turns stay 60fps
   useEffect(() => {
     if (!isDbInitializedRef.current) return;
 
-    saveBooksToDB(books);
-    try {
-      // Lightweight title index in localStorage for fast splash boot (first 40 items without heavy blobs)
-      const lightCache = books.slice(0, 40).map((b) => ({
-        ...b,
-        content: undefined,
-        coverImage: b.coverImage && b.coverImage.startsWith('data:') ? undefined : b.coverImage
-      }));
-      localStorage.setItem('nl_books', JSON.stringify(lightCache));
-    } catch {}
+    const persistNow = (list: Book[]) => {
+      saveBooksToDB(list);
+      try {
+        // Lightweight title index in localStorage for fast splash boot (first 40 items without heavy blobs)
+        const lightCache = list.slice(0, 40).map((b) => ({
+          ...b,
+          content: undefined,
+          coverImage: b.coverImage && b.coverImage.startsWith('data:') ? undefined : b.coverImage
+        }));
+        localStorage.setItem('nl_books', JSON.stringify(lightCache));
+      } catch {}
+    };
+
+    const timer = window.setTimeout(() => {
+      persistNow(latestBooksRef.current);
+    }, 650);
+
+    const flushOnHide = () => {
+      persistNow(latestBooksRef.current);
+    };
+    window.addEventListener('pagehide', flushOnHide);
+
+    return () => {
+      window.clearTimeout(timer);
+      window.removeEventListener('pagehide', flushOnHide);
+    };
   }, [books]);
 
   // Sync state for large batch / folder sync
@@ -647,20 +666,21 @@ export default function App() {
     );
   };
 
-  // Update Reading Progress
-  const handleUpdateBookProgress = (
+  // Update Reading Progress (memoized so Reader doesn't re-bind handlers on every turn)
+  const handleUpdateBookProgress = useCallback((
     bookId: string,
     curPage: number,
     totPages: number
   ) => {
-    const percent = Math.min(100, Math.round((curPage / totPages) * 100));
+    const safeTotal = Math.max(1, totPages);
+    const percent = Math.min(100, Math.round((curPage / safeTotal) * 100));
     setBooks((prev) =>
       prev.map((b) => {
         if (b.id === bookId) {
           return {
             ...b,
             currentPage: curPage,
-            totalPages: totPages,
+            totalPages: safeTotal,
             progressPercent: percent,
             category: percent === 100 ? 'completed' : b.category === 'unread' ? 'reading' : b.category,
             lastReadAt: Date.now()
@@ -669,7 +689,7 @@ export default function App() {
         return b;
       })
     );
-  };
+  }, []);
 
   // Record reading session duration and pages to statistics
   const handleRecordReadingSession = useCallback((minutes: number, pagesRead: number) => {

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { 
   ArrowLeft, 
   ChevronLeft, 
@@ -186,6 +186,7 @@ export const Reader: React.FC<ReaderProps> = ({
     return saved ? Number(saved) : 1.0;
   });
   const [loadingFile, setLoadingFile] = useState<boolean>(false);
+  const [pdfPageLoading, setPdfPageLoading] = useState<boolean>(false);
   const [fileError, setFileError] = useState<string | null>(null);
 
   // PDF Text Reflow (acomodar letras al ampliar) & Text Layer para selección y marcado directo
@@ -251,6 +252,12 @@ export const Reader: React.FC<ReaderProps> = ({
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const epubContainerRef = useRef<HTMLDivElement>(null);
   const pdfDocRef = useRef<any>(null);
+  const pdfRenderSeqRef = useRef<number>(0);
+  const pdfRenderTaskRef = useRef<any>(null);
+  const pdfTextCacheRef = useRef<Map<number, string>>(new Map());
+  const flipTimeoutRef = useRef<number | null>(null);
+  const progressSyncTimerRef = useRef<number | null>(null);
+  const latestProgressRef = useRef<{ bookId: string; page: number; total: number } | null>(null);
   const epubRenditionRef = useRef<any>(null);
   const epubBookRef = useRef<any>(null);
   const pageSwipeStartRef = useRef<{ x: number; y: number; time: number } | null>(null);
@@ -412,26 +419,75 @@ export const Reader: React.FC<ReaderProps> = ({
     return elements;
   };
 
-  // Subrayar citas de forma segura (sanitización XSS + nodos de texto DOM)
-  const highlightHtmlContent = (html: string, pageHighlights: TextHighlight[]) => {
-    return highlightHtmlSafely(html, pageHighlights);
-  };
+  // Memoize sanitized + highlighted EPUB HTML so DOMParser doesn't re-run on hover/animation frames
+  const rawCurrentEpubHtml =
+    book.type === 'epub'
+      ? epubPages[currentPage - 1] ||
+        (book.content && book.content[currentPage - 1]) ||
+        '<p class="text-center py-12 opacity-60">Cargando página de lectura...</p>'
+      : '';
 
-  // Update progress to parent & reset scroll to top
-  const handlePageChange = useCallback((newPage: number, total?: number) => {
-    const finalTotal = total || totalPages;
-    const clampedPage = Math.max(1, Math.min(newPage, finalTotal));
-    setCurrentPage(clampedPage);
-    pagesVisitedRef.current.add(clampedPage);
-    onUpdateBookProgress(book.id, clampedPage, finalTotal);
+  const renderedEpubHtml = useMemo(() => {
+    if (book.type !== 'epub') return '';
+    return highlightHtmlSafely(rawCurrentEpubHtml, currentPageHighlights);
+  }, [book.type, rawCurrentEpubHtml, currentPageHighlights]);
 
-    // Al pasar las páginas debe iniciar en la parte superior todo el tiempo
-    window.scrollTo({ top: 0, behavior: 'smooth' });
-    const viewport = document.getElementById('reader-viewport');
-    if (viewport) viewport.scrollTo({ top: 0, behavior: 'smooth' });
-    const pageCard = document.getElementById('page-container');
-    if (pageCard) pageCard.scrollTo({ top: 0, behavior: 'smooth' });
-  }, [book.id, totalPages, onUpdateBookProgress]);
+  // Flush any pending progress update on unmount
+  useEffect(() => {
+    return () => {
+      if (progressSyncTimerRef.current !== null) {
+        window.clearTimeout(progressSyncTimerRef.current);
+        progressSyncTimerRef.current = null;
+      }
+      if (flipTimeoutRef.current !== null) {
+        window.clearTimeout(flipTimeoutRef.current);
+        flipTimeoutRef.current = null;
+      }
+      const pending = latestProgressRef.current;
+      if (pending) {
+        onUpdateBookProgress(pending.bookId, pending.page, pending.total);
+        latestProgressRef.current = null;
+      }
+    };
+  }, [onUpdateBookProgress]);
+
+  // Update progress to parent (debounced) & reset scroll to top instantaneously
+  const handlePageChange = useCallback(
+    (newPage: number, total?: number) => {
+      const finalTotal = Math.max(1, total || totalPages);
+      const clampedPage = Math.max(1, Math.min(newPage, finalTotal));
+      setCurrentPage(clampedPage);
+      pagesVisitedRef.current.add(clampedPage);
+
+      // Clear active text selection toolbar when turning page
+      setSelectedText('');
+      setSelectionPos(null);
+      setShowColorPicker(false);
+
+      // Debounce parent book list state update so rapid page turns stay instantaneous
+      latestProgressRef.current = { bookId: book.id, page: clampedPage, total: finalTotal };
+      if (progressSyncTimerRef.current !== null) {
+        window.clearTimeout(progressSyncTimerRef.current);
+      }
+      progressSyncTimerRef.current = window.setTimeout(() => {
+        const pending = latestProgressRef.current;
+        if (pending) {
+          onUpdateBookProgress(pending.bookId, pending.page, pending.total);
+          latestProgressRef.current = null;
+        }
+        progressSyncTimerRef.current = null;
+      }, 320);
+
+      // Instant scroll reset (smooth scrolling across 3 elements stalls mobile page turns)
+      requestAnimationFrame(() => {
+        if (containerRef.current) containerRef.current.scrollTop = 0;
+        const pageCard = document.getElementById('page-container');
+        if (pageCard) pageCard.scrollTop = 0;
+        if (window.scrollY > 0) window.scrollTo(0, 0);
+      });
+    },
+    [book.id, totalPages, onUpdateBookProgress]
+  );
 
   // Track session reading time on mount/unmount
   useEffect(() => {
@@ -451,6 +507,12 @@ export const Reader: React.FC<ReaderProps> = ({
   // Load book based on type (demo, pdf, epub)
   useEffect(() => {
     let isCancelled = false;
+    pdfDocRef.current = null;
+    pdfTextCacheRef.current.clear();
+    if (pdfRenderTaskRef.current) {
+      try { pdfRenderTaskRef.current.cancel(); } catch {}
+      pdfRenderTaskRef.current = null;
+    }
 
     const loadContent = async () => {
       setFileError(null);
@@ -494,8 +556,11 @@ export const Reader: React.FC<ReaderProps> = ({
           const pdf = await pdfjs.getDocument({ data: arrayBuffer, isEvalSupported: false }).promise;
           if (isCancelled) return;
           pdfDocRef.current = pdf;
-          setTotalPages(pdf.numPages);
-          renderPdfPage(currentPage, pdf);
+          const totalPgs = Math.max(1, pdf.numPages);
+          setTotalPages(totalPgs);
+          const safeInitialPage = Math.max(1, Math.min(currentPage, totalPgs));
+          if (safeInitialPage !== currentPage) setCurrentPage(safeInitialPage);
+          renderPdfPage(safeInitialPage, pdf);
         } else if (book.type === 'epub') {
           if (book.content && book.content.length > 0) {
             setEpubPages(book.content);
@@ -509,7 +574,7 @@ export const Reader: React.FC<ReaderProps> = ({
           setEpubPages(parsed.pages);
           const totalPgs = Math.max(1, parsed.pages.length);
           setTotalPages(totalPgs);
-          onUpdateBookProgress(book.id, currentPage, totalPgs);
+          onUpdateBookProgress(book.id, Math.min(currentPage, totalPgs), totalPgs);
         }
       } catch (err: any) {
         if (!isCancelled) {
@@ -525,89 +590,144 @@ export const Reader: React.FC<ReaderProps> = ({
 
     return () => {
       isCancelled = true;
+      pdfRenderSeqRef.current += 1;
+      if (pdfRenderTaskRef.current) {
+        try { pdfRenderTaskRef.current.cancel(); } catch {}
+        pdfRenderTaskRef.current = null;
+      }
       if (epubRenditionRef.current) {
         try { epubRenditionRef.current.destroy(); } catch {}
       }
     };
   }, [book.id, book.type]);
 
-  // Render PDF page onto canvas with High-DPI HD Retina resolution & extract selectable text
+  // Render PDF page with cancellation token, text cache, and next-page prefetch
   const renderPdfPage = async (pageNum: number, pdfInstance?: any) => {
     const pdf = pdfInstance || pdfDocRef.current;
     if (!pdf) return;
 
+    const seq = ++pdfRenderSeqRef.current;
+
+    // Cancel any in-flight canvas render before starting a new one
+    if (pdfRenderTaskRef.current) {
+      try {
+        pdfRenderTaskRef.current.cancel();
+      } catch {}
+      pdfRenderTaskRef.current = null;
+    }
+
+    // Fast path for reflow mode when page text is already cached
+    const cachedText = pdfTextCacheRef.current.get(pageNum);
+    if (pdfReflowMode && cachedText !== undefined) {
+      setPdfPageText(cachedText);
+      setPdfPageLoading(false);
+    } else if (pdfReflowMode) {
+      setPdfPageLoading(true);
+    }
+
     try {
       const page = await pdf.getPage(pageNum);
+      if (seq !== pdfRenderSeqRef.current) return;
 
       // 1. Extraer texto para modo lectura acomodada y citas directas
-      const textContent = await page.getTextContent();
-      const extracted = extractPdfText(textContent);
+      let extracted = cachedText;
+      let textContent: any = null;
+      if (extracted === undefined || !pdfReflowMode) {
+        textContent = await page.getTextContent();
+        if (seq !== pdfRenderSeqRef.current) return;
+        extracted = extractPdfText(textContent);
+        pdfTextCacheRef.current.set(pageNum, extracted);
+      }
       setPdfPageText(extracted);
+      setPdfPageLoading(false);
 
-      // 2. Renderizar Canvas y capa de texto interactiva si el canvas está disponible
-      const canvas = canvasRef.current;
-      if (canvas) {
-        const ctx = canvas.getContext('2d');
-        if (ctx) {
-          const viewportWidth = containerRef.current?.clientWidth || window.innerWidth || 750;
-          const unscaledViewport = page.getViewport({ scale: 1.0 });
+      // Prefetch next page text silently in reflow mode so next turn is instant
+      if (pdfReflowMode && pageNum < pdf.numPages && !pdfTextCacheRef.current.has(pageNum + 1)) {
+        pdf.getPage(pageNum + 1)
+          .then((nextPg: any) => nextPg.getTextContent())
+          .then((tc: any) => {
+            pdfTextCacheRef.current.set(pageNum + 1, extractPdfText(tc));
+          })
+          .catch(() => {});
+      }
 
-          // Base scale fits mobile and desktop viewports cleanly with slim side margin
-          const fitScale = Math.max(240, viewportWidth - 28) / unscaledViewport.width;
-          const baseScale = Math.max(0.55, fitScale);
-          const finalScale = baseScale * zoomLevel;
+      // 2. Renderizar Canvas y capa de texto interactiva solo en modo Página Fija
+      if (!pdfReflowMode) {
+        const canvas = canvasRef.current;
+        if (canvas) {
+          const ctx = canvas.getContext('2d');
+          if (ctx) {
+            const viewportWidth = containerRef.current?.clientWidth || window.innerWidth || 750;
+            const unscaledViewport = page.getViewport({ scale: 1.0 });
 
-          const pixelRatio = Math.max(window.devicePixelRatio || 1, 2.0);
-          const viewport = page.getViewport({ scale: finalScale });
+            const fitScale = Math.max(240, viewportWidth - 28) / unscaledViewport.width;
+            const baseScale = Math.max(0.55, fitScale);
+            const finalScale = baseScale * zoomLevel;
 
-          canvas.width = Math.floor(viewport.width * pixelRatio);
-          canvas.height = Math.floor(viewport.height * pixelRatio);
+            const pixelRatio = Math.min(Math.max(window.devicePixelRatio || 1, 1.5), 2.0);
+            const viewport = page.getViewport({ scale: finalScale });
 
-          canvas.style.width = `${Math.floor(viewport.width)}px`;
-          canvas.style.height = `${Math.floor(viewport.height)}px`;
+            canvas.width = Math.floor(viewport.width * pixelRatio);
+            canvas.height = Math.floor(viewport.height * pixelRatio);
 
-          ctx.imageSmoothingEnabled = true;
-          ctx.imageSmoothingQuality = 'high';
+            canvas.style.width = `${Math.floor(viewport.width)}px`;
+            canvas.style.height = `${Math.floor(viewport.height)}px`;
 
-          const transform = pixelRatio !== 1 ? [pixelRatio, 0, 0, pixelRatio, 0, 0] : null;
+            ctx.imageSmoothingEnabled = true;
+            ctx.imageSmoothingQuality = 'high';
 
-          const renderContext = {
-            canvasContext: ctx,
-            viewport: viewport,
-            transform: transform
-          };
+            const transform = pixelRatio !== 1 ? [pixelRatio, 0, 0, pixelRatio, 0, 0] : null;
+            const renderTask = page.render({
+              canvasContext: ctx,
+              viewport,
+              transform
+            });
+            pdfRenderTaskRef.current = renderTask;
 
-          await page.render(renderContext).promise;
+            await renderTask.promise;
+            if (seq !== pdfRenderSeqRef.current) return;
+            pdfRenderTaskRef.current = null;
 
-          setPdfViewportDim({
-            width: Math.floor(viewport.width),
-            height: Math.floor(viewport.height)
-          });
+            setPdfViewportDim({
+              width: Math.floor(viewport.width),
+              height: Math.floor(viewport.height)
+            });
 
-          // Calcular items de texto exactos para selección directa sobre el PDF
-          const items: any[] = textContent.items || [];
-          const overlayItems: PdfTextItem[] = items.map((item: any) => {
-            const tx = item.transform[4] || 0;
-            const ty = item.transform[5] || 0;
-            const [vx, vy] = viewport.convertToViewportPoint(tx, ty);
-            const fontSizeVal = Math.hypot(item.transform[0] || 0, item.transform[1] || 0);
-            const scaledWidth = (item.width || 0) * (viewport.width / unscaledViewport.width);
-            const scaledHeight = (item.height || fontSizeVal) * (viewport.height / unscaledViewport.height);
-            return {
-              str: item.str,
-              left: Math.round(vx),
-              top: Math.round(vy - scaledHeight),
-              width: Math.max(2, Math.ceil(scaledWidth)),
-              height: Math.max(8, Math.ceil(scaledHeight)),
-              fontSize: Math.max(8, Math.round(fontSizeVal * (viewport.height / unscaledViewport.height)))
-            };
-          }).filter(it => it.str && it.str.trim().length > 0);
+            if (!textContent) {
+              textContent = await page.getTextContent();
+              if (seq !== pdfRenderSeqRef.current) return;
+            }
 
-          setPdfTextItems(overlayItems);
+            const items: any[] = textContent.items || [];
+            const overlayItems: PdfTextItem[] = items
+              .map((item: any) => {
+                const tx = item.transform[4] || 0;
+                const ty = item.transform[5] || 0;
+                const [vx, vy] = viewport.convertToViewportPoint(tx, ty);
+                const fontSizeVal = Math.hypot(item.transform[0] || 0, item.transform[1] || 0);
+                const scaledWidth = (item.width || 0) * (viewport.width / unscaledViewport.width);
+                const scaledHeight = (item.height || fontSizeVal) * (viewport.height / unscaledViewport.height);
+                return {
+                  str: item.str,
+                  left: Math.round(vx),
+                  top: Math.round(vy - scaledHeight),
+                  width: Math.max(2, Math.ceil(scaledWidth)),
+                  height: Math.max(8, Math.ceil(scaledHeight)),
+                  fontSize: Math.max(8, Math.round(fontSizeVal * (viewport.height / unscaledViewport.height)))
+                };
+              })
+              .filter((it) => it.str && it.str.trim().length > 0);
+
+            setPdfTextItems(overlayItems);
+          }
         }
       }
-    } catch (err) {
-      console.warn('PDF page rendering error:', err);
+    } catch (err: any) {
+      if (err?.name === 'RenderingCancelledException') return;
+      if (seq === pdfRenderSeqRef.current) {
+        setPdfPageLoading(false);
+        console.warn('PDF page rendering error:', err);
+      }
     }
   };
 
@@ -625,18 +745,39 @@ export const Reader: React.FC<ReaderProps> = ({
     }
   }, [currentFont]);
 
-  // Keyboard navigation
+  const changePage = useCallback((delta: number) => {
+    const next = currentPage + delta;
+    if (next >= 1 && next <= totalPages) {
+      if (flipTimeoutRef.current !== null) {
+        window.clearTimeout(flipTimeoutRef.current);
+      }
+      setFlipDirection(delta > 0 ? 'forward' : 'backward');
+      flipTimeoutRef.current = window.setTimeout(() => {
+        setFlipDirection(null);
+        flipTimeoutRef.current = null;
+      }, 220);
+      handlePageChange(next);
+    }
+  }, [currentPage, totalPages, handlePageChange]);
+
+  const changePageRef = useRef(changePage);
+  changePageRef.current = changePage;
+
+  // Keyboard navigation (stable listener via ref so it doesn't re-attach every render)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
       if (e.key === 'ArrowRight' || e.key === 'PageDown' || e.key === ' ') {
         e.preventDefault();
-        changePage(1);
+        changePageRef.current(1);
       } else if (e.key === 'ArrowLeft' || e.key === 'PageUp') {
         e.preventDefault();
-        changePage(-1);
+        changePageRef.current(-1);
       } else if (e.key === 'Escape') {
-        if (isFullscreen) toggleFullscreen();
+        if (document.fullscreenElement) {
+          document.exitFullscreen().catch(() => {});
+          setIsFullscreen(false);
+        }
       } else if (e.key === '+' || e.key === '=') {
         if (book.type === 'pdf') {
           e.preventDefault();
@@ -656,16 +797,7 @@ export const Reader: React.FC<ReaderProps> = ({
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  });
-
-  const changePage = (delta: number) => {
-    const next = currentPage + delta;
-    if (next >= 1 && next <= totalPages) {
-      setFlipDirection(delta > 0 ? 'forward' : 'backward');
-      setTimeout(() => setFlipDirection(null), 360);
-      handlePageChange(next);
-    }
-  };
+  }, [book.type]);
 
   // Fullscreen toggle
   const toggleFullscreen = () => {
@@ -1615,7 +1747,12 @@ export const Reader: React.FC<ReaderProps> = ({
             id="page-container"
             onMouseUp={handleTextSelection}
             onTouchStart={(e) => {
-              if (e.touches.length === 1 && !activeDragRef.current && !activeResizeRef.current) {
+              if (
+                e.touches.length === 1 &&
+                !activeDragRef.current &&
+                !activeResizeRef.current &&
+                !isExcludedStickerMenuTarget(e.target)
+              ) {
                 pageSwipeStartRef.current = {
                   x: e.touches[0].clientX,
                   y: e.touches[0].clientY,
@@ -1626,7 +1763,9 @@ export const Reader: React.FC<ReaderProps> = ({
               }
             }}
             onTouchEnd={(e) => {
-              handleTextSelection();
+              if (!isExcludedStickerMenuTarget(e.target)) {
+                handleTextSelection();
+              }
               const start = pageSwipeStartRef.current;
               pageSwipeStartRef.current = null;
               if (!start || activeDragRef.current || activeResizeRef.current) return;
@@ -1638,7 +1777,7 @@ export const Reader: React.FC<ReaderProps> = ({
               const dx = touch.clientX - start.x;
               const dy = touch.clientY - start.y;
               const elapsed = Date.now() - start.time;
-              if (elapsed < 450 && Math.abs(dx) > 65 && Math.abs(dy) < 40 && Math.abs(dx) > Math.abs(dy) * 2) {
+              if (elapsed < 450 && Math.abs(dx) > 65 && Math.abs(dy) < 45 && Math.abs(dx) > Math.abs(dy) * 1.8) {
                 if (dx < 0 && currentPage < totalPages) {
                   changePage(1);
                 } else if (dx > 0 && currentPage > 1) {
@@ -1660,7 +1799,7 @@ export const Reader: React.FC<ReaderProps> = ({
                 : containerWidth === 'wide'
                 ? 'w-full max-w-4xl'
                 : 'w-full max-w-3xl'
-            } rounded-2xl overflow-hidden transition-all my-auto px-5 py-3 sm:p-6 border border-[var(--border-color)] ${
+            } rounded-2xl overflow-x-clip transition-colors my-auto px-5 py-3 sm:p-6 border border-[var(--border-color)] ${
               flipDirection === 'forward' ? 'page-flip-forward' : flipDirection === 'backward' ? 'page-flip-backward' : ''
             }`}
             style={{
@@ -1672,18 +1811,20 @@ export const Reader: React.FC<ReaderProps> = ({
             {/* LADO IZQUIERDO: Pasar página anterior encima del lector */}
             <button
               type="button"
+              onTouchStart={(e) => e.stopPropagation()}
+              onTouchEnd={(e) => e.stopPropagation()}
               onClick={(e) => {
                 e.stopPropagation();
                 if (currentPage > 1) changePage(-1);
               }}
               disabled={currentPage <= 1}
-              className={`absolute left-0 top-0 bottom-0 w-7 sm:w-14 z-30 flex items-center justify-start pl-0.5 sm:pl-2 group/prev transition-all cursor-pointer select-none ${
-                currentPage <= 1 ? 'opacity-0 pointer-events-none' : 'opacity-35 hover:opacity-100'
+              className={`absolute left-0 top-0 bottom-0 w-7 sm:w-14 z-30 flex items-start justify-start pl-0.5 sm:pl-2 group/prev transition-opacity cursor-pointer select-none ${
+                currentPage <= 1 ? 'opacity-0 pointer-events-none' : 'opacity-40 hover:opacity-100'
               }`}
               title="Página Anterior (Lado izquierdo) [←]"
               aria-label="Página anterior"
             >
-              <div className="w-6 sm:w-9 h-14 sm:h-20 rounded-r-2xl bg-black/70 backdrop-blur-md border border-l-0 border-[var(--border-color)] group-hover/prev:border-[var(--accent-pink)] group-hover/prev:bg-[var(--accent-pink)]/25 flex items-center justify-center text-[var(--text-muted)] group-hover/prev:text-[var(--accent-pink)] transition shadow-2xl transform group-hover/prev:-translate-x-0.5">
+              <div className="sticky top-[42vh] w-6 sm:w-9 h-14 sm:h-20 rounded-r-2xl bg-black/70 backdrop-blur-md border border-l-0 border-[var(--border-color)] group-hover/prev:border-[var(--accent-pink)] group-hover/prev:bg-[var(--accent-pink)]/25 flex items-center justify-center text-[var(--text-muted)] group-hover/prev:text-[var(--accent-pink)] transition shadow-2xl transform group-hover/prev:-translate-x-0.5">
                 <ChevronLeft className="w-4 h-4 sm:w-6 sm:h-6 stroke-[2.5]" />
               </div>
             </button>
@@ -1691,18 +1832,20 @@ export const Reader: React.FC<ReaderProps> = ({
             {/* LADO DERECHO: Pasar página adelante encima del lector */}
             <button
               type="button"
+              onTouchStart={(e) => e.stopPropagation()}
+              onTouchEnd={(e) => e.stopPropagation()}
               onClick={(e) => {
                 e.stopPropagation();
                 if (currentPage < totalPages) changePage(1);
               }}
               disabled={currentPage >= totalPages}
-              className={`absolute right-0 top-0 bottom-0 w-7 sm:w-14 z-30 flex items-center justify-end pr-0.5 sm:pr-2 group/next transition-all cursor-pointer select-none ${
-                currentPage >= totalPages ? 'opacity-0 pointer-events-none' : 'opacity-35 hover:opacity-100'
+              className={`absolute right-0 top-0 bottom-0 w-7 sm:w-14 z-30 flex items-start justify-end pr-0.5 sm:pr-2 group/next transition-opacity cursor-pointer select-none ${
+                currentPage >= totalPages ? 'opacity-0 pointer-events-none' : 'opacity-40 hover:opacity-100'
               }`}
               title="Página Siguiente (Lado derecho) [→]"
               aria-label="Página siguiente"
             >
-              <div className="w-6 sm:w-9 h-14 sm:h-20 rounded-l-2xl bg-black/70 backdrop-blur-md border border-r-0 border-[var(--border-color)] group-hover/next:border-[var(--accent-pink)] group-hover/next:bg-[var(--accent-pink)]/25 flex items-center justify-center text-[var(--text-muted)] group-hover/next:text-[var(--accent-pink)] transition shadow-2xl transform group-hover/next:translate-x-0.5">
+              <div className="sticky top-[42vh] w-6 sm:w-9 h-14 sm:h-20 rounded-l-2xl bg-black/70 backdrop-blur-md border border-r-0 border-[var(--border-color)] group-hover/next:border-[var(--accent-pink)] group-hover/next:bg-[var(--accent-pink)]/25 flex items-center justify-center text-[var(--text-muted)] group-hover/next:text-[var(--accent-pink)] transition shadow-2xl transform group-hover/next:translate-x-0.5">
                 <ChevronRight className="w-4 h-4 sm:w-6 sm:h-6 stroke-[2.5]" />
               </div>
             </button>
@@ -1713,7 +1856,14 @@ export const Reader: React.FC<ReaderProps> = ({
                 {/* VISTA 1: Modo Acomodar Letras (Reflow Adaptable sin desbordamiento horizontal) */}
                 {pdfReflowMode ? (
                   <div className="w-full">
-                    {pdfPageText ? (
+                    {pdfPageLoading ? (
+                      <div className="text-center py-16 px-4 space-y-2 opacity-75">
+                        <div className="text-2xl animate-pulse">📖</div>
+                        <p className="text-xs text-[var(--text-muted)]">
+                          Cargando página {currentPage}...
+                        </p>
+                      </div>
+                    ) : pdfPageText ? (
                       <div 
                         className="prose max-w-none transition-all whitespace-pre-line select-text break-words px-1 sm:px-4 py-2"
                         style={{ 
@@ -1837,16 +1987,13 @@ export const Reader: React.FC<ReaderProps> = ({
               </div>
             )}
 
-            {/* 2. EPUB Render Div con Subrayado Directo */}
+            {/* 2. EPUB Render Div con Subrayado Directo (HTML memoizado) */}
             {book.type === 'epub' && (
               <div
-                className="prose max-w-none transition-all select-text leading-relaxed epub-rendered-content"
+                className="prose max-w-none select-text leading-relaxed epub-rendered-content"
                 style={{ fontSize: `${fontSize}px`, lineHeight: lineHeight }}
                 dangerouslySetInnerHTML={{
-                  __html: highlightHtmlContent(
-                    epubPages[currentPage - 1] || (book.content && book.content[currentPage - 1]) || '<p class="text-center py-12 opacity-60">Cargando página de lectura...</p>',
-                    currentPageHighlights
-                  )
+                  __html: renderedEpubHtml
                 }}
               />
             )}
@@ -2045,6 +2192,7 @@ export const Reader: React.FC<ReaderProps> = ({
       <div className="bg-[var(--card-bg)]/95 backdrop-blur-md border-t border-[var(--border-color)] px-2.5 sm:px-4 py-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] flex items-center justify-between gap-2 sm:gap-3 z-30 shrink-0">
         {/* Left: Previous page button (Atrás) */}
         <button
+          type="button"
           onClick={() => changePage(-1)}
           disabled={currentPage <= 1}
           className="px-2.5 sm:px-3.5 py-2 sm:py-1.5 bg-black/40 border border-[var(--border-color)] rounded-xl text-xs font-semibold text-[var(--text-main)] hover:border-[var(--accent-pink)] disabled:opacity-30 disabled:hover:border-transparent transition flex items-center gap-1 shrink-0"
@@ -2105,6 +2253,7 @@ export const Reader: React.FC<ReaderProps> = ({
 
         {/* Right: Next page button (Adelante) */}
         <button
+          type="button"
           onClick={() => changePage(1)}
           disabled={currentPage >= totalPages}
           className="px-2.5 sm:px-3.5 py-1.5 bg-[var(--accent-pink)] text-black rounded-xl text-xs font-bold hover:opacity-90 disabled:opacity-30 disabled:bg-black/40 disabled:text-gray-500 transition flex items-center gap-1 shadow-md shrink-0"

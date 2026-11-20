@@ -262,40 +262,38 @@ body {
   background-color: transparent !important;
 }
 
-/* Real Book Page Flip 3D Animation */
+/* Real Book Page Flip 3D Animation (GPU-composited only for zero stutter) */
 .page-flip-forward {
-  animation: pageFlipForward 0.35s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+  animation: pageFlipForward 0.22s cubic-bezier(0.22, 1, 0.36, 1) forwards;
   transform-origin: left center;
+  will-change: transform, opacity;
 }
 
 .page-flip-backward {
-  animation: pageFlipBackward 0.35s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+  animation: pageFlipBackward 0.22s cubic-bezier(0.22, 1, 0.36, 1) forwards;
   transform-origin: right center;
+  will-change: transform, opacity;
 }
 
 @keyframes pageFlipForward {
   0% {
-    transform: perspective(1000px) rotateY(-14deg) scale(0.98);
-    opacity: 0.75;
-    filter: drop-shadow(-8px 10px 20px rgba(0,0,0,0.6));
+    transform: perspective(1000px) rotateY(-8deg) translateX(10px);
+    opacity: 0.85;
   }
   100% {
-    transform: perspective(1000px) rotateY(0deg) scale(1);
+    transform: perspective(1000px) rotateY(0deg) translateX(0);
     opacity: 1;
-    filter: drop-shadow(0 4px 12px rgba(0,0,0,0.4));
   }
 }
 
 @keyframes pageFlipBackward {
   0% {
-    transform: perspective(1000px) rotateY(14deg) scale(0.98);
-    opacity: 0.75;
-    filter: drop-shadow(8px 10px 20px rgba(0,0,0,0.6));
+    transform: perspective(1000px) rotateY(8deg) translateX(-10px);
+    opacity: 0.85;
   }
   100% {
-    transform: perspective(1000px) rotateY(0deg) scale(1);
+    transform: perspective(1000px) rotateY(0deg) translateX(0);
     opacity: 1;
-    filter: drop-shadow(0 4px 12px rgba(0,0,0,0.4));
   }
 }
 
