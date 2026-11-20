@@ -169,7 +169,14 @@ export default function App() {
   };
 
   // Navigation & Active Reading
-  const [currentView, setCurrentView] = useState<'library' | 'quotes' | 'bookmarks' | 'stats' | 'reader' | 'settings' | 'vip'>('library');
+  const [currentView, setCurrentView] = useState<'library' | 'quotes' | 'bookmarks' | 'stats' | 'reader' | 'settings' | 'vip'>(() => {
+    try {
+      const params = new URLSearchParams(window.location.search);
+      return params.get('view') === 'vip' ? 'vip' : 'library';
+    } catch {
+      return 'library';
+    }
+  });
   const [activeBook, setActiveBook] = useState<Book | null>(null);
   const [previewBookId, setPreviewBookId] = useState<string | null>(null);
 
@@ -545,6 +552,29 @@ export default function App() {
     const files = Array.from(fileList);
     await processBatchBooks(files);
   };
+
+  const processBatchBooksRef = useRef(processBatchBooks);
+  processBatchBooksRef.current = processBatchBooks;
+
+  // PWA File Handler launchQueue integration (open .epub/.pdf/.txt/.md directly with NekoRead)
+  useEffect(() => {
+    const win = window as any;
+    if (!win.launchQueue || typeof win.launchQueue.setConsumer !== 'function') return;
+    win.launchQueue.setConsumer(async (launchParams: { files?: Array<{ getFile: () => Promise<File> }> }) => {
+      if (!launchParams?.files?.length) return;
+      const files: File[] = [];
+      for (const handle of launchParams.files) {
+        try {
+          if (typeof handle.getFile === 'function') {
+            files.push(await handle.getFile());
+          }
+        } catch {}
+      }
+      if (files.length > 0) {
+        await processBatchBooksRef.current(files);
+      }
+    });
+  }, []);
 
   // Internal Storage Directory Sync (Supports 2000 books automatic scanning)
   const handleSyncInternalStorage = async () => {

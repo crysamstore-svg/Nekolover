@@ -22,9 +22,11 @@ export const Header: React.FC<HeaderProps> = ({
         onClick={() => onSwitchView('library')}
         className="flex items-center space-x-2.5 sm:space-x-3 cursor-pointer group shrink-0"
       >
-        <div className="cat-ears-badge w-10 h-10 rounded-2xl bg-gradient-to-tr from-[var(--accent-pink)] to-[var(--accent-purple)] flex items-center justify-center text-xl shadow-lg transform group-hover:scale-105 transition-transform">
-          🐾
-        </div>
+        <img
+          src="/pwa-192x192.png"
+          alt="NekoLover Read"
+          className="w-10 h-10 rounded-xl object-cover border border-[var(--accent-pink)]/50 shadow-lg transform group-hover:scale-105 transition-transform"
+        />
         <div>
           <h1 className="dark-reborn-title text-base sm:text-xl font-bold text-[var(--accent-pink)] leading-tight">
             NekoLover Read

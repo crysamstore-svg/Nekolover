@@ -12,7 +12,6 @@ export default defineConfig(() => {
         registerType: 'autoUpdate',
         includeAssets: [
           'apple-touch-icon.png',
-          'icon.svg',
           'pwa-192x192.png',
           'pwa-512x512.png',
           'pwa-maskable-512x512.png',
@@ -20,17 +19,62 @@ export default defineConfig(() => {
         manifest: {
           id: '/',
           name: 'NekoLover Read',
-          short_name: 'NekoRead',
+          short_name: 'NekoLover',
           description:
             'Lector Kawaii Dark & EPUB/PDF con estanterías 3D, stickers movibles, citas literarias y ficha automática de libros.',
           theme_color: '#121019',
           background_color: '#121019',
           display: 'standalone',
+          display_override: ['window-controls-overlay', 'standalone'],
           orientation: 'any',
           start_url: '/',
           scope: '/',
           lang: 'es',
+          dir: 'ltr',
+          prefer_related_applications: false,
           categories: ['books', 'education', 'lifestyle'],
+          launch_handler: {
+            client_mode: 'navigate-existing',
+          },
+          shortcuts: [
+            {
+              name: 'Mi Estantería',
+              short_name: 'Biblioteca',
+              description: 'Abrir tu biblioteca personal de libros',
+              url: '/',
+              icons: [
+                {
+                  src: '/pwa-192x192.png',
+                  sizes: '192x192',
+                  type: 'image/png',
+                },
+              ],
+            },
+            {
+              name: 'Club VIP NekoLover',
+              short_name: 'Club VIP',
+              description: 'Activar código VIP o gestionar membresía',
+              url: '/?view=vip',
+              icons: [
+                {
+                  src: '/pwa-192x192.png',
+                  sizes: '192x192',
+                  type: 'image/png',
+                },
+              ],
+            },
+          ],
+          file_handlers: [
+            {
+              action: '/',
+              accept: {
+                'application/epub+zip': ['.epub'],
+                'application/pdf': ['.pdf'],
+                'text/plain': ['.txt'],
+                'text/markdown': ['.md'],
+              },
+            },
+          ],
           icons: [
             {
               src: '/pwa-192x192.png',
@@ -51,10 +95,19 @@ export default defineConfig(() => {
               purpose: 'maskable',
             },
           ],
+          screenshots: [
+            {
+              src: '/screenshot-library.png',
+              sizes: '540x960',
+              type: 'image/png',
+              form_factor: 'narrow',
+              label: 'Biblioteca Kawaii Dark NekoLover Read',
+            },
+          ],
         },
         workbox: {
           globPatterns: ['**/*.{js,css,html,ico,png,svg,woff,woff2}'],
-          globIgnores: ['**/NekoLoverRead-Android-Package.zip', '**/assets/aistudio/**'],
+          globIgnores: ['**/NekoLoverRead-Android-Package.zip', '**/assets/aistudio/**', '**/screenshot-library.png'],
           runtimeCaching: [
             {
               urlPattern: /^https:\/\/fonts\.googleapis\.com\/.*/i,
