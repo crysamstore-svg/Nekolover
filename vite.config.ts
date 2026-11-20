@@ -12,9 +12,10 @@ export default defineConfig(() => {
         registerType: 'autoUpdate',
         includeAssets: [
           'apple-touch-icon.png',
-          'pwa-192x192.png',
-          'pwa-512x512.png',
-          'pwa-maskable-512x512.png',
+          'nekolover-touch-180.png',
+          'nekolover-192x192.png',
+          'nekolover-512x512.png',
+          'nekolover-maskable-512x512.png',
         ],
         manifest: {
           id: '/',
@@ -44,7 +45,7 @@ export default defineConfig(() => {
               url: '/',
               icons: [
                 {
-                  src: '/pwa-192x192.png',
+                  src: '/nekolover-192x192.png',
                   sizes: '192x192',
                   type: 'image/png',
                 },
@@ -57,7 +58,7 @@ export default defineConfig(() => {
               url: '/?view=vip',
               icons: [
                 {
-                  src: '/pwa-192x192.png',
+                  src: '/nekolover-192x192.png',
                   sizes: '192x192',
                   type: 'image/png',
                 },
@@ -77,19 +78,19 @@ export default defineConfig(() => {
           ],
           icons: [
             {
-              src: '/pwa-192x192.png',
+              src: '/nekolover-192x192.png',
               sizes: '192x192',
               type: 'image/png',
               purpose: 'any',
             },
             {
-              src: '/pwa-512x512.png',
+              src: '/nekolover-512x512.png',
               sizes: '512x512',
               type: 'image/png',
               purpose: 'any',
             },
             {
-              src: '/pwa-maskable-512x512.png',
+              src: '/nekolover-maskable-512x512.png',
               sizes: '512x512',
               type: 'image/png',
               purpose: 'maskable',
@@ -107,7 +108,7 @@ export default defineConfig(() => {
         },
         workbox: {
           globPatterns: ['**/*.{js,css,html,ico,png,svg,woff,woff2}'],
-          globIgnores: ['**/NekoLoverRead-Android-Package.zip', '**/assets/aistudio/**', '**/screenshot-library.png'],
+          globIgnores: ['**/NekoLoverRead-Android-Package.zip', '**/assets/aistudio/**', '**/screenshot-library.png', '**/pwa-*.png', '**/icon.svg'],
           runtimeCaching: [
             {
               urlPattern: /^https:\/\/fonts\.googleapis\.com\/.*/i,

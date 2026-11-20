@@ -23,7 +23,7 @@ export const Header: React.FC<HeaderProps> = ({
         className="flex items-center space-x-2.5 sm:space-x-3 cursor-pointer group shrink-0"
       >
         <img
-          src="/pwa-192x192.png"
+          src="/nekolover-192x192.png"
           alt="NekoLover Read"
           className="w-10 h-10 rounded-xl object-cover border border-[var(--accent-pink)]/50 shadow-lg transform group-hover:scale-105 transition-transform"
         />
