@@ -985,6 +985,7 @@ export default function App() {
             shelfBgConfig={shelfBgConfig}
             onUpdateShelfBgConfig={handleUpdateShelfBgConfig}
             shelfDecorConfig={shelfDecorConfig}
+            onUpdateShelfDecorConfig={handleUpdateShelfDecorConfig}
             isVip={isVip}
             onOpenVipModal={() => openVipModal('shelf_bg')}
             onOpenVipPage={() => setCurrentView('vip')}

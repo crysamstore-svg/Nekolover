@@ -26,14 +26,22 @@ import {
   FileText,
   Cookie,
   Clock,
-  Shuffle
+  Shuffle,
+  X
 } from 'lucide-react';
-import { ReaderModeId, ThemeId, ShelfStyle, ShelfViewMode, ShelfBackgroundConfig, ShelfDecorConfig, ShelfDecorTheme } from '../types';
+import { ReaderModeId, ThemeId, ShelfStyle, ShelfViewMode, ShelfBackgroundConfig, ShelfDecorConfig, ShelfDecorPropId, ShelfDecorTheme } from '../types';
 import { READER_MODES, FONT_OPTIONS, THEME_OPTIONS } from '../data/defaultBooks';
 import { ShelfBackgroundModal, DEFAULT_SHELF_BG } from './ShelfBackgroundModal';
 import { ShelfDecorModal } from './ShelfDecorModal';
 import { ShelfDecorArt } from './ShelfDecoration';
-import { SHELF_DECOR_PRESETS, DEFAULT_SHELF_DECOR, getPresetConfigForUser, randomizeShelfDecorConfig } from '../data/shelfDecorCatalog';
+import {
+  SHELF_DECOR_PRESETS,
+  SHELF_DECOR_CATALOG,
+  SHELF_BOOKEND_CATALOG,
+  DEFAULT_SHELF_DECOR,
+  getPresetConfigForUser,
+  randomizeShelfDecorConfig
+} from '../data/shelfDecorCatalog';
 import { LegalTab } from './LegalModal';
 import { vipManager } from '../utils/vipManager';
 
@@ -148,6 +156,24 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
   const handleRandomizeDecor = () => {
     onUpdateShelfDecorConfig?.(randomizeShelfDecorConfig(Boolean(isVip)));
+  };
+
+  const handleRemoveSingleDecorProp = (propId: ShelfDecorPropId) => {
+    const nextProps = effectiveDecorConfig.enabledProps.filter((id) => id !== propId);
+    const hasBookend = Boolean(effectiveDecorConfig.bookend && effectiveDecorConfig.bookend !== 'none');
+    onUpdateShelfDecorConfig?.({
+      ...effectiveDecorConfig,
+      enabledProps: nextProps,
+      theme: nextProps.length === 0 && !hasBookend ? 'none' : effectiveDecorConfig.theme,
+    });
+  };
+
+  const handleRemoveDecorBookend = () => {
+    onUpdateShelfDecorConfig?.({
+      ...effectiveDecorConfig,
+      bookend: 'none',
+      theme: effectiveDecorConfig.enabledProps.length === 0 ? 'none' : effectiveDecorConfig.theme,
+    });
   };
 
   const currentModeConfig = READER_MODES.find(m => m.id === readerMode) || READER_MODES[0];
@@ -844,6 +870,51 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 </button>
               </div>
 
+              {/* Active Decorations Quick Remove Chips */}
+              {effectiveDecorConfig.theme !== 'none' &&
+                (effectiveDecorConfig.enabledProps.length > 0 ||
+                  (effectiveDecorConfig.bookend && effectiveDecorConfig.bookend !== 'none')) && (
+                  <div className="p-3 rounded-xl bg-black/35 border border-white/10 space-y-2">
+                    <span className="text-[11px] font-semibold text-[var(--text-muted)] block">
+                      Piezas activas en tus repisas (toca ✕ para quitar alguna):
+                    </span>
+                    <div className="flex flex-wrap gap-1.5">
+                      {effectiveDecorConfig.enabledProps.map((propId) => {
+                        const meta = SHELF_DECOR_CATALOG.find((item) => item.id === propId);
+                        if (!meta) return null;
+                        return (
+                          <button
+                            key={propId}
+                            type="button"
+                            onClick={() => handleRemoveSingleDecorProp(propId)}
+                            className="inline-flex items-center gap-1.5 pl-2.5 pr-2 py-1 rounded-full bg-white/5 hover:bg-rose-950/60 border border-white/15 hover:border-rose-400/60 text-[11px] text-white transition group cursor-pointer"
+                            title={`Quitar ${meta.name}`}
+                          >
+                            <span>{meta.name}</span>
+                            <X className="w-3 h-3 text-white/60 group-hover:text-rose-300" />
+                          </button>
+                        );
+                      })}
+                      {effectiveDecorConfig.bookend && effectiveDecorConfig.bookend !== 'none' && (() => {
+                        const bkMeta = SHELF_BOOKEND_CATALOG.find(
+                          (b) => b.id === effectiveDecorConfig.bookend
+                        );
+                        return (
+                          <button
+                            type="button"
+                            onClick={handleRemoveDecorBookend}
+                            className="inline-flex items-center gap-1.5 pl-2.5 pr-2 py-1 rounded-full bg-[var(--accent-pink)]/10 hover:bg-rose-950/60 border border-[var(--accent-pink)]/40 hover:border-rose-400/60 text-[11px] text-[var(--accent-pink)] hover:text-white transition group cursor-pointer"
+                            title={`Quitar sujetalibros ${bkMeta?.name || ''}`}
+                          >
+                            <span>📚 {bkMeta?.name || 'Sujetalibros'}</span>
+                            <X className="w-3 h-3 opacity-75 group-hover:text-rose-300" />
+                          </button>
+                        );
+                      })()}
+                    </div>
+                  </div>
+                )}
+
               <div className="flex flex-col sm:flex-row sm:flex-wrap items-stretch sm:items-center gap-2.5">
                 <button
                   type="button"
@@ -1196,6 +1267,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         onSaveConfig={(cfg) => {
           onUpdateShelfBgConfig?.(cfg);
         }}
+        isVip={isVip}
+        onOpenVipModal={() => onOpenVipModal?.('shelf_bg')}
       />
 
       {/* Shelf Decorations Modal */}

@@ -1,0 +1,14 @@
+[
+  {
+    "relation": [
+      "delegate_permission/common.handle_all_urls"
+    ],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "online.nekolover.www.twa",
+      "sha256_cert_fingerprints": [
+        "51:78:1B:81:F3:51:DF:21:63:CF:06:38:A9:21:B8:F1:DF:08:A1:83:F5:09:28:90:89:3B:8E:E0:9E:3C:86:CB"
+      ]
+    }
+  }
+]

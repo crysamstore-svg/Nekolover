@@ -24,7 +24,7 @@ export default defineConfig(() => {
           description:
             'Lector Kawaii Dark & EPUB/PDF con estanterías 3D, stickers movibles, citas literarias y ficha automática de libros.',
           theme_color: '#121019',
-          background_color: '#121019',
+          background_color: '#3f3a6d',
           display: 'standalone',
           display_override: ['window-controls-overlay', 'standalone'],
           orientation: 'any',
@@ -109,6 +109,7 @@ export default defineConfig(() => {
         workbox: {
           globPatterns: ['**/*.{js,css,html,ico,png,svg,woff,woff2}'],
           globIgnores: ['**/NekoLoverRead-Android-Package.zip', '**/assets/aistudio/**', '**/screenshot-library.png', '**/pwa-*.png', '**/icon.svg'],
+          navigateFallbackDenylist: [/^\/\.well-known\//],
           runtimeCaching: [
             {
               urlPattern: /^https:\/\/fonts\.googleapis\.com\/.*/i,

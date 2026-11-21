@@ -13,7 +13,6 @@ import {
   Library,
   Palette,
   Settings,
-  Image as ImageIcon,
   Quote as QuoteIcon,
   Bookmark as BookmarkIcon,
   Moon,
@@ -32,10 +31,10 @@ import {
   ChevronsRight,
   ArrowUpDown,
   Shuffle,
-  GripVertical
+  GripVertical,
+  X
 } from 'lucide-react';
 import { Book, BookCategory, ShelfStyle, ShelfViewMode, ShelfBackgroundConfig, ShelfDecorConfig, ShelfDecorPropId, ShelfBookendId } from '../types';
-import { ShelfBackgroundModal, DEFAULT_SHELF_BG } from './ShelfBackgroundModal';
 import {
   ShelfDecoration,
   ShelfBookend,
@@ -45,6 +44,8 @@ import {
 import {
   DEFAULT_SHELF_DECOR,
   DARK_BOOKEND_ROTATION,
+  SHELF_DECOR_CATALOG,
+  SHELF_BOOKEND_CATALOG,
   isShelfPropVip,
   isShelfBookendVip,
 } from '../data/shelfDecorCatalog';
@@ -82,6 +83,7 @@ interface BookshelfProps {
   shelfBgConfig?: ShelfBackgroundConfig;
   onUpdateShelfBgConfig?: (config: ShelfBackgroundConfig) => void;
   shelfDecorConfig?: ShelfDecorConfig;
+  onUpdateShelfDecorConfig?: (config: ShelfDecorConfig) => void;
   isVip?: boolean;
   onOpenVipModal?: () => void;
   onOpenVipPage?: () => void;
@@ -109,12 +111,11 @@ export const Bookshelf: React.FC<BookshelfProps> = ({
   isAudioPlaying = false,
   headerConfig,
   shelfStyle: propShelfStyle,
-  onShelfStyleChange,
   viewMode: propViewMode,
   onViewModeChange,
   shelfBgConfig,
-  onUpdateShelfBgConfig,
   shelfDecorConfig: propShelfDecorConfig,
+  onUpdateShelfDecorConfig,
   isVip,
   onOpenVipModal,
   onOpenVipPage
@@ -144,7 +145,6 @@ export const Bookshelf: React.FC<BookshelfProps> = ({
     localStorage.setItem('nl_shelf_sort_by', val);
   };
 
-  const [isBgModalOpen, setIsBgModalOpen] = useState<boolean>(false);
   const rawDecorConfig = propShelfDecorConfig ?? DEFAULT_SHELF_DECOR;
   const effectiveDecorConfig = useMemo<ShelfDecorConfig>(() => {
     if (isVip) return rawDecorConfig;
@@ -167,6 +167,7 @@ export const Bookshelf: React.FC<BookshelfProps> = ({
 
   // Modo de eliminación por mantener presionado (Long-Press to Mark for Deletion)
   const [markedForDeleteIds, setMarkedForDeleteIds] = useState<string[]>([]);
+  const [selectedDecorSlotId, setSelectedDecorSlotId] = useState<string | null>(null);
   const [brokenCoverIds, setBrokenCoverIds] = useState<Record<string, boolean>>({});
   const [customSlotOrder, setCustomSlotOrder] = useState<string[]>(() => {
     try {
@@ -212,7 +213,7 @@ export const Bookshelf: React.FC<BookshelfProps> = ({
   };
 
   // Shelf Appearance & View Mode Customization (Conventional Shelf)
-  const [internalShelfStyle, setInternalShelfStyle] = useState<ShelfStyle>(() => {
+  const [internalShelfStyle] = useState<ShelfStyle>(() => {
     return (localStorage.getItem('nl_shelf_style') as ShelfStyle) || 'wood-gothic';
   });
 
@@ -250,26 +251,25 @@ export const Bookshelf: React.FC<BookshelfProps> = ({
     }
   }, [shelfStyle]);
 
-  const handleSetShelfStyle = (style: ShelfStyle) => {
-    setInternalShelfStyle(style);
-    onShelfStyleChange?.(style);
-    localStorage.setItem('nl_shelf_style', style);
-  };
-
   const handleSetViewMode = (mode: ShelfViewMode) => {
     setInternalViewMode(mode);
     onViewModeChange?.(mode);
     localStorage.setItem('nl_shelf_view_mode', mode);
   };
 
-  // Mantener presionado (long-press) marca el libro para eliminar (sin vibraciones)
-  const handlePressStart = (bookId: string) => {
+  // Mantener presionado (long-press) marca el libro o la decoración para opciones/quitar
+  const handlePressStart = (targetId: string, kind: 'book' | 'decor' = 'book') => {
     if (longPressTimerRef.current) {
       clearTimeout(longPressTimerRef.current);
     }
     longPressTimerRef.current = setTimeout(() => {
       suppressClickRef.current = true;
-      toggleMarkForDelete(bookId);
+      if (kind === 'book') {
+        toggleMarkForDelete(targetId);
+        setSelectedDecorSlotId(null);
+      } else {
+        setSelectedDecorSlotId((prev) => (prev === targetId ? null : targetId));
+      }
       setTimeout(() => {
         suppressClickRef.current = false;
       }, 450);
@@ -283,17 +283,38 @@ export const Bookshelf: React.FC<BookshelfProps> = ({
     }
   };
 
-  // Desmarcar libros al presionar la tecla Escape
+  const handleRemoveDecorProp = (propId: ShelfDecorPropId) => {
+    const nextProps = rawDecorConfig.enabledProps.filter((id) => id !== propId);
+    const hasBookend = Boolean(rawDecorConfig.bookend && rawDecorConfig.bookend !== 'none');
+    onUpdateShelfDecorConfig?.({
+      ...rawDecorConfig,
+      enabledProps: nextProps,
+      theme: nextProps.length === 0 && !hasBookend ? 'none' : rawDecorConfig.theme,
+    });
+    setSelectedDecorSlotId(null);
+  };
+
+  const handleRemoveBookend = () => {
+    onUpdateShelfDecorConfig?.({
+      ...rawDecorConfig,
+      bookend: 'none',
+      theme: rawDecorConfig.enabledProps.length === 0 ? 'none' : rawDecorConfig.theme,
+    });
+    setSelectedDecorSlotId(null);
+  };
+
+  // Desmarcar libros o decoraciones al presionar la tecla Escape
   useEffect(() => {
-    if (markedForDeleteIds.length === 0) return;
+    if (markedForDeleteIds.length === 0 && !selectedDecorSlotId) return;
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         setMarkedForDeleteIds([]);
+        setSelectedDecorSlotId(null);
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [markedForDeleteIds.length]);
+  }, [markedForDeleteIds.length, selectedDecorSlotId]);
 
   const syncBookOrderInCustomSlots = (reorderedBooks: Book[]) => {
     if (customSlotOrder.length === 0) return;
@@ -925,7 +946,12 @@ export const Bookshelf: React.FC<BookshelfProps> = ({
     setDragOverSlotId(null);
   };
 
-  const handleSlotTouchStart = (slotId: string, e: React.TouchEvent, bookId?: string) => {
+  const handleSlotTouchStart = (
+    slotId: string,
+    e: React.TouchEvent,
+    bookId?: string,
+    pressKind: 'book' | 'decor' = 'book'
+  ) => {
     if (e.touches.length > 1) {
       resetTouchDragState();
       return;
@@ -939,8 +965,10 @@ export const Bookshelf: React.FC<BookshelfProps> = ({
     activeTouchBaseTransformRef.current = targetEl.style.transform || '';
     touchStartPos.current = { x: touch.clientX, y: touch.clientY };
     isTouchDragging.current = false;
-    if (bookId) {
-      handlePressStart(bookId);
+    if (pressKind === 'book' && bookId) {
+      handlePressStart(bookId, 'book');
+    } else if (pressKind === 'decor') {
+      handlePressStart(slotId, 'decor');
     }
   };
 
@@ -1034,8 +1062,52 @@ export const Bookshelf: React.FC<BookshelfProps> = ({
     'minimal-oled': 'shelf-minimal-oled'
   };
 
+  const selectedDecorSlot = useMemo(
+    () => (selectedDecorSlotId ? orderedSlots.find((s) => s.slotId === selectedDecorSlotId) : undefined),
+    [orderedSlots, selectedDecorSlotId]
+  );
+
   return (
     <div className="p-2 sm:p-6 max-w-7xl mx-auto w-full flex-1 flex flex-col select-none">
+      {/* Barra flotante para quitar una decoración o sujetalibros seleccionado (long-press) */}
+      {selectedDecorSlot && selectedDecorSlot.kind !== 'book' && markedForDeleteIds.length === 0 && (() => {
+        const decorLabel =
+          selectedDecorSlot.kind === 'decor'
+            ? SHELF_DECOR_CATALOG.find((c) => c.id === selectedDecorSlot.propId)?.name || 'Decoración'
+            : `Sujetalibros ${
+                SHELF_BOOKEND_CATALOG.find((b) => b.id === selectedDecorSlot.bookendId)?.name || ''
+              }`.trim();
+        return (
+          <div className="fixed bottom-4 sm:bottom-6 left-1/2 -translate-x-1/2 z-50 w-[94vw] max-w-md flex flex-wrap items-center justify-center gap-2.5 bg-[#1a0a10]/95 border-2 border-[var(--accent-pink)]/70 px-4 py-2.5 rounded-2xl shadow-[0_10px_35px_rgba(0,0,0,0.85)] animate-popIn">
+            <span className="text-pink-200 text-xs sm:text-sm font-cute font-medium truncate max-w-[200px]">
+              ✨ {decorLabel}
+            </span>
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                if (selectedDecorSlot.kind === 'decor') {
+                  handleRemoveDecorProp(selectedDecorSlot.propId);
+                } else {
+                  handleRemoveBookend();
+                }
+              }}
+              className="min-h-[36px] px-3 py-1.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-extrabold text-xs shadow-md transition active:scale-95 flex items-center gap-1 cursor-pointer"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+              <span>Quitar de la estantería</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setSelectedDecorSlotId(null)}
+              className="min-h-[36px] px-2.5 py-1.5 rounded-xl bg-black/60 hover:bg-white/10 text-gray-300 hover:text-white text-xs border border-white/20 transition active:scale-95 cursor-pointer"
+            >
+              Cancelar
+            </button>
+          </div>
+        );
+      })()}
+
       {/* Barra de acción flotante cuando hay libros seleccionados al mantener presionado */}
       {markedForDeleteIds.length > 0 && (
         <div className="fixed bottom-4 sm:bottom-6 left-1/2 -translate-x-1/2 z-50 w-[94vw] max-w-xl flex flex-wrap items-center justify-center gap-2 sm:gap-2.5 bg-[#1a0a10]/95 border-2 border-[var(--accent-pink)]/70 px-3.5 py-2.5 sm:px-5 sm:py-3 rounded-2xl shadow-[0_10px_35px_rgba(0,0,0,0.8)] backdrop-blur-md animate-popIn">
@@ -1379,82 +1451,55 @@ export const Bookshelf: React.FC<BookshelfProps> = ({
           </div>
         </div>
 
-        {/* Third Row: View Modes, Shelf Style, Sorting and Shelf Background */}
-        <div className="flex flex-col sm:flex-row sm:flex-wrap sm:items-center sm:justify-between gap-2.5 pt-2.5 border-t border-white/5 text-xs">
-          <div className="flex items-center justify-between sm:justify-start gap-2">
-            {/* 3 View Modes */}
-            <div className="flex items-center bg-black/40 border border-[var(--border-color)] rounded-xl p-0.5">
+        {/* Third Row: View Modes & Sorting */}
+        <div className="flex items-center justify-between gap-2.5 pt-2.5 border-t border-white/5 text-xs">
+          <div className="flex items-center gap-2 shrink-0">
+            {/* 3 View Modes (Solo iconos) */}
+            <div className="flex items-center gap-0.5 bg-black/40 border border-[var(--border-color)] rounded-xl p-0.5">
               <button
                 onClick={() => handleSetViewMode('covers')}
-                className={`min-h-[34px] px-2.5 py-1 rounded-lg text-xs font-semibold flex items-center gap-1 transition ${
+                className={`min-h-[36px] min-w-[38px] px-2.5 py-1.5 rounded-lg flex items-center justify-center transition ${
                   viewMode === 'covers'
-                    ? 'bg-[var(--accent-pink)] text-black shadow-sm font-bold'
+                    ? 'bg-[var(--accent-pink)] text-black shadow-sm'
                     : 'text-[var(--text-muted)] hover:text-white'
                 }`}
-                title="Vista de portadas frontales"
+                title="Portadas"
+                aria-label="Vista de portadas frontales"
               >
-                <LayoutGrid className="w-3.5 h-3.5" />
-                <span>Portadas</span>
+                <LayoutGrid className="w-4 h-4" />
               </button>
 
               <button
                 onClick={() => handleSetViewMode('spines')}
-                className={`min-h-[34px] px-2.5 py-1 rounded-lg text-xs font-semibold flex items-center gap-1 transition ${
+                className={`min-h-[36px] min-w-[38px] px-2.5 py-1.5 rounded-lg flex items-center justify-center transition ${
                   viewMode === 'spines'
-                    ? 'bg-[var(--accent-pink)] text-black shadow-sm font-bold'
+                    ? 'bg-[var(--accent-pink)] text-black shadow-sm'
                     : 'text-[var(--text-muted)] hover:text-white'
                 }`}
-                title="Vista de lomos verticales"
+                title="Lomos"
+                aria-label="Vista de lomos verticales"
               >
-                <Library className="w-3.5 h-3.5" />
-                <span>Lomos</span>
+                <Library className="w-4 h-4" />
               </button>
 
               <button
                 onClick={() => handleSetViewMode('stacks')}
-                className={`min-h-[34px] px-2.5 py-1 rounded-lg text-xs font-semibold flex items-center gap-1 transition ${
+                className={`min-h-[36px] min-w-[38px] px-2.5 py-1.5 rounded-lg flex items-center justify-center transition ${
                   viewMode === 'stacks'
-                    ? 'bg-[var(--accent-pink)] text-black shadow-sm font-bold'
+                    ? 'bg-[var(--accent-pink)] text-black shadow-sm'
                     : 'text-[var(--text-muted)] hover:text-white'
                 }`}
-                title="Vista de libros apilados"
+                title="Acostados"
+                aria-label="Vista de libros acostados"
               >
-                <Layers className="w-3.5 h-3.5" />
-                <span>Acostados</span>
+                <Layers className="w-4 h-4" />
               </button>
             </div>
-
-            {/* Mobile Custom Background Shortcut */}
-            <button
-              onClick={() => setIsBgModalOpen(true)}
-              className="sm:hidden min-h-[36px] px-2.5 py-1.5 bg-black/40 border border-[var(--border-color)] hover:border-[var(--accent-pink)] rounded-xl text-xs text-[var(--accent-pink)] font-semibold flex items-center gap-1 transition shrink-0"
-              title="Personalizar fondo con tus fotos o texturas"
-            >
-              <ImageIcon className="w-3.5 h-3.5" />
-              <span>Fondo</span>
-            </button>
           </div>
 
-          <div className="grid grid-cols-2 sm:flex sm:items-center gap-2">
-            {/* Custom Shelf Style Selector */}
-            <div className="flex items-center gap-1.5 bg-black/50 border border-[var(--border-color)] hover:border-[var(--accent-pink)]/60 rounded-xl px-2.5 h-10 sm:h-9 text-xs text-[var(--text-main)] shadow-sm transition-colors min-w-0">
-              <Library className="w-3.5 h-3.5 text-[var(--accent-pink)] shrink-0" />
-              <select
-                value={shelfStyle}
-                onChange={(e) => handleSetShelfStyle(e.target.value as ShelfStyle)}
-                aria-label="Personalizar forma y acabado de biblioteca"
-                className="w-full min-w-0 bg-transparent text-[11px] sm:text-xs font-medium leading-normal py-1 pr-1 focus:outline-none cursor-pointer text-[var(--text-main)] truncate"
-              >
-                <option value="wood-gothic" className="bg-[#1a1726]">🏛️ Caoba</option>
-                <option value="wood-oak" className="bg-[#1a1726]">🌲 Roble</option>
-                <option value="digital-neon" className="bg-[#1a1726]">⚡ Neón</option>
-                <option value="digital-cyber" className="bg-[#1a1726]">💠 Cyber</option>
-                <option value="minimal-oled" className="bg-[#1a1726]">🖤 Minimal OLED</option>
-              </select>
-            </div>
-
+          <div className="flex items-center gap-2 min-w-0">
             {/* Sort Dropdown */}
-            <div className="flex items-center gap-1.5 bg-black/40 border border-[var(--border-color)] rounded-xl px-2.5 h-10 sm:h-9 text-xs text-[var(--text-main)] shadow-sm min-w-0">
+            <div className="flex items-center gap-1.5 bg-black/40 border border-[var(--border-color)] rounded-xl px-2.5 h-9 text-xs text-[var(--text-main)] shadow-sm min-w-0">
               <SlidersHorizontal className="w-3.5 h-3.5 text-[var(--accent-pink)] shrink-0" />
               <select
                 value={sortBy}
@@ -1474,19 +1519,6 @@ export const Bookshelf: React.FC<BookshelfProps> = ({
                 <option value="oldest" className="bg-[#1a1726]">⏳ Antiguos</option>
               </select>
             </div>
-
-            {/* Desktop Custom Background Photo / Texture Button */}
-            <button
-              onClick={() => setIsBgModalOpen(true)}
-              className="hidden sm:flex px-2.5 h-9 bg-black/40 border border-[var(--border-color)] hover:border-[var(--accent-pink)] rounded-xl text-xs text-[var(--accent-pink)] font-semibold items-center gap-1 transition shrink-0 hover:bg-[var(--accent-pink)]/10"
-              title="Personalizar fondo con tus fotos o texturas"
-            >
-              <ImageIcon className="w-3.5 h-3.5" />
-              <span>Foto Fondo</span>
-              {shelfBgConfig?.customImage && (
-                <span className="w-1.5 h-1.5 rounded-full bg-[var(--accent-pink)] animate-pulse" />
-              )}
-            </button>
           </div>
         </div>
       </div>
@@ -1592,15 +1624,6 @@ export const Bookshelf: React.FC<BookshelfProps> = ({
                 </span>
 
                 <div className="flex items-center gap-2 shrink-0">
-                  <button
-                    onClick={() => setIsBgModalOpen(true)}
-                    className="hidden sm:flex text-[11px] text-[var(--accent-pink)] hover:text-white items-center gap-1.5 transition px-2.5 py-1 rounded-lg bg-black/50 border border-[var(--border-color)] hover:border-[var(--accent-pink)] shadow-sm whitespace-nowrap shrink-0"
-                    title="Cambiar foto de fondo o textura"
-                  >
-                    <ImageIcon className="w-3 h-3 text-[var(--accent-pink)]" />
-                    <span>Fondo</span>
-                  </button>
-
                   <span className="text-[11px] font-mono text-[var(--text-muted)] tabular-nums whitespace-nowrap shrink-0">
                     {totalBooks} {totalBooks === 1 ? 'TOMO' : 'TOMOS'}
                   </span>
@@ -1634,32 +1657,43 @@ export const Bookshelf: React.FC<BookshelfProps> = ({
                       const isDropTarget = (dragOverSlotId === slot.slotId || touchOverSlotId === slot.slotId) && !isDraggingCurrent;
 
                       if (slot.kind === 'decor' || slot.kind === 'bookend') {
+                        const isDecorSelected = selectedDecorSlotId === slot.slotId;
                         return (
                           <div
                             key={slot.slotId}
                             data-slot-id={slot.slotId}
                             draggable={true}
-                            onDragStart={(e) => handleSlotDragStart(e, slot.slotId)}
+                            onDragStart={(e) => {
+                              setSelectedDecorSlotId(null);
+                              handleSlotDragStart(e, slot.slotId);
+                            }}
                             onDragOver={(e) => handleSlotDragOver(e, slot.slotId)}
                             onDragLeave={(e) => handleSlotDragLeave(e, slot.slotId)}
                             onDrop={(e) => handleSlotDrop(e, slot.slotId)}
                             onDragEnd={handleSlotDragEnd}
-                            onTouchStart={(e) => handleSlotTouchStart(slot.slotId, e)}
+                            onMouseDown={() => handlePressStart(slot.slotId, 'decor')}
+                            onMouseUp={handlePressEnd}
+                            onMouseLeave={handlePressEnd}
+                            onTouchStart={(e) => handleSlotTouchStart(slot.slotId, e, undefined, 'decor')}
                             onTouchMove={(e) => handleSlotTouchMove(slot.slotId, e)}
                             onTouchEnd={handleSlotTouchEnd}
                             onTouchCancel={handleSlotTouchCancel}
                             style={{
                               touchAction: 'pan-y',
-                              zIndex: isTouchingCurrent ? 60 : undefined,
+                              zIndex: isTouchingCurrent ? 60 : isDecorSelected ? 35 : undefined,
                               pointerEvents: isTouchingCurrent ? 'none' : 'auto',
                             }}
-                            className={`relative self-end mb-[-3px] shrink-0 cursor-grab active:cursor-grabbing flex items-end justify-center transition-all duration-200 select-none ${
+                            className={`group relative self-end mb-[-3px] shrink-0 cursor-grab active:cursor-grabbing flex items-end justify-center transition-all duration-200 select-none ${
                               slot.kind === 'bookend'
                                 ? 'w-[34px] min-[400px]:w-[40px] sm:w-[54px] md:w-[62px] h-[86px] min-[400px]:h-[98px] sm:h-[126px] md:h-[138px]'
                                 : 'w-[60px] min-[400px]:w-[68px] sm:w-[88px] md:w-[96px] lg:w-[104px] aspect-[2/3]'
                             } ${
                               isTouchingCurrent
                                 ? 'scale-105 shadow-[0_20px_45px_rgba(255,121,198,0.7)] ring-2 ring-[var(--accent-pink)] transition-none rounded-xl'
+                                : ''
+                            } ${
+                              isDecorSelected
+                                ? 'ring-2 ring-rose-400 bg-rose-500/10 rounded-xl scale-[1.03]'
                                 : ''
                             } ${
                               draggedSlotId === slot.slotId ? 'opacity-40 scale-95' : ''
@@ -1669,6 +1703,30 @@ export const Bookshelf: React.FC<BookshelfProps> = ({
                                 : ''
                             }`}
                           >
+                            {onUpdateShelfDecorConfig && !isTouchingCurrent && (
+                              <button
+                                type="button"
+                                onMouseDown={(e) => e.stopPropagation()}
+                                onTouchStart={(e) => e.stopPropagation()}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  if (slot.kind === 'decor') {
+                                    handleRemoveDecorProp(slot.propId);
+                                  } else {
+                                    handleRemoveBookend();
+                                  }
+                                }}
+                                className={`absolute -top-1.5 -right-1.5 z-50 w-6 h-6 rounded-full text-white border flex items-center justify-center shadow-lg transition active:scale-90 cursor-pointer ${
+                                  isDecorSelected
+                                    ? 'opacity-100 bg-rose-600 border-white'
+                                    : 'opacity-0 group-hover:opacity-100 focus:opacity-100 bg-black/85 hover:bg-rose-600 border-white/40'
+                                }`}
+                                title={slot.kind === 'decor' ? 'Quitar esta decoración' : 'Quitar sujetalibros'}
+                                aria-label={slot.kind === 'decor' ? 'Quitar esta decoración' : 'Quitar sujetalibros'}
+                              >
+                                <X className="w-3 h-3 stroke-[2.75]" />
+                              </button>
+                            )}
                             {isDropTarget && (
                               <div className="absolute inset-0 z-50 bg-[var(--accent-pink)]/25 rounded-xl flex items-center justify-center pointer-events-none border-2 border-[var(--accent-pink)]">
                                 <span className="text-[9px] font-bold text-white bg-black/90 px-2 py-0.5 rounded-full shadow-lg border border-[var(--accent-pink)] animate-bounce">
@@ -1949,32 +2007,43 @@ export const Bookshelf: React.FC<BookshelfProps> = ({
                       const isDropTarget = (dragOverSlotId === slot.slotId || touchOverSlotId === slot.slotId) && !isDraggingCurrent;
 
                       if (slot.kind === 'decor' || slot.kind === 'bookend') {
+                        const isDecorSelected = selectedDecorSlotId === slot.slotId;
                         return (
                           <div
                             key={slot.slotId}
                             data-slot-id={slot.slotId}
                             draggable={true}
-                            onDragStart={(e) => handleSlotDragStart(e, slot.slotId)}
+                            onDragStart={(e) => {
+                              setSelectedDecorSlotId(null);
+                              handleSlotDragStart(e, slot.slotId);
+                            }}
                             onDragOver={(e) => handleSlotDragOver(e, slot.slotId)}
                             onDragLeave={(e) => handleSlotDragLeave(e, slot.slotId)}
                             onDrop={(e) => handleSlotDrop(e, slot.slotId)}
                             onDragEnd={handleSlotDragEnd}
-                            onTouchStart={(e) => handleSlotTouchStart(slot.slotId, e)}
+                            onMouseDown={() => handlePressStart(slot.slotId, 'decor')}
+                            onMouseUp={handlePressEnd}
+                            onMouseLeave={handlePressEnd}
+                            onTouchStart={(e) => handleSlotTouchStart(slot.slotId, e, undefined, 'decor')}
                             onTouchMove={(e) => handleSlotTouchMove(slot.slotId, e)}
                             onTouchEnd={handleSlotTouchEnd}
                             onTouchCancel={handleSlotTouchCancel}
                             style={{
                               touchAction: 'pan-y',
-                              zIndex: isTouchingCurrent ? 60 : undefined,
+                              zIndex: isTouchingCurrent ? 60 : isDecorSelected ? 35 : undefined,
                               pointerEvents: isTouchingCurrent ? 'none' : 'auto',
                             }}
-                            className={`relative self-end mb-[-3px] shrink-0 cursor-grab active:cursor-grabbing flex items-end justify-center transition-all duration-200 select-none ${
+                            className={`group relative self-end mb-[-3px] shrink-0 cursor-grab active:cursor-grabbing flex items-end justify-center transition-all duration-200 select-none ${
                               slot.kind === 'bookend'
                                 ? 'w-[38px] sm:w-[50px] h-[90px] sm:h-[118px]'
                                 : 'w-[54px] sm:w-[66px] h-[84px] sm:h-[104px]'
                             } ${
                               isTouchingCurrent
                                 ? 'scale-105 shadow-[0_20px_45px_rgba(255,121,198,0.7)] ring-2 ring-[var(--accent-pink)] transition-none rounded-lg'
+                                : ''
+                            } ${
+                              isDecorSelected
+                                ? 'ring-2 ring-rose-400 bg-rose-500/10 rounded-lg scale-[1.03]'
                                 : ''
                             } ${
                               draggedSlotId === slot.slotId ? 'opacity-40 scale-95' : ''
@@ -1984,6 +2053,30 @@ export const Bookshelf: React.FC<BookshelfProps> = ({
                                 : ''
                             }`}
                           >
+                            {onUpdateShelfDecorConfig && !isTouchingCurrent && (
+                              <button
+                                type="button"
+                                onMouseDown={(e) => e.stopPropagation()}
+                                onTouchStart={(e) => e.stopPropagation()}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  if (slot.kind === 'decor') {
+                                    handleRemoveDecorProp(slot.propId);
+                                  } else {
+                                    handleRemoveBookend();
+                                  }
+                                }}
+                                className={`absolute -top-2 -right-1.5 z-50 w-5 h-5 rounded-full text-white border flex items-center justify-center shadow-lg transition active:scale-90 cursor-pointer ${
+                                  isDecorSelected
+                                    ? 'opacity-100 bg-rose-600 border-white'
+                                    : 'opacity-0 group-hover:opacity-100 focus:opacity-100 bg-black/85 hover:bg-rose-600 border-white/40'
+                                }`}
+                                title={slot.kind === 'decor' ? 'Quitar esta decoración' : 'Quitar sujetalibros'}
+                                aria-label={slot.kind === 'decor' ? 'Quitar esta decoración' : 'Quitar sujetalibros'}
+                              >
+                                <X className="w-3 h-3 stroke-[2.75]" />
+                              </button>
+                            )}
                             {isDropTarget && (
                               <div className="absolute inset-0 z-40 bg-[var(--accent-pink)]/20 rounded-lg flex items-center justify-center pointer-events-none border border-[var(--accent-pink)]">
                                 <span className="text-[8px] font-bold text-white bg-black/90 px-1 py-0.5 rounded shadow">
@@ -2144,33 +2237,44 @@ export const Bookshelf: React.FC<BookshelfProps> = ({
                           const isTouchingCurrent = touchActiveSlotId === slot.slotId;
                           const isDraggingCurrent = draggedSlotId === slot.slotId || isTouchingCurrent;
                           const isDropTarget = (dragOverSlotId === slot.slotId || touchOverSlotId === slot.slotId) && !isDraggingCurrent;
+                          const isDecorSelected = selectedDecorSlotId === slot.slotId;
 
                           return (
                             <div
                               key={slot.slotId}
                               data-slot-id={slot.slotId}
                               draggable={true}
-                              onDragStart={(e) => handleSlotDragStart(e, slot.slotId)}
+                              onDragStart={(e) => {
+                                setSelectedDecorSlotId(null);
+                                handleSlotDragStart(e, slot.slotId);
+                              }}
                               onDragOver={(e) => handleSlotDragOver(e, slot.slotId)}
                               onDragLeave={(e) => handleSlotDragLeave(e, slot.slotId)}
                               onDrop={(e) => handleSlotDrop(e, slot.slotId)}
                               onDragEnd={handleSlotDragEnd}
-                              onTouchStart={(e) => handleSlotTouchStart(slot.slotId, e)}
+                              onMouseDown={() => handlePressStart(slot.slotId, 'decor')}
+                              onMouseUp={handlePressEnd}
+                              onMouseLeave={handlePressEnd}
+                              onTouchStart={(e) => handleSlotTouchStart(slot.slotId, e, undefined, 'decor')}
                               onTouchMove={(e) => handleSlotTouchMove(slot.slotId, e)}
                               onTouchEnd={handleSlotTouchEnd}
                               onTouchCancel={handleSlotTouchCancel}
                               style={{
                                 touchAction: 'pan-y',
-                                zIndex: isTouchingCurrent ? 60 : undefined,
+                                zIndex: isTouchingCurrent ? 60 : isDecorSelected ? 35 : undefined,
                                 pointerEvents: isTouchingCurrent ? 'none' : 'auto',
                               }}
-                              className={`relative self-end mb-[-3px] shrink-0 cursor-grab active:cursor-grabbing flex items-end justify-center transition-all duration-200 select-none ${
+                              className={`group relative self-end mb-[-3px] shrink-0 cursor-grab active:cursor-grabbing flex items-end justify-center transition-all duration-200 select-none ${
                                 slot.kind === 'bookend'
                                   ? 'w-[38px] sm:w-[50px] h-[90px] sm:h-[118px]'
                                   : 'w-[54px] sm:w-[66px] h-[84px] sm:h-[104px]'
                               } ${
                                 isTouchingCurrent
                                   ? 'scale-105 shadow-[0_20px_45px_rgba(255,121,198,0.7)] ring-2 ring-[var(--accent-pink)] transition-none rounded-lg'
+                                  : ''
+                              } ${
+                                isDecorSelected
+                                  ? 'ring-2 ring-rose-400 bg-rose-500/10 rounded-lg scale-[1.03]'
                                   : ''
                               } ${
                                 draggedSlotId === slot.slotId ? 'opacity-40 scale-95' : ''
@@ -2180,6 +2284,30 @@ export const Bookshelf: React.FC<BookshelfProps> = ({
                                   : ''
                               }`}
                             >
+                              {onUpdateShelfDecorConfig && !isTouchingCurrent && (
+                                <button
+                                  type="button"
+                                  onMouseDown={(e) => e.stopPropagation()}
+                                  onTouchStart={(e) => e.stopPropagation()}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    if (slot.kind === 'decor') {
+                                      handleRemoveDecorProp(slot.propId);
+                                    } else {
+                                      handleRemoveBookend();
+                                    }
+                                  }}
+                                  className={`absolute -top-2 -right-1.5 z-50 w-5 h-5 rounded-full text-white border flex items-center justify-center shadow-lg transition active:scale-90 cursor-pointer ${
+                                    isDecorSelected
+                                      ? 'opacity-100 bg-rose-600 border-white'
+                                      : 'opacity-0 group-hover:opacity-100 focus:opacity-100 bg-black/85 hover:bg-rose-600 border-white/40'
+                                  }`}
+                                  title={slot.kind === 'decor' ? 'Quitar esta decoración' : 'Quitar sujetalibros'}
+                                  aria-label={slot.kind === 'decor' ? 'Quitar esta decoración' : 'Quitar sujetalibros'}
+                                >
+                                  <X className="w-3 h-3 stroke-[2.75]" />
+                                </button>
+                              )}
                               {isDropTarget && (
                                 <div className="absolute inset-0 z-40 bg-[var(--accent-pink)]/20 rounded-lg flex items-center justify-center pointer-events-none border border-[var(--accent-pink)]">
                                   <span className="text-[8px] font-bold text-white bg-black/90 px-1 py-0.5 rounded shadow">
@@ -2407,20 +2535,6 @@ export const Bookshelf: React.FC<BookshelfProps> = ({
         </div>
       )}
 
-      {/* Shelf Background Customization Modal */}
-      {isBgModalOpen && (
-        <ShelfBackgroundModal
-          isOpen={isBgModalOpen}
-          onClose={() => setIsBgModalOpen(false)}
-          config={shelfBgConfig || DEFAULT_SHELF_BG}
-          onSaveConfig={(newCfg: ShelfBackgroundConfig) => {
-            onUpdateShelfBgConfig?.(newCfg);
-            setIsBgModalOpen(false);
-          }}
-          isVip={isVip}
-          onOpenVipModal={onOpenVipModal}
-        />
-      )}
     </div>
   );
 };
