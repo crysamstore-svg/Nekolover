@@ -147,6 +147,52 @@ export interface ShelfBackgroundConfig {
   fit: 'cover' | 'pattern';
 }
 
+export type ShelfDecorTheme = 'none' | 'kawaii' | 'dark' | 'fantasy';
+
+export type ShelfBookendId =
+  | 'none'
+  | 'readers-silhouette'
+  | 'fairy-wings'
+  | 'crimson-hands';
+
+export type ShelfDecorPropId =
+  // Kawaii Cozy props
+  | 'kawaii-cloud-lamp'
+  | 'kawaii-tulips-vase'
+  | 'kawaii-retro-radio'
+  | 'kawaii-bunny-bear'
+  | 'kawaii-quote-frame'
+  | 'kawaii-moon-lamp'
+  | 'kawaii-sunshine-cafe'
+  // Fantasía Celestial props
+  | 'fantasy-cat-lamp'
+  | 'fantasy-lantern'
+  | 'fantasy-cottage'
+  | 'fantasy-ghost-frame'
+  | 'fantasy-black-cat'
+  | 'fantasy-moon-potion'
+  | 'fantasy-arch-nook'
+  | 'fantasy-reading-knight'
+  | 'fantasy-reading-dragon'
+  // Dark Romance & Gótico props
+  | 'dark-masquerade-mask'
+  | 'dark-crimson-roses'
+  | 'dark-skull-coffin'
+  | 'dark-crescent-moon'
+  | 'dark-noir-frame'
+  | 'dark-candles'
+  | 'dark-skull-portal'
+  | 'dark-dagger-roses'
+  | 'dark-manor-nook';
+
+export interface ShelfDecorConfig {
+  theme: ShelfDecorTheme;
+  enabledProps: ShelfDecorPropId[];
+  bookend?: ShelfBookendId;
+  ledGlow: boolean;
+  hangingVines: boolean;
+}
+
 export interface MusicTrack {
   id: string;
   title: string;

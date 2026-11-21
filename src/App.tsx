@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef, lazy, Suspense } from 'react';
 import { Trash2, FolderSync, Loader2 } from 'lucide-react';
-import { Book, Quote, PageSticker, Bookmark, ThemeId, ReadingStatsData, TextHighlight, ReaderModeId, ShelfStyle, ShelfViewMode, ShelfBackgroundConfig } from './types';
+import { Book, Quote, PageSticker, Bookmark, ThemeId, ReadingStatsData, TextHighlight, ReaderModeId, ShelfStyle, ShelfViewMode, ShelfBackgroundConfig, ShelfDecorConfig, ShelfDecorTheme } from './types';
 import { 
   DEFAULT_BOOKS, 
   DEFAULT_QUOTES, 
@@ -16,6 +16,7 @@ import { vipManager } from './utils/vipManager';
 import { BookmarksDrawer } from './components/BookmarksDrawer';
 import type { HeaderButtonsConfig } from './components/SettingsView';
 import { DEFAULT_SHELF_BG } from './components/ShelfBackgroundModal';
+import { DEFAULT_SHELF_DECOR, isValidShelfBookend, isValidShelfDecorProp } from './data/shelfDecorCatalog';
 import type { LegalTab } from './components/LegalModal';
 import { CookieConsentBanner } from './components/CookieConsentBanner';
 import { saveFileToDB, deleteFileFromDB, saveBooksToDB, getBooksFromDB, getSmartEmojiForTitle, getRandomGothicGradient } from './utils/db';
@@ -165,6 +166,41 @@ export default function App() {
       localStorage.setItem('nl_shelf_bg_config', JSON.stringify(sanitizedCfg));
     } catch (e) {
       console.warn('Error saving shelf background config:', e);
+    }
+  };
+
+  const [shelfDecorConfig, setShelfDecorConfig] = useState<ShelfDecorConfig>(() => {
+    const saved = localStorage.getItem('nl_shelf_decor_v1');
+    const parsed = safeJsonParse<Partial<ShelfDecorConfig> | null>(saved, null, isPlainRecord);
+    if (!parsed) return DEFAULT_SHELF_DECOR;
+    const validThemes: ShelfDecorTheme[] = ['none', 'kawaii', 'dark', 'fantasy'];
+    const theme: ShelfDecorTheme = validThemes.includes(parsed.theme as ShelfDecorTheme)
+      ? (parsed.theme as ShelfDecorTheme)
+      : 'kawaii';
+    const enabledProps = Array.isArray(parsed.enabledProps)
+      ? parsed.enabledProps.filter((id): id is ShelfDecorConfig['enabledProps'][number] =>
+          typeof id === 'string' && isValidShelfDecorProp(id)
+        )
+      : DEFAULT_SHELF_DECOR.enabledProps;
+    const bookend =
+      typeof parsed.bookend === 'string' && isValidShelfBookend(parsed.bookend)
+        ? parsed.bookend
+        : DEFAULT_SHELF_DECOR.bookend;
+    return {
+      theme,
+      enabledProps,
+      bookend,
+      ledGlow: typeof parsed.ledGlow === 'boolean' ? parsed.ledGlow : true,
+      hangingVines: typeof parsed.hangingVines === 'boolean' ? parsed.hangingVines : true,
+    };
+  });
+
+  const handleUpdateShelfDecorConfig = (cfg: ShelfDecorConfig) => {
+    setShelfDecorConfig(cfg);
+    try {
+      localStorage.setItem('nl_shelf_decor_v1', JSON.stringify(cfg));
+    } catch (e) {
+      console.warn('Error saving shelf decor config:', e);
     }
   };
 
@@ -819,7 +855,7 @@ export default function App() {
     );
 
   return (
-    <div className="min-h-[100dvh] flex flex-col bg-[var(--bg-color)] text-[var(--text-main)] transition-colors duration-300">
+    <div className="min-h-[100dvh] flex flex-col overflow-x-hidden bg-[var(--bg-color)] text-[var(--text-main)] transition-colors duration-300">
       {/* Hidden file input for single/multi upload */}
       <input
         id="global-file-input"
@@ -948,6 +984,7 @@ export default function App() {
             }}
             shelfBgConfig={shelfBgConfig}
             onUpdateShelfBgConfig={handleUpdateShelfBgConfig}
+            shelfDecorConfig={shelfDecorConfig}
             isVip={isVip}
             onOpenVipModal={() => openVipModal('shelf_bg')}
             onOpenVipPage={() => setCurrentView('vip')}
@@ -1108,6 +1145,8 @@ export default function App() {
               }}
               shelfBgConfig={shelfBgConfig}
               onUpdateShelfBgConfig={handleUpdateShelfBgConfig}
+              shelfDecorConfig={shelfDecorConfig}
+              onUpdateShelfDecorConfig={handleUpdateShelfDecorConfig}
               onResetStatsToZero={() => {
                 const fresh = resetReadingStatsToZero();
                 setReadingStats(fresh);

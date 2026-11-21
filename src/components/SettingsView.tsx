@@ -27,9 +27,12 @@ import {
   Cookie,
   Clock
 } from 'lucide-react';
-import { ReaderModeId, ThemeId, ShelfStyle, ShelfViewMode, ShelfBackgroundConfig } from '../types';
+import { ReaderModeId, ThemeId, ShelfStyle, ShelfViewMode, ShelfBackgroundConfig, ShelfDecorConfig, ShelfDecorTheme } from '../types';
 import { READER_MODES, FONT_OPTIONS, THEME_OPTIONS } from '../data/defaultBooks';
 import { ShelfBackgroundModal, DEFAULT_SHELF_BG } from './ShelfBackgroundModal';
+import { ShelfDecorModal } from './ShelfDecorModal';
+import { ShelfDecorArt } from './ShelfDecoration';
+import { SHELF_DECOR_PRESETS, DEFAULT_SHELF_DECOR } from '../data/shelfDecorCatalog';
 import { LegalTab } from './LegalModal';
 import { vipManager } from '../utils/vipManager';
 
@@ -72,6 +75,8 @@ interface SettingsViewProps {
   onChangeViewMode: (v: ShelfViewMode) => void;
   shelfBgConfig?: ShelfBackgroundConfig;
   onUpdateShelfBgConfig?: (config: ShelfBackgroundConfig) => void;
+  shelfDecorConfig?: ShelfDecorConfig;
+  onUpdateShelfDecorConfig?: (config: ShelfDecorConfig) => void;
   onResetStatsToZero?: () => void;
   onOpenLegalModal?: (tab: LegalTab) => void;
   onOpenStats?: () => void;
@@ -104,6 +109,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   onChangeViewMode,
   shelfBgConfig,
   onUpdateShelfBgConfig,
+  shelfDecorConfig,
+  onUpdateShelfDecorConfig,
   onResetStatsToZero,
   onOpenLegalModal,
   onOpenStats,
@@ -113,34 +120,70 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 }) => {
   const [activeTab, setActiveTab] = useState<'contrast' | 'typography' | 'margins' | 'header' | 'shelf' | 'legal'>('contrast');
   const [isBgModalOpen, setIsBgModalOpen] = useState<boolean>(false);
+  const [isDecorModalOpen, setIsDecorModalOpen] = useState<boolean>(false);
   const [showResetConfirmModal, setShowResetConfirmModal] = useState<boolean>(false);
   const [statsResetSuccess, setStatsResetSuccess] = useState<boolean>(false);
+
+  const effectiveDecorConfig = shelfDecorConfig ?? DEFAULT_SHELF_DECOR;
+
+  const handleQuickSwitchDecor = (theme: ShelfDecorTheme) => {
+    if (theme === 'none') {
+      onUpdateShelfDecorConfig?.({
+        ...effectiveDecorConfig,
+        theme: 'none',
+        enabledProps: [],
+        bookend: 'none',
+        ledGlow: false,
+        hangingVines: false,
+      });
+      return;
+    }
+    const preset = SHELF_DECOR_PRESETS.find((p) => p.id === theme);
+    if (!preset) return;
+    onUpdateShelfDecorConfig?.({
+      theme: preset.id,
+      enabledProps: [...preset.props],
+      bookend: preset.bookend,
+      ledGlow: preset.ledGlow,
+      hangingVines: preset.hangingVines,
+    });
+  };
 
   const currentModeConfig = READER_MODES.find(m => m.id === readerMode) || READER_MODES[0];
 
   return (
-    <div className="flex-1 max-w-5xl mx-auto w-full p-4 sm:p-8 animate-fadeIn">
-      {/* Top Bar with Back Button + Direct Shortcuts for Stats & Quotes Vault */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-6 pb-4 border-b border-[var(--border-color)]">
-        <div className="flex flex-wrap items-center gap-2">
+    <div className="flex-1 max-w-5xl mx-auto w-full p-3 sm:p-8 animate-fadeIn">
+      {/* Top Bar with Back Button + Direct Shortcuts for Decor, Stats & Quotes Vault */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3.5 mb-5 sm:mb-6 pb-4 border-b border-[var(--border-color)]">
+        <div className="grid grid-cols-2 sm:flex sm:flex-wrap items-center gap-2">
           <button
             onClick={onBack}
-            className="px-3.5 py-2 rounded-xl text-xs font-cute font-bold bg-black/40 border border-[var(--border-color)] hover:border-[var(--accent-pink)] text-[var(--accent-pink)] transition flex items-center gap-2 active:scale-95 shadow-md"
+            className="min-h-[42px] px-3 py-2 rounded-xl text-xs font-cute font-bold bg-black/40 border border-[var(--border-color)] hover:border-[var(--accent-pink)] text-[var(--accent-pink)] transition flex items-center justify-center sm:justify-start gap-1.5 active:scale-95 shadow-md"
             title="Regresar a la estantería de libros"
           >
-            <ArrowLeft className="w-4 h-4" />
-            <span>Volver a la Biblioteca</span>
+            <ArrowLeft className="w-4 h-4 shrink-0" />
+            <span className="truncate">Biblioteca</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setIsDecorModalOpen(true)}
+            className="min-h-[42px] px-3 py-2 rounded-xl text-xs font-cute font-bold bg-[var(--accent-pink)]/15 border border-[var(--accent-pink)]/50 hover:bg-[var(--accent-pink)] hover:text-black text-[var(--accent-pink)] transition flex items-center justify-center sm:justify-start gap-1.5 active:scale-95 shadow-md"
+            title="Decorar repisas con estilos Kawaii, Fantasía o Dark"
+          >
+            <Sparkles className="w-3.5 h-3.5 shrink-0" />
+            <span className="truncate">Decorar Estantería</span>
           </button>
 
           {onOpenStats && (
             <button
               type="button"
               onClick={onOpenStats}
-              className="px-3 py-2 rounded-xl text-xs font-cute font-bold bg-black/40 border border-[var(--border-color)] hover:border-[var(--accent-purple)] text-[var(--text-main)] hover:text-white transition flex items-center gap-1.5 active:scale-95 shadow-md"
+              className="min-h-[42px] px-3 py-2 rounded-xl text-xs font-cute font-bold bg-black/40 border border-[var(--border-color)] hover:border-[var(--accent-purple)] text-[var(--text-main)] hover:text-white transition flex items-center justify-center sm:justify-start gap-1.5 active:scale-95 shadow-md"
               title="Ver gráficos y estadísticas de lectura"
             >
-              <BarChart3 className="w-3.5 h-3.5 text-[var(--accent-purple)]" />
-              <span>Estadísticas</span>
+              <BarChart3 className="w-3.5 h-3.5 text-[var(--accent-purple)] shrink-0" />
+              <span className="truncate">Estadísticas</span>
             </button>
           )}
 
@@ -148,13 +191,13 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             <button
               type="button"
               onClick={onOpenQuotes}
-              className="px-3 py-2 rounded-xl text-xs font-cute font-bold bg-black/40 border border-[var(--border-color)] hover:border-[var(--accent-pink)] text-[var(--text-main)] hover:text-white transition flex items-center gap-1.5 active:scale-95 shadow-md"
+              className="min-h-[42px] px-3 py-2 rounded-xl text-xs font-cute font-bold bg-black/40 border border-[var(--border-color)] hover:border-[var(--accent-pink)] text-[var(--text-main)] hover:text-white transition flex items-center justify-center sm:justify-start gap-1.5 active:scale-95 shadow-md"
               title="Ver Baúl de Citas, Subrayados y Notas del Libro"
             >
-              <QuoteIcon className="w-3.5 h-3.5 text-[var(--accent-pink)]" />
-              <span>Citas y Notas</span>
+              <QuoteIcon className="w-3.5 h-3.5 text-[var(--accent-pink)] shrink-0" />
+              <span className="truncate">Citas y Notas</span>
               {quotesCount + highlightsCount > 0 && (
-                <span className="text-[10px] px-1.5 py-0.2 rounded-md font-bold bg-[var(--accent-pink)] text-black">
+                <span className="text-[10px] px-1.5 py-0.2 rounded-md font-bold bg-[var(--accent-pink)] text-black shrink-0">
                   {quotesCount + highlightsCount}
                 </span>
               )}
@@ -163,21 +206,21 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         </div>
 
         <div className="sm:text-right">
-          <h2 className="dark-reborn-font font-bold text-lg sm:text-xl text-[var(--accent-pink)] flex items-center sm:justify-end gap-2">
+          <h2 className="dark-reborn-font font-bold text-base sm:text-xl text-[var(--accent-pink)] flex items-center sm:justify-end gap-2">
             <span>⚙️</span>
             <span>Configuraciones Literarias</span>
           </h2>
           <p className="text-[11px] text-[var(--text-muted)]">
-            Ajustes de lectura, estadísticas, citas del libro, cabecera y legalidad
+            Ajustes de lectura, decoraciones, estadísticas, cabecera y legalidad
           </p>
         </div>
       </div>
 
       {/* Settings Navigation Tabs */}
-      <div className="flex items-center space-x-2 overflow-x-auto pb-3 mb-6 scrollbar-none">
+      <div className="flex items-center space-x-2 overflow-x-auto pb-2.5 mb-5 sm:mb-6 -mx-1 px-1 scrollbar-none">
         <button
           onClick={() => setActiveTab('contrast')}
-          className={`px-3.5 py-2 rounded-xl text-xs font-bold transition flex items-center gap-2 shrink-0 ${
+          className={`min-h-[40px] px-3.5 py-2 rounded-xl text-xs font-bold transition flex items-center gap-2 shrink-0 ${
             activeTab === 'contrast'
               ? 'bg-[var(--accent-pink)] text-black shadow-lg'
               : 'bg-black/40 text-[var(--text-muted)] hover:text-white border border-[var(--border-color)]'
@@ -189,7 +232,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
         <button
           onClick={() => setActiveTab('typography')}
-          className={`px-3.5 py-2 rounded-xl text-xs font-bold transition flex items-center gap-2 shrink-0 ${
+          className={`min-h-[40px] px-3.5 py-2 rounded-xl text-xs font-bold transition flex items-center gap-2 shrink-0 ${
             activeTab === 'typography'
               ? 'bg-[var(--accent-pink)] text-black shadow-lg'
               : 'bg-black/40 text-[var(--text-muted)] hover:text-white border border-[var(--border-color)]'
@@ -201,7 +244,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
         <button
           onClick={() => setActiveTab('margins')}
-          className={`px-3.5 py-2 rounded-xl text-xs font-bold transition flex items-center gap-2 shrink-0 ${
+          className={`min-h-[40px] px-3.5 py-2 rounded-xl text-xs font-bold transition flex items-center gap-2 shrink-0 ${
             activeTab === 'margins'
               ? 'bg-[var(--accent-pink)] text-black shadow-lg'
               : 'bg-black/40 text-[var(--text-muted)] hover:text-white border border-[var(--border-color)]'
@@ -213,7 +256,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
         <button
           onClick={() => setActiveTab('header')}
-          className={`px-3.5 py-2 rounded-xl text-xs font-bold transition flex items-center gap-2 shrink-0 ${
+          className={`min-h-[40px] px-3.5 py-2 rounded-xl text-xs font-bold transition flex items-center gap-2 shrink-0 ${
             activeTab === 'header'
               ? 'bg-[var(--accent-pink)] text-black shadow-lg'
               : 'bg-black/40 text-[var(--text-muted)] hover:text-white border border-[var(--border-color)]'
@@ -225,7 +268,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
         <button
           onClick={() => setActiveTab('shelf')}
-          className={`px-3.5 py-2 rounded-xl text-xs font-bold transition flex items-center gap-2 shrink-0 ${
+          className={`min-h-[40px] px-3.5 py-2 rounded-xl text-xs font-bold transition flex items-center gap-2 shrink-0 ${
             activeTab === 'shelf'
               ? 'bg-[var(--accent-pink)] text-black shadow-lg'
               : 'bg-black/40 text-[var(--text-muted)] hover:text-white border border-[var(--border-color)]'
@@ -237,7 +280,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
         <button
           onClick={() => setActiveTab('legal')}
-          className={`px-3.5 py-2 rounded-xl text-xs font-bold transition flex items-center gap-2 shrink-0 ${
+          className={`min-h-[40px] px-3.5 py-2 rounded-xl text-xs font-bold transition flex items-center gap-2 shrink-0 ${
             activeTab === 'legal'
               ? 'bg-amber-400 text-black shadow-lg'
               : 'bg-black/40 text-amber-300 hover:text-white border border-amber-400/30'
@@ -722,9 +765,97 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               </div>
             </div>
 
+            {/* Shelf Decorations (Kawaii · Fantasía · Dark) Section */}
+            <div className="pt-4 border-t border-white/5 space-y-3.5">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                <div>
+                  <label className="text-xs font-bold text-white flex items-center gap-1.5">
+                    <Sparkles className="w-3.5 h-3.5 text-[var(--accent-pink)]" />
+                    <span>Decoraciones de Estantería (Kawaii · Fantasía · Dark):</span>
+                  </label>
+                  <p className="text-[11px] text-[var(--text-muted)] mt-0.5">
+                    Coloca lámparas, jarrones, cuadros, gatos y luz LED descansando directamente sobre tus repisas.
+                  </p>
+                </div>
+
+                <span className="text-[11px] self-start sm:self-auto text-[var(--accent-pink)] font-semibold whitespace-nowrap">
+                  {effectiveDecorConfig.theme === 'none'
+                    ? 'Sin decoración'
+                    : `${effectiveDecorConfig.enabledProps.length} piezas${
+                        effectiveDecorConfig.bookend && effectiveDecorConfig.bookend !== 'none'
+                          ? ' · Con sujetalibros'
+                          : ''
+                      } · ${
+                        effectiveDecorConfig.theme === 'kawaii'
+                          ? 'Kawaii'
+                          : effectiveDecorConfig.theme === 'fantasy'
+                          ? 'Fantasía'
+                          : 'Dark'
+                      }`}
+                </span>
+              </div>
+
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+                {SHELF_DECOR_PRESETS.map((preset) => {
+                  const isActive = effectiveDecorConfig.theme === preset.id;
+                  return (
+                    <button
+                      key={preset.id}
+                      type="button"
+                      onClick={() => handleQuickSwitchDecor(preset.id)}
+                      className={`min-h-[82px] p-3 rounded-xl border text-left transition flex flex-col justify-between gap-2 ${
+                        isActive
+                          ? 'border-[var(--accent-pink)] bg-[var(--accent-pink)]/12 ring-1 ring-[var(--accent-pink)]'
+                          : 'border-[var(--border-color)] bg-black/40 hover:border-white/25'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between gap-1">
+                        <span className="text-xs font-bold text-white truncate">{preset.shortLabel}</span>
+                        {isActive && <Check className="w-3.5 h-3.5 text-[var(--accent-pink)] shrink-0" />}
+                      </div>
+                      <div className="flex items-center gap-1">
+                        {preset.props.slice(0, 3).map((pid) => (
+                          <div key={pid} className="w-6 h-6 shrink-0">
+                            <ShelfDecorArt id={pid} />
+                          </div>
+                        ))}
+                      </div>
+                    </button>
+                  );
+                })}
+
+                <button
+                  type="button"
+                  onClick={() => handleQuickSwitchDecor('none')}
+                  className={`min-h-[82px] p-3 rounded-xl border text-left transition flex flex-col justify-between gap-2 ${
+                    effectiveDecorConfig.theme === 'none'
+                      ? 'border-[var(--accent-pink)] bg-white/10 ring-1 ring-[var(--accent-pink)]'
+                      : 'border-[var(--border-color)] bg-black/40 hover:border-white/25'
+                  }`}
+                >
+                  <div className="flex items-center justify-between gap-1">
+                    <span className="text-xs font-bold text-white">Sin piezas</span>
+                    {effectiveDecorConfig.theme === 'none' && (
+                      <Check className="w-3.5 h-3.5 text-[var(--accent-pink)] shrink-0" />
+                    )}
+                  </div>
+                  <span className="text-[11px] text-[var(--text-muted)]">Solo libros en repisas</span>
+                </button>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setIsDecorModalOpen(true)}
+                className="w-full sm:w-auto min-h-[44px] px-4 py-2.5 rounded-xl bg-gradient-to-r from-[var(--accent-pink)] to-[var(--accent-purple)] text-black font-cute font-bold text-xs shadow-lg hover:opacity-90 active:scale-95 transition flex items-center justify-center gap-2"
+              >
+                <Sparkles className="w-4 h-4" />
+                <span>Decorar Estantería y Elegir Piezas</span>
+              </button>
+            </div>
+
             {/* Custom Photo & Texture Background Section */}
             <div className="pt-4 border-t border-white/5 space-y-3">
-              <div className="flex items-center justify-between">
+              <div className="flex items-center justify-between gap-2">
                 <div>
                   <label className="text-xs font-bold text-white block">
                     Fondo y Textura de la Estantería (Personalizada con Fotos):
@@ -734,7 +865,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                   </p>
                 </div>
                 {shelfBgConfig?.customImage && (
-                  <span className="text-[10px] bg-[var(--accent-pink)]/20 text-[var(--accent-pink)] border border-[var(--accent-pink)]/40 px-2.5 py-0.5 rounded-full font-bold">
+                  <span className="text-[10px] bg-[var(--accent-pink)]/20 text-[var(--accent-pink)] border border-[var(--accent-pink)]/40 px-2.5 py-0.5 rounded-full font-bold shrink-0">
                     Foto Personalizada Activa
                   </span>
                 )}
@@ -744,7 +875,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 <button
                   type="button"
                   onClick={() => setIsBgModalOpen(true)}
-                  className="px-4 py-2.5 rounded-xl bg-gradient-to-r from-[var(--accent-pink)] to-[var(--accent-purple)] text-black font-cute font-bold text-xs shadow-lg hover:opacity-90 active:scale-95 transition flex items-center gap-2"
+                  className="w-full sm:w-auto min-h-[44px] px-4 py-2.5 rounded-xl bg-gradient-to-r from-[var(--accent-pink)] to-[var(--accent-purple)] text-black font-cute font-bold text-xs shadow-lg hover:opacity-90 active:scale-95 transition flex items-center justify-center gap-2"
                 >
                   <ImageIcon className="w-4 h-4" />
                   <span>Subir Foto o Elegir Textura</span>
@@ -754,7 +885,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                   <button
                     type="button"
                     onClick={() => onUpdateShelfBgConfig?.(DEFAULT_SHELF_BG)}
-                    className="px-3.5 py-2.5 rounded-xl bg-black/60 border border-[var(--border-color)] hover:border-red-400 text-red-300 text-xs transition flex items-center gap-1.5"
+                    className="w-full sm:w-auto min-h-[42px] px-3.5 py-2.5 rounded-xl bg-black/60 border border-[var(--border-color)] hover:border-red-400 text-red-300 text-xs transition flex items-center justify-center gap-1.5"
                   >
                     <RotateCcw className="w-3.5 h-3.5" />
                     <span>Restablecer Fondo Original</span>
@@ -1051,6 +1182,16 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         config={shelfBgConfig || DEFAULT_SHELF_BG}
         onSaveConfig={(cfg) => {
           onUpdateShelfBgConfig?.(cfg);
+        }}
+      />
+
+      {/* Shelf Decorations Modal */}
+      <ShelfDecorModal
+        isOpen={isDecorModalOpen}
+        onClose={() => setIsDecorModalOpen(false)}
+        config={effectiveDecorConfig}
+        onSaveConfig={(nextCfg) => {
+          onUpdateShelfDecorConfig?.(nextCfg);
         }}
       />
 

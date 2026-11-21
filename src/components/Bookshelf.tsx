@@ -12,8 +12,7 @@ import {
   LayoutGrid,
   Library,
   Palette,
-  Sparkles,
-  MoreVertical,
+  Settings,
   Image as ImageIcon,
   Quote as QuoteIcon,
   Bookmark as BookmarkIcon,
@@ -35,8 +34,15 @@ import {
   Shuffle,
   GripVertical
 } from 'lucide-react';
-import { Book, BookCategory, ShelfStyle, ShelfViewMode, ShelfBackgroundConfig } from '../types';
+import { Book, BookCategory, ShelfStyle, ShelfViewMode, ShelfBackgroundConfig, ShelfDecorConfig, ShelfDecorPropId } from '../types';
 import { ShelfBackgroundModal, DEFAULT_SHELF_BG } from './ShelfBackgroundModal';
+import {
+  ShelfDecoration,
+  ShelfBookend,
+  ShelfAtmosphereBackwall,
+  getLedGlowClass,
+} from './ShelfDecoration';
+import { DEFAULT_SHELF_DECOR } from '../data/shelfDecorCatalog';
 import { HeaderButtonsConfig } from './SettingsView';
 import { resolveCoverGradient, normalizeBookEmoji } from '../utils/db';
 import { sanitizeImageUrl } from '../utils/sanitizeHtml';
@@ -70,6 +76,7 @@ interface BookshelfProps {
   onViewModeChange?: (mode: ShelfViewMode) => void;
   shelfBgConfig?: ShelfBackgroundConfig;
   onUpdateShelfBgConfig?: (config: ShelfBackgroundConfig) => void;
+  shelfDecorConfig?: ShelfDecorConfig;
   isVip?: boolean;
   onOpenVipModal?: () => void;
   onOpenVipPage?: () => void;
@@ -102,6 +109,7 @@ export const Bookshelf: React.FC<BookshelfProps> = ({
   onViewModeChange,
   shelfBgConfig,
   onUpdateShelfBgConfig,
+  shelfDecorConfig: propShelfDecorConfig,
   isVip,
   onOpenVipModal,
   onOpenVipPage
@@ -132,6 +140,8 @@ export const Bookshelf: React.FC<BookshelfProps> = ({
   };
 
   const [isBgModalOpen, setIsBgModalOpen] = useState<boolean>(false);
+  const effectiveDecorConfig = propShelfDecorConfig ?? DEFAULT_SHELF_DECOR;
+
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState<number>(24);
 
@@ -564,31 +574,127 @@ export const Bookshelf: React.FC<BookshelfProps> = ({
   const abandonedCount = books.filter((b) => b.category === 'abandoned').length;
   const favoritesCount = books.filter((b) => b.favorite).length;
 
+  // Active shelf decorations & bookends calculation
+  const activeDecorProps =
+    effectiveDecorConfig.theme !== 'none' ? effectiveDecorConfig.enabledProps : [];
+  const hasDecorOnShelves = activeDecorProps.length > 0;
+  const activeBookend =
+    effectiveDecorConfig.theme !== 'none' &&
+    effectiveDecorConfig.bookend &&
+    effectiveDecorConfig.bookend !== 'none'
+      ? effectiveDecorConfig.bookend
+      : null;
+
   // Chunk books per shelf matching the exact columns visible at each screen width
-  // so every single row of books always rests directly on its own shelf plank without wrapping or horizontal scrolling
+  // so every single row of books + decorations always rests directly on its own shelf plank
   const chunkSize = (() => {
     if (viewMode === 'covers') {
-      if (viewportWidth < 768) return 5;
-      if (viewportWidth < 1024) return 6;
-      return 7;
+      const cols = activeBookend
+        ? viewportWidth < 640
+          ? 3
+          : viewportWidth < 768
+          ? 4
+          : viewportWidth < 1024
+          ? 5
+          : 6
+        : viewportWidth < 640
+        ? 4
+        : viewportWidth < 768
+        ? 5
+        : viewportWidth < 1024
+        ? 6
+        : 7;
+      if (!hasDecorOnShelves) return cols;
+      const decorPerRow = viewportWidth >= 1024 && activeDecorProps.length >= 4 ? 2 : 1;
+      return Math.max(2, cols - decorPerRow);
     }
     if (viewMode === 'spines') {
-      if (viewportWidth < 420) return 6;
-      if (viewportWidth < 640) return 7;
-      if (viewportWidth < 768) return 8;
-      if (viewportWidth < 1024) return 10;
-      return 12;
+      const cols = activeBookend
+        ? viewportWidth < 420
+          ? 4
+          : viewportWidth < 640
+          ? 5
+          : viewportWidth < 768
+          ? 7
+          : viewportWidth < 1024
+          ? 9
+          : 11
+        : viewportWidth < 420
+        ? 5
+        : viewportWidth < 640
+        ? 6
+        : viewportWidth < 768
+        ? 8
+        : viewportWidth < 1024
+        ? 10
+        : 12;
+      if (!hasDecorOnShelves) return cols;
+      const decorPerRow = viewportWidth >= 768 && activeDecorProps.length >= 4 ? 2 : 1;
+      return Math.max(2, cols - decorPerRow);
     }
     // viewMode === 'stacks' (pilas de hasta 4 libros acostados por columna)
-    if (viewportWidth < 640) return 8; // 2 pilas x 4 libros
-    if (viewportWidth < 1024) return 12; // 3 pilas x 4 libros
-    return 16; // 4 pilas x 4 libros
+    const maxPiles = viewportWidth < 640 ? 2 : viewportWidth < 1024 ? 3 : 4;
+    const bookPiles = hasDecorOnShelves ? Math.max(1, maxPiles - 1) : maxPiles;
+    return bookPiles * 4;
   })();
 
   const shelves: Book[][] = [];
   for (let i = 0; i < paginatedBooks.length; i += chunkSize) {
     shelves.push(paginatedBooks.slice(i, i + chunkSize));
   }
+
+  type ShelfSlot =
+    | { kind: 'book'; book: Book }
+    | { kind: 'decor'; propId: ShelfDecorPropId; key: string };
+
+  const buildRowSlots = (
+    shelfBooks: Book[],
+    shelfIndex: number,
+    mode: 'covers' | 'spines'
+  ): ShelfSlot[] => {
+    const slots: ShelfSlot[] = shelfBooks.map((book) => ({ kind: 'book', book }));
+    if (!hasDecorOnShelves) return slots;
+
+    const decorPerRow =
+      mode === 'covers'
+        ? viewportWidth >= 1024 && activeDecorProps.length >= 4
+          ? 2
+          : 1
+        : viewportWidth >= 768 && activeDecorProps.length >= 4
+        ? 2
+        : 1;
+
+    const firstProp = activeDecorProps[(shelfIndex * decorPerRow) % activeDecorProps.length];
+    const secondProp =
+      decorPerRow > 1
+        ? activeDecorProps[(shelfIndex * decorPerRow + 1) % activeDecorProps.length]
+        : null;
+
+    // Alternating organic shelf placement so props look curated rather than rigid
+    const firstPosOptions = [
+      Math.min(shelfBooks.length, 2),
+      0,
+      Math.min(shelfBooks.length, 3),
+      shelfBooks.length,
+    ];
+    const pos1 = firstPosOptions[shelfIndex % firstPosOptions.length];
+    slots.splice(pos1, 0, {
+      kind: 'decor',
+      propId: firstProp,
+      key: `decor-${shelfIndex}-0-${firstProp}`,
+    });
+
+    if (secondProp) {
+      const pos2 = shelfIndex % 2 === 0 ? slots.length : Math.min(slots.length, 1);
+      slots.splice(pos2, 0, {
+        kind: 'decor',
+        propId: secondProp,
+        key: `decor-${shelfIndex}-1-${secondProp}`,
+      });
+    }
+
+    return slots;
+  };
 
   // Shelf CSS class based on style
   const shelfClassMap: Record<ShelfStyle, string> = {
@@ -600,7 +706,7 @@ export const Bookshelf: React.FC<BookshelfProps> = ({
   };
 
   return (
-    <div className="p-3 sm:p-6 max-w-7xl mx-auto w-full flex-1 flex flex-col select-none">
+    <div className="p-2 sm:p-6 max-w-7xl mx-auto w-full flex-1 flex flex-col select-none">
       {/* Barra de acción flotante cuando hay libros seleccionados al mantener presionado */}
       {markedForDeleteIds.length > 0 && (
         <div className="fixed bottom-4 sm:bottom-6 left-1/2 -translate-x-1/2 z-50 w-[94vw] max-w-xl flex flex-wrap items-center justify-center gap-2 sm:gap-2.5 bg-[#1a0a10]/95 border-2 border-[var(--accent-pink)]/70 px-3.5 py-2.5 sm:px-5 sm:py-3 rounded-2xl shadow-[0_10px_35px_rgba(0,0,0,0.8)] backdrop-blur-md animate-popIn">
@@ -623,7 +729,7 @@ export const Bookshelf: React.FC<BookshelfProps> = ({
               });
               setMarkedForDeleteIds([]);
             }}
-            className="px-2.5 py-1.5 rounded-xl bg-purple-600/80 hover:bg-purple-600 text-white font-bold text-xs shadow-sm transition active:scale-95 flex items-center gap-1 cursor-pointer"
+            className="min-h-[36px] px-2.5 py-1.5 rounded-xl bg-purple-600/80 hover:bg-purple-600 text-white font-bold text-xs shadow-sm transition active:scale-95 flex items-center gap-1 cursor-pointer"
             title="Marcar como leído / en lectura"
           >
             <CheckCircle2 className="w-3.5 h-3.5" />
@@ -642,7 +748,7 @@ export const Bookshelf: React.FC<BookshelfProps> = ({
               });
               setMarkedForDeleteIds([]);
             }}
-            className="px-2.5 py-1.5 rounded-xl bg-rose-950/90 hover:bg-rose-900 text-rose-200 border border-rose-400/40 font-bold text-xs shadow-sm transition active:scale-95 flex items-center gap-1 cursor-pointer"
+            className="min-h-[36px] px-2.5 py-1.5 rounded-xl bg-rose-950/90 hover:bg-rose-900 text-rose-200 border border-rose-400/40 font-bold text-xs shadow-sm transition active:scale-95 flex items-center gap-1 cursor-pointer"
             title="Marcar como pausado / reanudar"
           >
             <span>🥀</span>
@@ -652,7 +758,7 @@ export const Bookshelf: React.FC<BookshelfProps> = ({
           <button
             type="button"
             onClick={handleDeleteMarkedBooks}
-            className="px-3 py-1.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-extrabold text-xs shadow-md transition active:scale-95 flex items-center gap-1 cursor-pointer"
+            className="min-h-[36px] px-3 py-1.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-extrabold text-xs shadow-md transition active:scale-95 flex items-center gap-1 cursor-pointer"
           >
             <Trash2 className="w-3.5 h-3.5" />
             <span>Eliminar {markedForDeleteIds.length === 1 ? '' : `(${markedForDeleteIds.length})`}</span>
@@ -661,7 +767,7 @@ export const Bookshelf: React.FC<BookshelfProps> = ({
           <button
             type="button"
             onClick={handleClearMarked}
-            className="px-2.5 py-1.5 rounded-xl bg-black/60 hover:bg-white/10 text-gray-300 hover:text-white text-xs border border-white/20 transition active:scale-95 cursor-pointer"
+            className="min-h-[36px] px-2.5 py-1.5 rounded-xl bg-black/60 hover:bg-white/10 text-gray-300 hover:text-white text-xs border border-white/20 transition active:scale-95 cursor-pointer"
             title="Desmarcar todos y cancelar (o pulsa Escape)"
           >
             Cancelar
@@ -670,7 +776,7 @@ export const Bookshelf: React.FC<BookshelfProps> = ({
       )}
 
       {/* Main Controls Box */}
-      <div className="flex flex-col gap-3.5 mb-6 bg-[var(--card-bg)] p-3.5 sm:p-5 rounded-3xl border border-[var(--border-color)] shadow-xl transition-colors">
+      <div className="flex flex-col gap-3 mb-4 sm:mb-6 bg-[var(--card-bg)] p-3 sm:p-5 rounded-2xl sm:rounded-3xl border border-[var(--border-color)] shadow-xl transition-colors">
         
         {/* Top Controls Row: Category Filter Pills + Capacity Counter */}
         <div className="flex items-center justify-between gap-2 overflow-x-auto pb-1 scrollbar-none">
@@ -755,11 +861,11 @@ export const Bookshelf: React.FC<BookshelfProps> = ({
           </div>
         </div>
 
-        {/* INTEGRATED ACTION ROW: Search Bar + Header Operational Buttons placed right beside it */}
-        <div className="flex flex-wrap items-center justify-between gap-2.5 pt-2 border-t border-white/10">
+        {/* INTEGRATED ACTION ROW: Search Bar + Header Operational Buttons */}
+        <div className="flex flex-col sm:flex-row sm:flex-wrap sm:items-center sm:justify-between gap-2.5 pt-2.5 border-t border-white/10">
           
           {/* 1. Buscador del Libro */}
-          <div className="relative flex-1 min-w-[210px] sm:max-w-xs">
+          <div className="relative w-full sm:flex-1 sm:min-w-[210px] sm:max-w-xs">
             <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-[var(--accent-pink)]/75 pointer-events-none" />
             <input
               type="text"
@@ -769,12 +875,12 @@ export const Bookshelf: React.FC<BookshelfProps> = ({
                 setCurrentPage(1);
               }}
               placeholder="Buscador: título, autor o género..."
-              className="w-full h-9 bg-black/50 border border-[var(--border-color)] rounded-xl pl-8 pr-8 py-1.5 text-xs leading-normal text-white placeholder-[var(--text-muted)] focus:outline-none focus:border-[var(--accent-pink)] transition shadow-inner font-sans"
+              className="w-full h-10 sm:h-9 bg-black/50 border border-[var(--border-color)] rounded-xl pl-8 pr-8 py-1.5 text-xs leading-normal text-white placeholder-[var(--text-muted)] focus:outline-none focus:border-[var(--accent-pink)] transition shadow-inner font-sans"
             />
             {searchQuery && (
               <button
                 onClick={() => setSearchQuery('')}
-                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs text-[var(--text-muted)] hover:text-white p-0.5"
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs text-[var(--text-muted)] hover:text-white p-1"
               >
                 ✕
               </button>
@@ -782,7 +888,7 @@ export const Bookshelf: React.FC<BookshelfProps> = ({
           </div>
 
           {/* 2. Botones del Header en la pantalla principal (solo visibles cuando están activados en Configuración) */}
-          <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
+          <div className="flex flex-wrap items-center justify-between sm:justify-end gap-2">
             
             {/* Notas y Citas */}
             {Boolean(headerConfig?.showQuotes) && onSwitchView && (
@@ -884,7 +990,7 @@ export const Bookshelf: React.FC<BookshelfProps> = ({
             {/* Coronita VIP ($2 USD/mes) */}
             <button
               onClick={() => onOpenVipModal?.()}
-              className={`px-2.5 py-1.5 rounded-xl border text-xs font-cute font-bold flex items-center gap-1 transition active:scale-95 shrink-0 shadow-sm ${
+              className={`min-h-[38px] px-3 py-1.5 rounded-xl border text-xs font-cute font-bold flex items-center gap-1 transition active:scale-95 shrink-0 shadow-sm ${
                 isVip
                   ? 'bg-amber-400 text-black border-amber-300 shadow-[0_0_12px_rgba(251,191,36,0.6)]'
                   : 'bg-black/50 border-amber-400/60 text-amber-300 hover:bg-amber-400 hover:text-black hover:border-amber-300 shadow-[0_0_10px_rgba(251,191,36,0.2)]'
@@ -898,7 +1004,7 @@ export const Bookshelf: React.FC<BookshelfProps> = ({
             {/* Subir Archivo Individual */}
             <button
               onClick={onTriggerUpload}
-              className="px-2.5 py-1.5 rounded-xl text-xs font-bold bg-[var(--accent-pink)]/20 text-[var(--accent-pink)] border border-[var(--accent-pink)]/50 hover:bg-[var(--accent-pink)] hover:text-black transition flex items-center gap-1 shadow-sm active:scale-95 shrink-0"
+              className="min-h-[38px] px-3 py-1.5 rounded-xl text-xs font-bold bg-[var(--accent-pink)]/20 text-[var(--accent-pink)] border border-[var(--accent-pink)]/50 hover:bg-[var(--accent-pink)] hover:text-black transition flex items-center gap-1.5 shadow-sm active:scale-95 shrink-0"
               title="Subir libro individual (EPUB, PDF, TXT)"
             >
               <UploadCloud className="w-3.5 h-3.5" />
@@ -909,10 +1015,11 @@ export const Bookshelf: React.FC<BookshelfProps> = ({
             {onSyncFolder && (
               <button
                 onClick={onSyncFolder}
-                className="px-2.5 py-1.5 rounded-xl text-xs font-bold bg-gradient-to-r from-purple-600/30 to-pink-600/30 text-purple-200 border border-purple-400/50 hover:bg-purple-600 hover:text-white transition flex items-center gap-1.5 shadow-sm active:scale-95 shrink-0"
+                className="min-h-[38px] px-3 py-1.5 rounded-xl text-xs font-bold bg-gradient-to-r from-purple-600/30 to-pink-600/30 text-purple-200 border border-purple-400/50 hover:bg-purple-600 hover:text-white transition flex items-center gap-1.5 shadow-sm active:scale-95 shrink-0"
                 title="Sincronizar carpeta con tu almacenamiento interno para colocar hasta 2000 libros automáticamente"
               >
                 <FolderSync className="w-3.5 h-3.5 text-purple-300" />
+                <span className="sm:hidden">Carpeta</span>
                 <span className="hidden sm:inline">Sincronizar Carpeta</span>
               </button>
             )}
@@ -921,7 +1028,7 @@ export const Bookshelf: React.FC<BookshelfProps> = ({
             {markedForDeleteIds.length > 0 && (
               <button
                 onClick={handleClearMarked}
-                className="px-2.5 py-1.5 rounded-xl border text-xs font-cute flex items-center gap-1 transition shrink-0 shadow-sm bg-rose-600/30 text-rose-300 border-rose-500/60 hover:bg-rose-600 hover:text-white active:scale-95 cursor-pointer"
+                className="min-h-[38px] px-2.5 py-1.5 rounded-xl border text-xs font-cute flex items-center gap-1 transition shrink-0 shadow-sm bg-rose-600/30 text-rose-300 border-rose-500/60 hover:bg-rose-600 hover:text-white active:scale-95 cursor-pointer"
                 title="Desmarcar todos los libros seleccionados para eliminar (o pulsa Escape)"
               >
                 <Trash2 className="w-3.5 h-3.5" />
@@ -929,28 +1036,29 @@ export const Bookshelf: React.FC<BookshelfProps> = ({
               </button>
             )}
 
-            {/* Configuración (Tres Puntos) */}
+            {/* Configuración (Engranaje) */}
             {onOpenSettings && (
               <button
                 onClick={onOpenSettings}
-                className="p-1.5 bg-black/40 border border-[var(--border-color)] hover:border-[var(--accent-pink)] rounded-xl text-xs text-[var(--accent-pink)] flex items-center justify-center transition shrink-0 hover:bg-[var(--accent-pink)]/10"
-                title="Configuración de lectura, tipografía y márgenes (Tres puntos)"
+                className="min-h-[38px] min-w-[38px] px-2.5 py-1.5 bg-black/40 border border-[var(--border-color)] hover:border-[var(--accent-pink)] rounded-xl text-xs text-[var(--accent-pink)] flex items-center justify-center gap-1 transition shrink-0 hover:bg-[var(--accent-pink)]/10"
+                title="Configuración de lectura, decoraciones, tipografía y márgenes"
                 aria-label="Abrir panel de configuraciones"
               >
-                <MoreVertical className="w-4 h-4" />
+                <Settings className="w-4 h-4" />
+                <span className="hidden md:inline font-cute font-bold">Ajustes</span>
               </button>
             )}
           </div>
         </div>
 
-        {/* Third Row: View Modes, Shelf Style and Sorting */}
-        <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-white/5 text-xs">
-          <div className="flex items-center gap-2">
+        {/* Third Row: View Modes, Shelf Style, Sorting and Shelf Background */}
+        <div className="flex flex-col sm:flex-row sm:flex-wrap sm:items-center sm:justify-between gap-2.5 pt-2.5 border-t border-white/5 text-xs">
+          <div className="flex items-center justify-between sm:justify-start gap-2">
             {/* 3 View Modes */}
             <div className="flex items-center bg-black/40 border border-[var(--border-color)] rounded-xl p-0.5">
               <button
                 onClick={() => handleSetViewMode('covers')}
-                className={`px-2 py-1 rounded-lg text-xs font-semibold flex items-center gap-1 transition ${
+                className={`min-h-[34px] px-2.5 py-1 rounded-lg text-xs font-semibold flex items-center gap-1 transition ${
                   viewMode === 'covers'
                     ? 'bg-[var(--accent-pink)] text-black shadow-sm font-bold'
                     : 'text-[var(--text-muted)] hover:text-white'
@@ -958,12 +1066,12 @@ export const Bookshelf: React.FC<BookshelfProps> = ({
                 title="Vista de portadas frontales"
               >
                 <LayoutGrid className="w-3.5 h-3.5" />
-                <span className="hidden sm:inline">Portadas</span>
+                <span>Portadas</span>
               </button>
 
               <button
                 onClick={() => handleSetViewMode('spines')}
-                className={`px-2 py-1 rounded-lg text-xs font-semibold flex items-center gap-1 transition ${
+                className={`min-h-[34px] px-2.5 py-1 rounded-lg text-xs font-semibold flex items-center gap-1 transition ${
                   viewMode === 'spines'
                     ? 'bg-[var(--accent-pink)] text-black shadow-sm font-bold'
                     : 'text-[var(--text-muted)] hover:text-white'
@@ -971,12 +1079,12 @@ export const Bookshelf: React.FC<BookshelfProps> = ({
                 title="Vista de lomos verticales"
               >
                 <Library className="w-3.5 h-3.5" />
-                <span className="hidden sm:inline">Lomos</span>
+                <span>Lomos</span>
               </button>
 
               <button
                 onClick={() => handleSetViewMode('stacks')}
-                className={`px-2 py-1 rounded-lg text-xs font-semibold flex items-center gap-1 transition ${
+                className={`min-h-[34px] px-2.5 py-1 rounded-lg text-xs font-semibold flex items-center gap-1 transition ${
                   viewMode === 'stacks'
                     ? 'bg-[var(--accent-pink)] text-black shadow-sm font-bold'
                     : 'text-[var(--text-muted)] hover:text-white'
@@ -984,59 +1092,69 @@ export const Bookshelf: React.FC<BookshelfProps> = ({
                 title="Vista de libros apilados"
               >
                 <Layers className="w-3.5 h-3.5" />
-                <span className="hidden sm:inline">Acostados</span>
+                <span>Acostados</span>
               </button>
             </div>
 
+            {/* Mobile Custom Background Shortcut */}
+            <button
+              onClick={() => setIsBgModalOpen(true)}
+              className="sm:hidden min-h-[36px] px-2.5 py-1.5 bg-black/40 border border-[var(--border-color)] hover:border-[var(--accent-pink)] rounded-xl text-xs text-[var(--accent-pink)] font-semibold flex items-center gap-1 transition shrink-0"
+              title="Personalizar fondo con tus fotos o texturas"
+            >
+              <ImageIcon className="w-3.5 h-3.5" />
+              <span>Fondo</span>
+            </button>
+          </div>
+
+          <div className="grid grid-cols-2 sm:flex sm:items-center gap-2">
             {/* Custom Shelf Style Selector */}
-            <div className="flex items-center gap-1.5 bg-black/50 border border-[var(--border-color)] hover:border-[var(--accent-pink)]/60 rounded-xl px-2.5 h-9 text-xs text-[var(--text-main)] shadow-sm transition-colors">
+            <div className="flex items-center gap-1.5 bg-black/50 border border-[var(--border-color)] hover:border-[var(--accent-pink)]/60 rounded-xl px-2.5 h-10 sm:h-9 text-xs text-[var(--text-main)] shadow-sm transition-colors min-w-0">
               <Library className="w-3.5 h-3.5 text-[var(--accent-pink)] shrink-0" />
               <select
                 value={shelfStyle}
                 onChange={(e) => handleSetShelfStyle(e.target.value as ShelfStyle)}
                 aria-label="Personalizar forma y acabado de biblioteca"
-                className="bg-transparent text-[11px] sm:text-xs font-medium leading-normal py-1 pr-1 focus:outline-none cursor-pointer text-[var(--text-main)]"
+                className="w-full min-w-0 bg-transparent text-[11px] sm:text-xs font-medium leading-normal py-1 pr-1 focus:outline-none cursor-pointer text-[var(--text-main)] truncate"
               >
-                <option value="wood-gothic" className="bg-[#1a1726]">🏛️ Biblioteca Caoba</option>
-                <option value="wood-oak" className="bg-[#1a1726]">🌲 Estantería Roble</option>
-                <option value="digital-neon" className="bg-[#1a1726]">⚡ Vitrina Neón</option>
-                <option value="digital-cyber" className="bg-[#1a1726]">💠 Rack Cyber</option>
+                <option value="wood-gothic" className="bg-[#1a1726]">🏛️ Caoba</option>
+                <option value="wood-oak" className="bg-[#1a1726]">🌲 Roble</option>
+                <option value="digital-neon" className="bg-[#1a1726]">⚡ Neón</option>
+                <option value="digital-cyber" className="bg-[#1a1726]">💠 Cyber</option>
                 <option value="minimal-oled" className="bg-[#1a1726]">🖤 Minimal OLED</option>
               </select>
             </div>
-          </div>
 
-          <div className="flex items-center gap-2">
             {/* Sort Dropdown */}
-            <div className="flex items-center gap-1.5 bg-black/40 border border-[var(--border-color)] rounded-xl px-2.5 h-8 sm:h-9 text-xs text-[var(--text-main)] shadow-sm">
+            <div className="flex items-center gap-1.5 bg-black/40 border border-[var(--border-color)] rounded-xl px-2.5 h-10 sm:h-9 text-xs text-[var(--text-main)] shadow-sm min-w-0">
               <SlidersHorizontal className="w-3.5 h-3.5 text-[var(--accent-pink)] shrink-0" />
               <select
                 value={sortBy}
                 onChange={(e) => handleSetSortBy(e.target.value as any)}
                 aria-label="Ordenar libros por"
-                className="bg-transparent text-[11px] sm:text-xs leading-normal py-0.5 focus:outline-none cursor-pointer text-[var(--text-main)] font-medium"
+                className="w-full min-w-0 bg-transparent text-[11px] sm:text-xs leading-normal py-0.5 focus:outline-none cursor-pointer text-[var(--text-main)] font-medium truncate"
               >
-                <option value="custom" className="bg-[#1a1726]">✨ Mi Orden (Como gustes)</option>
-                <option value="recent" className="bg-[#1a1726]">🕒 Recientes / Última lectura</option>
+                <option value="custom" className="bg-[#1a1726]">✨ Mi Orden</option>
+                <option value="recent" className="bg-[#1a1726]">🕒 Recientes</option>
                 <option value="title-asc" className="bg-[#1a1726]">🔤 Título (A → Z)</option>
                 <option value="title-desc" className="bg-[#1a1726]">🔤 Título (Z → A)</option>
                 <option value="author-asc" className="bg-[#1a1726]">✍️ Autor (A → Z)</option>
-                <option value="progress-desc" className="bg-[#1a1726]">📊 Mayor Progreso (% leído)</option>
-                <option value="progress-asc" className="bg-[#1a1726]">📖 Menor Progreso</option>
-                <option value="favorites" className="bg-[#1a1726]">🖤 Favoritos Primero</option>
-                <option value="newest" className="bg-[#1a1726]">🆕 Recién Añadidos</option>
-                <option value="oldest" className="bg-[#1a1726]">⏳ Más Antiguos</option>
+                <option value="progress-desc" className="bg-[#1a1726]">📊 Mayor %</option>
+                <option value="progress-asc" className="bg-[#1a1726]">📖 Menor %</option>
+                <option value="favorites" className="bg-[#1a1726]">🖤 Favoritos</option>
+                <option value="newest" className="bg-[#1a1726]">🆕 Nuevos</option>
+                <option value="oldest" className="bg-[#1a1726]">⏳ Antiguos</option>
               </select>
             </div>
 
-            {/* Custom Background Photo / Texture Button */}
+            {/* Desktop Custom Background Photo / Texture Button */}
             <button
               onClick={() => setIsBgModalOpen(true)}
-              className="px-2 py-1 bg-black/40 border border-[var(--border-color)] hover:border-[var(--accent-pink)] rounded-xl text-xs text-[var(--accent-pink)] font-semibold flex items-center gap-1 transition shrink-0 hover:bg-[var(--accent-pink)]/10"
+              className="hidden sm:flex px-2.5 h-9 bg-black/40 border border-[var(--border-color)] hover:border-[var(--accent-pink)] rounded-xl text-xs text-[var(--accent-pink)] font-semibold items-center gap-1 transition shrink-0 hover:bg-[var(--accent-pink)]/10"
               title="Personalizar fondo con tus fotos o texturas"
             >
               <ImageIcon className="w-3.5 h-3.5" />
-              <span className="hidden sm:inline">Foto Fondo</span>
+              <span>Foto Fondo</span>
               {shelfBgConfig?.customImage && (
                 <span className="w-1.5 h-1.5 rounded-full bg-[var(--accent-pink)] animate-pulse" />
               )}
@@ -1088,7 +1206,9 @@ export const Bookshelf: React.FC<BookshelfProps> = ({
           data-shelf-style={shelfStyle}
           className={`flex-1 bookcase-cabinet relative transition-all duration-300 ${
             shelfClassMap[shelfStyle]
-          } ${isDepthTransitioning ? 'bookcase-depth-transition' : ''}`}
+          } ${getLedGlowClass(effectiveDecorConfig.theme, effectiveDecorConfig.ledGlow)} ${
+            isDepthTransitioning ? 'bookcase-depth-transition' : ''
+          }`}
         >
           {/* Top Bookcase Crown Molding / Cornice */}
           <div className="bookcase-crown">
@@ -1101,7 +1221,7 @@ export const Bookshelf: React.FC<BookshelfProps> = ({
             <div className="bookcase-pillar" aria-hidden="true" />
 
             {/* Recessed Library Interior */}
-            <div className="bookcase-interior px-2.5 sm:px-5 pt-3 pb-4">
+            <div className="bookcase-interior px-2 sm:px-5 pt-3 pb-4">
               {/* Architectural Backwall Parallax Layer */}
               <div className="bookcase-backwall-layer" aria-hidden="true" />
 
@@ -1128,34 +1248,39 @@ export const Bookshelf: React.FC<BookshelfProps> = ({
                 );
               })()}
 
-              {/* Top Library Shelf Header */}
-              <div className="relative z-10 px-1 py-1 flex items-center justify-between border-b border-white/10 pb-2.5 text-xs text-[var(--text-muted)]">
-                <span className="font-bold flex items-center gap-2 text-[var(--accent-pink)]">
+              {/* Atmospheric Theme Overlay (Vines, Starry Moon Sky, Obsidian Vignette) */}
+              <ShelfAtmosphereBackwall config={effectiveDecorConfig} />
+
+              {/* Top Library Shelf Header - Clean & Spacious on Mobile */}
+              <div className="relative z-10 px-1 py-1 flex items-center justify-between gap-2 border-b border-white/10 pb-2.5 text-xs text-[var(--text-muted)]">
+                <span className="font-bold flex items-center gap-2 text-[var(--accent-pink)] min-w-0">
                   <span>📚</span>
-                  <span>MI ESTANTERÍA</span>
+                  <span className="truncate">MI ESTANTERÍA</span>
                   {markedForDeleteIds.length > 0 && (
-                    <span className="text-[10px] bg-rose-600 text-white px-2 py-0.5 rounded-full font-bold animate-pulse">
-                      {markedForDeleteIds.length} marcado{markedForDeleteIds.length === 1 ? '' : 's'} para eliminar
+                    <span className="text-[10px] bg-rose-600 text-white px-2 py-0.5 rounded-full font-bold animate-pulse shrink-0">
+                      {markedForDeleteIds.length} marcado{markedForDeleteIds.length === 1 ? '' : 's'}
                     </span>
                   )}
                 </span>
-                <div className="flex items-center gap-2.5">
+
+                <div className="flex items-center gap-2 shrink-0">
                   <button
                     onClick={() => setIsBgModalOpen(true)}
-                    className="text-[11px] text-[var(--accent-pink)] hover:text-white flex items-center gap-1.5 transition px-2.5 py-1 rounded-lg bg-black/50 border border-[var(--border-color)] hover:border-[var(--accent-pink)] shadow-sm"
+                    className="hidden sm:flex text-[11px] text-[var(--accent-pink)] hover:text-white items-center gap-1.5 transition px-2.5 py-1 rounded-lg bg-black/50 border border-[var(--border-color)] hover:border-[var(--accent-pink)] shadow-sm whitespace-nowrap shrink-0"
                     title="Cambiar foto de fondo o textura"
                   >
                     <ImageIcon className="w-3 h-3 text-[var(--accent-pink)]" />
-                    <span>{shelfBgConfig?.customImage ? 'Fondo Personalizado' : 'Personalizar Fondo'}</span>
+                    <span>Fondo</span>
                   </button>
-                  <span className="text-[11px] font-mono text-[var(--text-muted)]">
+
+                  <span className="text-[11px] font-mono text-[var(--text-muted)] tabular-nums whitespace-nowrap shrink-0">
                     {totalBooks} {totalBooks === 1 ? 'TOMO' : 'TOMOS'}
                   </span>
                 </div>
               </div>
 
               {/* Shelves rows */}
-              <div className="space-y-3 sm:space-y-4 relative z-10 mt-2">
+              <div className="space-y-4 sm:space-y-5 relative z-10 mt-2">
                 {shelves.map((shelfBooks, shelfIndex) => (
               <div
                 key={shelfIndex}
@@ -1167,10 +1292,24 @@ export const Bookshelf: React.FC<BookshelfProps> = ({
                 }
               >
                 <div className="bookcase-books-layer">
-                {/* MODE 1: COVERS VIEW (Portadas frontales más pequeñas: 5 por fila en móvil descansando sobre la repisa) */}
+                {/* MODE 1: COVERS VIEW (Portadas frontales + decoraciones y sujetalibros descansando sobre la repisa) */}
                 {viewMode === 'covers' && (
-                  <div className="grid grid-cols-5 md:grid-cols-6 lg:grid-cols-7 gap-1.5 sm:gap-2.5 lg:gap-3.5 px-1 sm:px-2.5 pb-0 items-end">
-                    {shelfBooks.map((book) => {
+                  <div className="flex items-end gap-1 sm:gap-2 px-1 sm:px-2 pb-0">
+                    {activeBookend && (
+                      <ShelfBookend id={activeBookend} side="left" compact={viewportWidth < 640} />
+                    )}
+                    <div
+                      className={`flex-1 min-w-0 grid gap-2 sm:gap-3 lg:gap-4 items-end ${
+                        activeBookend
+                          ? 'grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6'
+                          : 'grid-cols-4 sm:grid-cols-5 md:grid-cols-6 lg:grid-cols-7'
+                      }`}
+                    >
+                      {buildRowSlots(shelfBooks, shelfIndex, 'covers').map((slot) => {
+                        if (slot.kind === 'decor') {
+                          return <ShelfDecoration key={slot.key} type={slot.propId} />;
+                        }
+                      const book = slot.book;
                       const percent = book.progressPercent || 0;
                       const isMarked = isBookMarked(book.id);
                       const isTouchingCurrent = touchActiveBookId === book.id;
@@ -1250,8 +1389,8 @@ export const Bookshelf: React.FC<BookshelfProps> = ({
                             </button>
                           )}
 
-                          {/* Conventional Book Cover Container - Más pequeña, 5 por estante en móvil descansando sobre la repisa */}
-                          <div className={`relative w-full max-w-[74px] sm:max-w-[96px] md:max-w-[106px] aspect-[2/3] rounded-r-md sm:rounded-r-lg rounded-l-sm shadow-[0_4px_10px_rgba(0,0,0,0.85)] overflow-hidden border border-white/10 group-hover:border-[var(--accent-pink)]/50 group-hover:shadow-[0_8px_18px_rgba(0,0,0,0.65)] transition-all flex flex-col justify-between p-1 sm:p-2 text-left book-cover-shadow ${
+                          {/* Conventional Book Cover Container - 4 por estante en móvil descansando sobre la repisa */}
+                          <div className={`relative w-full max-w-[78px] sm:max-w-[96px] md:max-w-[106px] aspect-[2/3] rounded-r-md sm:rounded-r-lg rounded-l-sm shadow-[0_4px_10px_rgba(0,0,0,0.85)] overflow-hidden border border-white/10 group-hover:border-[var(--accent-pink)]/50 group-hover:shadow-[0_8px_18px_rgba(0,0,0,0.65)] transition-all flex flex-col justify-between p-1.5 sm:p-2 text-left book-cover-shadow ${
                             isMarked ? 'border-rose-500' : ''
                           }`}>
                             {/* Marked badge inside top right */}
@@ -1418,18 +1557,29 @@ export const Bookshelf: React.FC<BookshelfProps> = ({
                         </div>
                       );
                     })}
+                    </div>
+                    {activeBookend && (
+                      <ShelfBookend id={activeBookend} side="right" compact={viewportWidth < 640} />
+                    )}
                   </div>
                 )}
 
-                {/* MODE 2: SPINES VIEW (Lomos verticales alineados descansando en estantería sin desbordar en móvil) */}
+                {/* MODE 2: SPINES VIEW (Lomos verticales alineados + decoraciones y sujetalibros en estantería) */}
                 {viewMode === 'spines' && (
-                  <div className="flex items-end justify-center gap-1.5 sm:gap-2.5 px-1.5 sm:px-3 pt-2 pb-0 overflow-visible min-h-[168px] sm:min-h-[185px]">
-                    {shelfBooks.map((book) => {
+                  <div className="flex items-end justify-center gap-1.5 sm:gap-2 px-1 sm:px-3 pt-2 pb-0 overflow-visible min-h-[172px] sm:min-h-[188px]">
+                    {activeBookend && (
+                      <ShelfBookend id={activeBookend} side="left" compact />
+                    )}
+                    {buildRowSlots(shelfBooks, shelfIndex, 'spines').map((slot) => {
+                      if (slot.kind === 'decor') {
+                        return <ShelfDecoration key={slot.key} type={slot.propId} compact />;
+                      }
+                      const book = slot.book;
                       const isMarked = isBookMarked(book.id);
                       const isTouchingCurrent = touchActiveBookId === book.id;
                       const isDraggingCurrent = draggedBookId === book.id || isTouchingCurrent;
                       const isDropTarget = (dragOverBookId === book.id || touchOverBookId === book.id) && !isDraggingCurrent;
-                      const spineWidth = viewportWidth < 420 ? '32px' : viewportWidth < 640 ? '34px' : '36px';
+                      const spineWidth = viewportWidth < 420 ? '36px' : viewportWidth < 640 ? '38px' : '38px';
                       const spineHeight = viewportWidth < 640 ? '164px' : '175px';
 
                       return (
@@ -1523,6 +1673,9 @@ export const Bookshelf: React.FC<BookshelfProps> = ({
                         </div>
                       );
                     })}
+                    {activeBookend && (
+                      <ShelfBookend id={activeBookend} side="right" compact />
+                    )}
                   </div>
                 )}
 
@@ -1534,7 +1687,11 @@ export const Bookshelf: React.FC<BookshelfProps> = ({
                   }
 
                   return (
-                    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2 sm:gap-3.5 px-1.5 sm:px-3 pt-2 pb-0 items-end">
+                    <div className="flex items-end gap-1.5 sm:gap-2.5 px-1 sm:px-3 pt-2 pb-0">
+                      {activeBookend && (
+                        <ShelfBookend id={activeBookend} side="left" compact />
+                      )}
+                      <div className="flex-1 min-w-0 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2 sm:gap-3.5 items-end">
                       {piles.map((pileBooks, pileIndex) => (
                         <div
                           key={`pile-${shelfIndex}-${pileIndex}`}
@@ -1640,6 +1797,27 @@ export const Bookshelf: React.FC<BookshelfProps> = ({
                           })}
                         </div>
                       ))}
+                      {hasDecorOnShelves && (
+                        <div
+                          key={`decor-stack-col-${shelfIndex}`}
+                          className="flex items-end justify-center gap-1.5 sm:gap-3 pb-0 min-w-0"
+                        >
+                          <ShelfDecoration
+                            type={activeDecorProps[(shelfIndex * 2) % activeDecorProps.length]}
+                            compact
+                          />
+                          {activeDecorProps.length > 1 && (
+                            <ShelfDecoration
+                              type={activeDecorProps[(shelfIndex * 2 + 1) % activeDecorProps.length]}
+                              compact
+                            />
+                          )}
+                        </div>
+                      )}
+                      </div>
+                      {activeBookend && (
+                        <ShelfBookend id={activeBookend} side="right" compact />
+                      )}
                     </div>
                   );
                 })()}
