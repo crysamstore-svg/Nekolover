@@ -153,7 +153,10 @@ export type ShelfBookendId =
   | 'none'
   | 'readers-silhouette'
   | 'fairy-wings'
-  | 'crimson-hands';
+  | 'crimson-hands'
+  | 'gothic-raven-skull'
+  | 'dark-rose-sword'
+  | 'dark-dynamic';
 
 export type ShelfDecorPropId =
   // Kawaii Cozy props

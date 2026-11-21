@@ -230,7 +230,7 @@ export default function App() {
   // VIP Subscription ($2 USD/month) State
   const [isVip, setIsVip] = useState<boolean>(() => vipManager.isVip());
   const [isVipModalOpen, setIsVipModalOpen] = useState<boolean>(false);
-  const [vipFeatureReason, setVipFeatureReason] = useState<'music' | 'fonts' | 'shelf_bg' | 'stickers' | 'highlights' | 'notes' | null>(null);
+  const [vipFeatureReason, setVipFeatureReason] = useState<'music' | 'fonts' | 'shelf_bg' | 'stickers' | 'highlights' | 'notes' | 'shelf_decor' | null>(null);
 
   // Legal Modal State (Términos, Privacidad, Cookies, Reembolso, Auditoría)
   const [isLegalModalOpen, setIsLegalModalOpen] = useState<boolean>(false);
@@ -241,7 +241,7 @@ export default function App() {
     setIsLegalModalOpen(true);
   };
 
-  const openVipModal = (reason?: 'music' | 'fonts' | 'shelf_bg' | 'stickers' | 'highlights' | 'notes') => {
+  const openVipModal = (reason?: 'music' | 'fonts' | 'shelf_bg' | 'stickers' | 'highlights' | 'notes' | 'shelf_decor') => {
     setVipFeatureReason(reason || null);
     setIsVipModalOpen(true);
   };
@@ -1158,6 +1158,8 @@ export default function App() {
               onOpenQuotes={() => setCurrentView('quotes')}
               quotesCount={quotes.length}
               highlightsCount={Object.values(highlights).reduce((acc, list) => acc + (list?.length || 0), 0)}
+              isVip={isVip}
+              onOpenVipModal={openVipModal}
             />
           </Suspense>
         )}

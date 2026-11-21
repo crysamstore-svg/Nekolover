@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useId, memo } from 'react';
 import {
   ShelfBookendId,
   ShelfDecorConfig,
@@ -38,32 +38,34 @@ function resolvePropId(type: DecorationType): ShelfDecorPropId {
   }
 }
 
-export const ShelfDecorArt: React.FC<{ id: ShelfDecorPropId; className?: string }> = ({
+export const ShelfDecorArt: React.FC<{ id: ShelfDecorPropId; className?: string }> = memo(({
   id,
   className = 'w-full h-full',
 }) => {
+  const uid = useId().replace(/:/g, '');
+
   switch (id) {
     // 1. KAWAII: Lámpara Nube luminosa (descansando en la base)
     case 'kawaii-cloud-lamp':
       return (
         <svg viewBox="4 20 112 67" preserveAspectRatio="xMidYMax meet" className={className} aria-hidden="true">
           <defs>
-            <radialGradient id="nlCloudGlow" cx="50%" cy="62%" r="48%">
+            <radialGradient id={`nlCloudGlow-${uid}`} cx="50%" cy="62%" r="48%">
               <stop offset="0%" stopColor="#fde68a" stopOpacity="0.6" />
               <stop offset="65%" stopColor="#fef08a" stopOpacity="0.18" />
               <stop offset="100%" stopColor="#fef08a" stopOpacity="0" />
             </radialGradient>
-            <linearGradient id="nlCloudBody" x1="0%" y1="0%" x2="0%" y2="100%">
+            <linearGradient id={`nlCloudBody-${uid}`} x1="0%" y1="0%" x2="0%" y2="100%">
               <stop offset="0%" stopColor="#fffdf5" />
               <stop offset="65%" stopColor="#fef3c7" />
               <stop offset="100%" stopColor="#fde68a" />
             </linearGradient>
           </defs>
-          <ellipse cx="60" cy="60" rx="52" ry="34" fill="url(#nlCloudGlow)" />
+          <ellipse cx="60" cy="60" rx="52" ry="34" fill={`url(#nlCloudGlow-${uid})`} />
           <ellipse cx="60" cy="84.5" rx="38" ry="2.5" fill="rgba(0,0,0,0.58)" />
           <path
             d="M28 84 H92 C102 84 108 77 108 68 C108 60 102 54 94 53 C93 40 82 31 69 32 C62 23 47 24 41 34 C31 35 24 43 24 53 C17 55 12 61 12 69 C12 78 19 84 28 84 Z"
-            fill="url(#nlCloudBody)"
+            fill={`url(#nlCloudBody-${uid})`}
             stroke="#fbbf24"
             strokeWidth="1.5"
             strokeOpacity="0.6"
@@ -83,11 +85,11 @@ export const ShelfDecorArt: React.FC<{ id: ShelfDecorPropId; className?: string 
       return (
         <svg viewBox="14 6 92 114" preserveAspectRatio="xMidYMax meet" className={className} aria-hidden="true">
           <defs>
-            <linearGradient id="nlVaseCream" x1="0%" y1="0%" x2="100%" y2="100%">
+            <linearGradient id={`nlVaseCream-${uid}`} x1="0%" y1="0%" x2="100%" y2="100%">
               <stop offset="0%" stopColor="#fff7ed" />
               <stop offset="100%" stopColor="#f5d0c5" />
             </linearGradient>
-            <linearGradient id="nlTulipPink" x1="0%" y1="0%" x2="0%" y2="100%">
+            <linearGradient id={`nlTulipPink-${uid}`} x1="0%" y1="0%" x2="0%" y2="100%">
               <stop offset="0%" stopColor="#fbcfe8" />
               <stop offset="100%" stopColor="#ec4899" />
             </linearGradient>
@@ -101,20 +103,20 @@ export const ShelfDecorArt: React.FC<{ id: ShelfDecorPropId; className?: string 
           <path d="M66 68 Q86 58 90 46 Q74 52 64 64 Z" fill="#22c55e" />
           {/* Tulips */}
           <g transform="translate(38,24) rotate(-14)">
-            <path d="M-9 6 C-11 -6 -4 -12 0 -10 C4 -12 11 -6 9 6 C7 12 -7 12 -9 6 Z" fill="url(#nlTulipPink)" />
+            <path d="M-9 6 C-11 -6 -4 -12 0 -10 C4 -12 11 -6 9 6 C7 12 -7 12 -9 6 Z" fill={`url(#nlTulipPink-${uid})`} />
             <path d="M-3 -8 Q0 -1 3 -8" fill="#fdf2f8" opacity="0.65" />
           </g>
           <g transform="translate(60,18)">
-            <path d="M-10 7 C-12 -7 -4 -14 0 -11 C4 -14 12 -7 10 7 C8 14 -8 14 -10 7 Z" fill="url(#nlTulipPink)" />
+            <path d="M-10 7 C-12 -7 -4 -14 0 -11 C4 -14 12 -7 10 7 C8 14 -8 14 -10 7 Z" fill={`url(#nlTulipPink-${uid})`} />
             <path d="M-4 -9 Q0 -2 4 -9" fill="#fdf2f8" opacity="0.7" />
           </g>
           <g transform="translate(82,27) rotate(16)">
-            <path d="M-8 5 C-10 -6 -3 -11 0 -9 C3 -11 10 -6 8 5 C6 11 -6 11 -8 5 Z" fill="url(#nlTulipPink)" />
+            <path d="M-8 5 C-10 -6 -3 -11 0 -9 C3 -11 10 -6 8 5 C6 11 -6 11 -8 5 Z" fill={`url(#nlTulipPink-${uid})`} />
           </g>
           {/* Ceramic vase */}
           <path
             d="M46 65 H74 L70 76 C81 84 83 108 75 117 H45 C37 108 39 84 50 76 Z"
-            fill="url(#nlVaseCream)"
+            fill={`url(#nlVaseCream-${uid})`}
             stroke="#f9a8d4"
             strokeWidth="1.2"
           />
@@ -132,7 +134,7 @@ export const ShelfDecorArt: React.FC<{ id: ShelfDecorPropId; className?: string 
       return (
         <svg viewBox="14 24 92 76" preserveAspectRatio="xMidYMax meet" className={className} aria-hidden="true">
           <defs>
-            <linearGradient id="nlRadioPink" x1="0%" y1="0%" x2="0%" y2="100%">
+            <linearGradient id={`nlRadioPink-${uid}`} x1="0%" y1="0%" x2="0%" y2="100%">
               <stop offset="0%" stopColor="#fbcfe8" />
               <stop offset="100%" stopColor="#f472b6" />
             </linearGradient>
@@ -144,7 +146,7 @@ export const ShelfDecorArt: React.FC<{ id: ShelfDecorPropId; className?: string 
           <rect x="30" y="90" width="8" height="7" rx="3" fill="#be185d" />
           <rect x="82" y="90" width="8" height="7" rx="3" fill="#be185d" />
           {/* Main body */}
-          <rect x="20" y="42" width="80" height="50" rx="14" fill="url(#nlRadioPink)" stroke="#fdf2f8" strokeWidth="2" />
+          <rect x="20" y="42" width="80" height="50" rx="14" fill={`url(#nlRadioPink-${uid})`} stroke="#fdf2f8" strokeWidth="2" />
           {/* Gold speaker grill */}
           <rect x="28" y="50" width="38" height="34" rx="8" fill="#4c0519" stroke="#fcd34d" strokeWidth="1.8" />
           <line x1="33" y1="57" x2="61" y2="57" stroke="#fbbf24" strokeWidth="2" strokeLinecap="round" />
@@ -226,25 +228,25 @@ export const ShelfDecorArt: React.FC<{ id: ShelfDecorPropId; className?: string 
       return (
         <svg viewBox="12 8 96 102" preserveAspectRatio="xMidYMax meet" className={className} aria-hidden="true">
           <defs>
-            <radialGradient id="nlMoonAura" cx="50%" cy="46%" r="48%">
+            <radialGradient id={`nlMoonAura-${uid}`} cx="50%" cy="46%" r="48%">
               <stop offset="0%" stopColor="#fef08a" stopOpacity="0.65" />
               <stop offset="65%" stopColor="#fde047" stopOpacity="0.16" />
               <stop offset="100%" stopColor="#fde047" stopOpacity="0" />
             </radialGradient>
-            <radialGradient id="nlMoonSurface" cx="38%" cy="35%" r="65%">
+            <radialGradient id={`nlMoonSurface-${uid}`} cx="38%" cy="35%" r="65%">
               <stop offset="0%" stopColor="#fffbeb" />
               <stop offset="55%" stopColor="#fde68a" />
               <stop offset="100%" stopColor="#f59e0b" />
             </radialGradient>
           </defs>
-          <circle cx="60" cy="54" r="45" fill="url(#nlMoonAura)" />
+          <circle cx="60" cy="54" r="45" fill={`url(#nlMoonAura-${uid})`} />
           <ellipse cx="60" cy="107.5" rx="28" ry="2.5" fill="rgba(0,0,0,0.58)" />
           {/* Wooden tripod stand */}
           <line x1="42" y1="78" x2="36" y2="106" stroke="#d97706" strokeWidth="5.5" strokeLinecap="round" />
           <line x1="78" y1="78" x2="84" y2="106" stroke="#b45309" strokeWidth="5.5" strokeLinecap="round" />
           <line x1="40" y1="90" x2="80" y2="90" stroke="#92400e" strokeWidth="4" strokeLinecap="round" />
           {/* Moon sphere */}
-          <circle cx="60" cy="54" r="30" fill="url(#nlMoonSurface)" stroke="#fef9c3" strokeWidth="1.2" />
+          <circle cx="60" cy="54" r="30" fill={`url(#nlMoonSurface-${uid})`} stroke="#fef9c3" strokeWidth="1.2" />
           <circle cx="49" cy="43" r="5" fill="#f59e0b" opacity="0.22" />
           <circle cx="71" cy="58" r="7" fill="#d97706" opacity="0.18" />
           <circle cx="55" cy="67" r="3.5" fill="#d97706" opacity="0.22" />
@@ -257,26 +259,26 @@ export const ShelfDecorArt: React.FC<{ id: ShelfDecorPropId; className?: string 
       return (
         <svg viewBox="12 18 96 89" preserveAspectRatio="xMidYMax meet" className={className} aria-hidden="true">
           <defs>
-            <radialGradient id="nlCatLampAura" cx="50%" cy="58%" r="46%">
+            <radialGradient id={`nlCatLampAura-${uid}`} cx="50%" cy="58%" r="46%">
               <stop offset="0%" stopColor="#fef08a" stopOpacity="0.65" />
               <stop offset="70%" stopColor="#fde68a" stopOpacity="0.18" />
               <stop offset="100%" stopColor="#fde68a" stopOpacity="0" />
             </radialGradient>
-            <linearGradient id="nlCatLampBody" x1="0%" y1="0%" x2="0%" y2="100%">
+            <linearGradient id={`nlCatLampBody-${uid}`} x1="0%" y1="0%" x2="0%" y2="100%">
               <stop offset="0%" stopColor="#ffffff" />
               <stop offset="75%" stopColor="#fef3c7" />
               <stop offset="100%" stopColor="#fde68a" />
             </linearGradient>
           </defs>
-          <circle cx="60" cy="64" r="44" fill="url(#nlCatLampAura)" />
+          <circle cx="60" cy="64" r="44" fill={`url(#nlCatLampAura-${uid})`} />
           <ellipse cx="60" cy="104.5" rx="30" ry="2.5" fill="rgba(0,0,0,0.58)" />
           {/* Cat ears */}
-          <path d="M35 48 L33 23 L52 38 Z" fill="url(#nlCatLampBody)" stroke="#fde68a" strokeWidth="1.4" />
-          <path d="M85 48 L87 23 L68 38 Z" fill="url(#nlCatLampBody)" stroke="#fde68a" strokeWidth="1.4" />
+          <path d="M35 48 L33 23 L52 38 Z" fill={`url(#nlCatLampBody-${uid})`} stroke="#fde68a" strokeWidth="1.4" />
+          <path d="M85 48 L87 23 L68 38 Z" fill={`url(#nlCatLampBody-${uid})`} stroke="#fde68a" strokeWidth="1.4" />
           {/* Rounded kitty body */}
           <path
             d="M27 80 C27 48 39 36 60 36 C81 36 93 48 93 80 C93 98 81 104 60 104 C39 104 27 98 27 80 Z"
-            fill="url(#nlCatLampBody)"
+            fill={`url(#nlCatLampBody-${uid})`}
             stroke="#fbbf24"
             strokeWidth="1.4"
             strokeOpacity="0.5"
@@ -298,14 +300,14 @@ export const ShelfDecorArt: React.FC<{ id: ShelfDecorPropId; className?: string 
       return (
         <svg viewBox="14 6 82 115" preserveAspectRatio="xMidYMax meet" className={className} aria-hidden="true">
           <defs>
-            <radialGradient id="nlLanternGlow" cx="50%" cy="58%" r="42%">
+            <radialGradient id={`nlLanternGlow-${uid}`} cx="50%" cy="58%" r="42%">
               <stop offset="0%" stopColor="#fbbf24" stopOpacity="0.85" />
               <stop offset="50%" stopColor="#f59e0b" stopOpacity="0.3" />
               <stop offset="100%" stopColor="#f59e0b" stopOpacity="0" />
             </radialGradient>
           </defs>
           <ellipse cx="55" cy="119" rx="30" ry="2.5" fill="rgba(0,0,0,0.62)" />
-          <circle cx="55" cy="76" r="40" fill="url(#nlLanternGlow)" />
+          <circle cx="55" cy="76" r="40" fill={`url(#nlLanternGlow-${uid})`} />
           {/* Ring handle */}
           <circle cx="55" cy="16" r="7" fill="none" stroke="#52525b" strokeWidth="3" />
           {/* Roof dome */}
@@ -329,12 +331,12 @@ export const ShelfDecorArt: React.FC<{ id: ShelfDecorPropId; className?: string 
       return (
         <svg viewBox="12 10 96 103" preserveAspectRatio="xMidYMax meet" className={className} aria-hidden="true">
           <defs>
-            <radialGradient id="nlCottageWarm" cx="50%" cy="68%" r="40%">
+            <radialGradient id={`nlCottageWarm-${uid}`} cx="50%" cy="68%" r="40%">
               <stop offset="0%" stopColor="#fbbf24" stopOpacity="0.6" />
               <stop offset="100%" stopColor="#fbbf24" stopOpacity="0" />
             </radialGradient>
           </defs>
-          <circle cx="60" cy="74" r="42" fill="url(#nlCottageWarm)" />
+          <circle cx="60" cy="74" r="42" fill={`url(#nlCottageWarm-${uid})`} />
           <ellipse cx="60" cy="110.5" rx="34" ry="2.5" fill="rgba(0,0,0,0.6)" />
           {/* Chimney */}
           <rect x="74" y="27" width="11" height="24" rx="2" fill="#78350f" />
@@ -420,16 +422,16 @@ export const ShelfDecorArt: React.FC<{ id: ShelfDecorPropId; className?: string 
       return (
         <svg viewBox="14 16 82 94" preserveAspectRatio="xMidYMax meet" className={className} aria-hidden="true">
           <defs>
-            <radialGradient id="nlPotionGlow" cx="50%" cy="62%" r="44%">
+            <radialGradient id={`nlPotionGlow-${uid}`} cx="50%" cy="62%" r="44%">
               <stop offset="0%" stopColor="#a78bfa" stopOpacity="0.6" />
               <stop offset="100%" stopColor="#a78bfa" stopOpacity="0" />
             </radialGradient>
-            <linearGradient id="nlPotionFluid" x1="0%" y1="0%" x2="0%" y2="100%">
+            <linearGradient id={`nlPotionFluid-${uid}`} x1="0%" y1="0%" x2="0%" y2="100%">
               <stop offset="0%" stopColor="#c084fc" />
               <stop offset="100%" stopColor="#5b21b6" />
             </linearGradient>
           </defs>
-          <circle cx="55" cy="70" r="40" fill="url(#nlPotionGlow)" />
+          <circle cx="55" cy="70" r="40" fill={`url(#nlPotionGlow-${uid})`} />
           <ellipse cx="55" cy="107.5" rx="28" ry="2.5" fill="rgba(0,0,0,0.6)" />
           <rect x="46" y="21" width="18" height="12" rx="3" fill="#b45309" />
           <rect x="42" y="32" width="26" height="8" rx="3" fill="#ddd6fe" opacity="0.85" />
@@ -441,7 +443,7 @@ export const ShelfDecorArt: React.FC<{ id: ShelfDecorPropId; className?: string 
           />
           <path
             d="M32 76 C28 89 35 103 55 103 C75 103 82 89 78 76 Q66 72 55 76 Q44 80 32 76 Z"
-            fill="url(#nlPotionFluid)"
+            fill={`url(#nlPotionFluid-${uid})`}
           />
           <path d="M51 64 A8 8 0 1 0 60 74 A6 6 0 1 1 51 64 Z" fill="#fde68a" />
           <circle cx="65" cy="87" r="2.2" fill="#fde68a" />
@@ -454,7 +456,7 @@ export const ShelfDecorArt: React.FC<{ id: ShelfDecorPropId; className?: string 
       return (
         <svg viewBox="16 16 78 100" preserveAspectRatio="xMidYMax meet" className={className} aria-hidden="true">
           <defs>
-            <linearGradient id="nlMaskSlate" x1="0%" y1="0%" x2="100%" y2="100%">
+            <linearGradient id={`nlMaskSlate-${uid}`} x1="0%" y1="0%" x2="100%" y2="100%">
               <stop offset="0%" stopColor="#f8fafc" />
               <stop offset="60%" stopColor="#cbd5e1" />
               <stop offset="100%" stopColor="#64748b" />
@@ -465,7 +467,7 @@ export const ShelfDecorArt: React.FC<{ id: ShelfDecorPropId; className?: string 
           <ellipse cx="55" cy="109" rx="22" ry="5" fill="#18181b" stroke="#fb7185" strokeWidth="1" strokeOpacity="0.5" />
           <path
             d="M55 20 C35 20 24 36 24 56 C24 80 41 96 55 96 C69 96 86 80 86 56 C86 36 75 20 55 20 Z"
-            fill="url(#nlMaskSlate)"
+            fill={`url(#nlMaskSlate-${uid})`}
             stroke="#0f172a"
             strokeWidth="2"
           />
@@ -486,7 +488,7 @@ export const ShelfDecorArt: React.FC<{ id: ShelfDecorPropId; className?: string 
       return (
         <svg viewBox="14 8 92 112" preserveAspectRatio="xMidYMax meet" className={className} aria-hidden="true">
           <defs>
-            <linearGradient id="nlObsidianVase" x1="0%" y1="0%" x2="100%" y2="100%">
+            <linearGradient id={`nlObsidianVase-${uid}`} x1="0%" y1="0%" x2="100%" y2="100%">
               <stop offset="0%" stopColor="#3f3f46" />
               <stop offset="50%" stopColor="#18181b" />
               <stop offset="100%" stopColor="#09090b" />
@@ -510,7 +512,7 @@ export const ShelfDecorArt: React.FC<{ id: ShelfDecorPropId; className?: string 
           </g>
           <path
             d="M46 66 H74 L70 77 C81 86 82 108 74 117 H46 C38 108 39 86 50 77 Z"
-            fill="url(#nlObsidianVase)"
+            fill={`url(#nlObsidianVase-${uid})`}
             stroke="#fb7185"
             strokeWidth="1.2"
             strokeOpacity="0.45"
@@ -553,7 +555,7 @@ export const ShelfDecorArt: React.FC<{ id: ShelfDecorPropId; className?: string 
       return (
         <svg viewBox="16 16 78 96" preserveAspectRatio="xMidYMax meet" className={className} aria-hidden="true">
           <defs>
-            <linearGradient id="nlDarkMoonMetal" x1="0%" y1="0%" x2="100%" y2="100%">
+            <linearGradient id={`nlDarkMoonMetal-${uid}`} x1="0%" y1="0%" x2="100%" y2="100%">
               <stop offset="0%" stopColor="#e2e8f0" />
               <stop offset="50%" stopColor="#94a3b8" />
               <stop offset="100%" stopColor="#334155" />
@@ -564,7 +566,7 @@ export const ShelfDecorArt: React.FC<{ id: ShelfDecorPropId; className?: string 
           <rect x="52" y="88" width="6" height="14" fill="#3f3f46" />
           <path
             d="M66 20 C41 21 24 41 27 65 C30 85 48 96 68 92 C48 88 41 68 45 50 C48 35 56 26 66 20 Z"
-            fill="url(#nlDarkMoonMetal)"
+            fill={`url(#nlDarkMoonMetal-${uid})`}
             stroke="#f8fafc"
             strokeWidth="1"
             strokeOpacity="0.4"
@@ -600,13 +602,13 @@ export const ShelfDecorArt: React.FC<{ id: ShelfDecorPropId; className?: string 
       return (
         <svg viewBox="14 16 86 99" preserveAspectRatio="xMidYMax meet" className={className} aria-hidden="true">
           <defs>
-            <radialGradient id="nlDarkCandleGlow" cx="50%" cy="32%" r="40%">
+            <radialGradient id={`nlDarkCandleGlow-${uid}`} cx="50%" cy="32%" r="40%">
               <stop offset="0%" stopColor="#fb7185" stopOpacity="0.55" />
               <stop offset="60%" stopColor="#f59e0b" stopOpacity="0.25" />
               <stop offset="100%" stopColor="#f59e0b" stopOpacity="0" />
             </radialGradient>
           </defs>
-          <circle cx="57" cy="40" r="38" fill="url(#nlDarkCandleGlow)" />
+          <circle cx="57" cy="40" r="38" fill={`url(#nlDarkCandleGlow-${uid})`} />
           <ellipse cx="57" cy="112.5" rx="34" ry="2.5" fill="rgba(0,0,0,0.68)" />
           <ellipse cx="57" cy="107" rx="31" ry="6" fill="#27272a" stroke="#71717a" strokeWidth="1.2" />
           <rect x="49" y="42" width="16" height="63" rx="2" fill="#18181b" stroke="#3f3f46" strokeWidth="1" />
@@ -626,12 +628,12 @@ export const ShelfDecorArt: React.FC<{ id: ShelfDecorPropId; className?: string 
       return (
         <svg viewBox="10 4 80 120" preserveAspectRatio="xMidYMax meet" className={className} aria-hidden="true">
           <defs>
-            <linearGradient id="nlCafeWall" x1="0%" y1="0%" x2="0%" y2="100%">
+            <linearGradient id={`nlCafeWall-${uid}`} x1="0%" y1="0%" x2="0%" y2="100%">
               <stop offset="0%" stopColor="#fef9c3" />
               <stop offset="65%" stopColor="#fde68a" />
               <stop offset="100%" stopColor="#f59e0b" />
             </linearGradient>
-            <linearGradient id="nlCafeFrame" x1="0%" y1="0%" x2="100%" y2="0%">
+            <linearGradient id={`nlCafeFrame-${uid}`} x1="0%" y1="0%" x2="100%" y2="0%">
               <stop offset="0%" stopColor="#f5f5f4" />
               <stop offset="50%" stopColor="#e7e5e4" />
               <stop offset="100%" stopColor="#d6d3d1" />
@@ -639,8 +641,8 @@ export const ShelfDecorArt: React.FC<{ id: ShelfDecorPropId; className?: string 
           </defs>
           <ellipse cx="50" cy="121.5" rx="34" ry="2.5" fill="rgba(0,0,0,0.58)" />
           {/* Gable roof & wooden frame */}
-          <path d="M16 20 L50 6 L84 20 V120 H16 Z" fill="url(#nlCafeFrame)" stroke="#a8a29e" strokeWidth="1.4" />
-          <path d="M22 23 L50 11 L78 23 V115 H22 Z" fill="url(#nlCafeWall)" />
+          <path d="M16 20 L50 6 L84 20 V120 H16 Z" fill={`url(#nlCafeFrame-${uid})`} stroke="#a8a29e" strokeWidth="1.4" />
+          <path d="M22 23 L50 11 L78 23 V115 H22 Z" fill={`url(#nlCafeWall-${uid})`} />
           {/* Roof skylight panels */}
           <path d="M24 22 L50 11 L76 22" fill="none" stroke="#b45309" strokeWidth="2" />
           {/* Upper shuttered window & striped awning */}
@@ -682,17 +684,17 @@ export const ShelfDecorArt: React.FC<{ id: ShelfDecorPropId; className?: string 
       return (
         <svg viewBox="12 4 76 120" preserveAspectRatio="xMidYMax meet" className={className} aria-hidden="true">
           <defs>
-            <linearGradient id="nlArchSky" x1="0%" y1="0%" x2="0%" y2="100%">
+            <linearGradient id={`nlArchSky-${uid}`} x1="0%" y1="0%" x2="0%" y2="100%">
               <stop offset="0%" stopColor="#082f49" />
               <stop offset="55%" stopColor="#1e3a8a" />
               <stop offset="100%" stopColor="#0f172a" />
             </linearGradient>
-            <radialGradient id="nlArchBridgeGlow" cx="50%" cy="84%" r="34%">
+            <radialGradient id={`nlArchBridgeGlow-${uid}`} cx="50%" cy="84%" r="34%">
               <stop offset="0%" stopColor="#fef08a" stopOpacity="0.95" />
               <stop offset="60%" stopColor="#f59e0b" stopOpacity="0.35" />
               <stop offset="100%" stopColor="#f59e0b" stopOpacity="0" />
             </radialGradient>
-            <clipPath id="nlArchClip">
+            <clipPath id={`nlArchClip-${uid}`}>
               <path d="M22 112 V48 C22 25 36 14 50 9 C64 14 78 25 78 48 V112 Z" />
             </clipPath>
           </defs>
@@ -700,8 +702,8 @@ export const ShelfDecorArt: React.FC<{ id: ShelfDecorPropId; className?: string 
           {/* Wooden plinth base */}
           <rect x="18" y="114" width="64" height="7" rx="1.5" fill="#27272a" stroke="#52525b" strokeWidth="1" />
           {/* Interior diorama clipped inside pointed gothic arch */}
-          <g clipPath="url(#nlArchClip)">
-            <rect x="20" y="8" width="60" height="106" fill="url(#nlArchSky)" />
+          <g clipPath={`url(#nlArchClip-${uid})`}>
+            <rect x="20" y="8" width="60" height="106" fill={`url(#nlArchSky-${uid})`} />
             {/* Stars */}
             <circle cx="33" cy="30" r="1.5" fill="#fde68a" />
             <circle cx="67" cy="28" r="1.3" fill="#fef08a" />
@@ -713,7 +715,7 @@ export const ShelfDecorArt: React.FC<{ id: ShelfDecorPropId; className?: string 
             <polygon points="20,76 34,50 45,76" fill="#334155" />
             <polygon points="56,76 68,52 80,76" fill="#334155" />
             {/* Warm glowing village & bridge */}
-            <circle cx="54" cy="96" r="24" fill="url(#nlArchBridgeGlow)" />
+            <circle cx="54" cy="96" r="24" fill={`url(#nlArchBridgeGlow-${uid})`} />
             <polygon points="24,90 36,74 48,90" fill="#1e293b" stroke="#f59e0b" strokeWidth="0.7" />
             <rect x="29" y="85" width="5" height="6" fill="#fde047" />
             <polygon points="48,92 61,72 74,92" fill="#1e293b" stroke="#f59e0b" strokeWidth="0.7" />
@@ -745,7 +747,7 @@ export const ShelfDecorArt: React.FC<{ id: ShelfDecorPropId; className?: string 
       return (
         <svg viewBox="14 8 72 116" preserveAspectRatio="xMidYMax meet" className={className} aria-hidden="true">
           <defs>
-            <linearGradient id="nlKnightPlate" x1="0%" y1="0%" x2="100%" y2="100%">
+            <linearGradient id={`nlKnightPlate-${uid}`} x1="0%" y1="0%" x2="100%" y2="100%">
               <stop offset="0%" stopColor="#f1f5f9" />
               <stop offset="45%" stopColor="#94a3b8" />
               <stop offset="100%" stopColor="#334155" />
@@ -754,15 +756,15 @@ export const ShelfDecorArt: React.FC<{ id: ShelfDecorPropId; className?: string 
           <ellipse cx="50" cy="121.5" rx="22" ry="2.5" fill="rgba(0,0,0,0.65)" />
           {/* Crossed greaves & boots */}
           <path d="M46 72 L38 96 L49 118" fill="none" stroke="#64748b" strokeWidth="8" strokeLinecap="round" strokeLinejoin="round" />
-          <path d="M57 70 L53 96 L39 117" fill="none" stroke="url(#nlKnightPlate)" strokeWidth="8.5" strokeLinecap="round" strokeLinejoin="round" />
+          <path d="M57 70 L53 96 L39 117" fill="none" stroke={`url(#nlKnightPlate-${uid})`} strokeWidth="8.5" strokeLinecap="round" strokeLinejoin="round" />
           <ellipse cx="38" cy="118.5" rx="7" ry="3.2" fill="#0f172a" />
           <ellipse cx="51" cy="118.5" rx="7" ry="3.2" fill="#1e293b" />
           {/* Armored torso & pauldrons */}
-          <path d="M38 35 C38 29 63 29 66 42 L61 72 H42 Z" fill="url(#nlKnightPlate)" stroke="#1e293b" strokeWidth="1.2" />
-          <ellipse cx="63" cy="40" rx="8.5" ry="7" fill="url(#nlKnightPlate)" stroke="#334155" strokeWidth="1.2" />
+          <path d="M38 35 C38 29 63 29 66 42 L61 72 H42 Z" fill={`url(#nlKnightPlate-${uid})`} stroke="#1e293b" strokeWidth="1.2" />
+          <ellipse cx="63" cy="40" rx="8.5" ry="7" fill={`url(#nlKnightPlate-${uid})`} stroke="#334155" strokeWidth="1.2" />
           <ellipse cx="40" cy="39" rx="7.5" ry="6.5" fill="#cbd5e1" stroke="#334155" strokeWidth="1.2" />
           {/* Helmet bowed down */}
-          <path d="M42 18 C42 10 56 10 58 20 C59 27 52 33 47 32 C42 30 41 24 42 18 Z" fill="url(#nlKnightPlate)" stroke="#1e293b" strokeWidth="1.2" />
+          <path d="M42 18 C42 10 56 10 58 20 C59 27 52 33 47 32 C42 30 41 24 42 18 Z" fill={`url(#nlKnightPlate-${uid})`} stroke="#1e293b" strokeWidth="1.2" />
           <path d="M45 22 L53 26 M44 25 L51 28" stroke="#0f172a" strokeWidth="1.4" strokeLinecap="round" />
           {/* Left arm resting on hip + right arm holding open book */}
           <path d="M64 44 L69 57 L59 68" fill="none" stroke="#94a3b8" strokeWidth="6" strokeLinecap="round" strokeLinejoin="round" />
@@ -778,12 +780,12 @@ export const ShelfDecorArt: React.FC<{ id: ShelfDecorPropId; className?: string 
       return (
         <svg viewBox="6 12 102 104" preserveAspectRatio="xMidYMax meet" className={className} aria-hidden="true">
           <defs>
-            <linearGradient id="nlDragonObsidian" x1="0%" y1="0%" x2="100%" y2="100%">
+            <linearGradient id={`nlDragonObsidian-${uid}`} x1="0%" y1="0%" x2="100%" y2="100%">
               <stop offset="0%" stopColor="#52525b" />
               <stop offset="50%" stopColor="#27272a" />
               <stop offset="100%" stopColor="#09090b" />
             </linearGradient>
-            <linearGradient id="nlDragonWing" x1="0%" y1="0%" x2="100%" y2="100%">
+            <linearGradient id={`nlDragonWing-${uid}`} x1="0%" y1="0%" x2="100%" y2="100%">
               <stop offset="0%" stopColor="#3f3f46" />
               <stop offset="100%" stopColor="#18181b" />
             </linearGradient>
@@ -792,7 +794,7 @@ export const ShelfDecorArt: React.FC<{ id: ShelfDecorPropId; className?: string 
           {/* Large scalloped bat wing with visible bone spars */}
           <path
             d="M49 62 L56 22 L87 18 C79 30 81 41 91 45 C78 47 74 56 79 64 C68 59 60 64 55 71 Z"
-            fill="url(#nlDragonWing)"
+            fill={`url(#nlDragonWing-${uid})`}
             stroke="#94a3b8"
             strokeWidth="1.2"
           />
@@ -815,7 +817,7 @@ export const ShelfDecorArt: React.FC<{ id: ShelfDecorPropId; className?: string 
           {/* Dragon torso & muscular haunch */}
           <path
             d="M43 96 C41 72 53 60 67 66 C80 70 84 88 76 111 H47 Z"
-            fill="url(#nlDragonObsidian)"
+            fill={`url(#nlDragonObsidian-${uid})`}
             stroke="#71717a"
             strokeWidth="1.3"
           />
@@ -833,7 +835,7 @@ export const ShelfDecorArt: React.FC<{ id: ShelfDecorPropId; className?: string 
           <path d="M46 34 L54 31 L48 39 Z" fill="#52525b" />
           <path
             d="M28 42 C29 33 40 28 48 33 C52 39 46 49 36 49 C31 49 28 46 28 42 Z"
-            fill="url(#nlDragonObsidian)"
+            fill={`url(#nlDragonObsidian-${uid})`}
             stroke="#94a3b8"
             strokeWidth="1.2"
           />
@@ -863,12 +865,12 @@ export const ShelfDecorArt: React.FC<{ id: ShelfDecorPropId; className?: string 
       return (
         <svg viewBox="10 4 80 120" preserveAspectRatio="xMidYMax meet" className={className} aria-hidden="true">
           <defs>
-            <linearGradient id="nlPortalLight" x1="50%" y1="0%" x2="50%" y2="100%">
+            <linearGradient id={`nlPortalLight-${uid}`} x1="50%" y1="0%" x2="50%" y2="100%">
               <stop offset="0%" stopColor="#fde68a" />
               <stop offset="45%" stopColor="#f97316" stopOpacity="0.65" />
               <stop offset="100%" stopColor="#312e81" />
             </linearGradient>
-            <clipPath id="nlPortalArch">
+            <clipPath id={`nlPortalArch-${uid}`}>
               <path d="M31 108 V50 C31 32 69 32 69 50 V108 Z" />
             </clipPath>
           </defs>
@@ -876,9 +878,9 @@ export const ShelfDecorArt: React.FC<{ id: ShelfDecorPropId; className?: string 
           {/* Obsidian shelf base */}
           <rect x="14" y="114" width="72" height="7" rx="1.5" fill="#18181b" stroke="#3f3f46" strokeWidth="1" />
           {/* Inner misty portal scene */}
-          <g clipPath="url(#nlPortalArch)">
+          <g clipPath={`url(#nlPortalArch-${uid})`}>
             <rect x="30" y="30" width="40" height="80" fill="#1e1b4b" />
-            <ellipse cx="50" cy="54" rx="14" ry="28" fill="url(#nlPortalLight)" />
+            <ellipse cx="50" cy="54" rx="14" ry="28" fill={`url(#nlPortalLight-${uid})`} />
             {/* Cloaked silhouette */}
             <path d="M44 96 L48 73 C48 69 52 69 52 73 L56 96 C52 98 48 98 44 96 Z" fill="#09090b" />
             <circle cx="50" cy="68" r="3" fill="#09090b" />
@@ -908,17 +910,17 @@ export const ShelfDecorArt: React.FC<{ id: ShelfDecorPropId; className?: string 
       return (
         <svg viewBox="14 2 72 120" preserveAspectRatio="xMidYMax meet" className={className} aria-hidden="true">
           <defs>
-            <linearGradient id="nlBladeLeft" x1="0%" y1="0%" x2="100%" y2="0%">
+            <linearGradient id={`nlBladeLeft-${uid}`} x1="0%" y1="0%" x2="100%" y2="0%">
               <stop offset="0%" stopColor="#cbd5e1" />
               <stop offset="50%" stopColor="#94a3b8" />
               <stop offset="100%" stopColor="#475569" />
             </linearGradient>
-            <linearGradient id="nlBladeEdge" x1="0%" y1="0%" x2="100%" y2="0%">
+            <linearGradient id={`nlBladeEdge-${uid}`} x1="0%" y1="0%" x2="100%" y2="0%">
               <stop offset="0%" stopColor="#64748b" />
               <stop offset="65%" stopColor="#f1f5f9" />
               <stop offset="100%" stopColor="#e2e8f0" />
             </linearGradient>
-            <radialGradient id="nlRoseBloom" cx="42%" cy="38%" r="60%">
+            <radialGradient id={`nlRoseBloom-${uid}`} cx="42%" cy="38%" r="60%">
               <stop offset="0%" stopColor="#fb7185" />
               <stop offset="40%" stopColor="#e11d48" />
               <stop offset="80%" stopColor="#9f1239" />
@@ -936,13 +938,13 @@ export const ShelfDecorArt: React.FC<{ id: ShelfDecorPropId; className?: string 
           {/* Wavy double-edge steel hunter blade plunging into rose bed */}
           <path
             d="M44 54 C42 63 45 71 43 80 C42 87 44 92 45 99 H55 C56 91 55 83 57 74 C58 66 55 59 54 54 C51 54 51 50 54 49 H44 Z"
-            fill="url(#nlBladeLeft)"
+            fill={`url(#nlBladeLeft-${uid})`}
             stroke="#1e293b"
             strokeWidth="1.2"
           />
           <path
             d="M50 50 L50 98 L55 98 C56 90 55 83 57 74 C58 66 55 59 54 54 C51 54 51 50 54 49 Z"
-            fill="url(#nlBladeEdge)"
+            fill={`url(#nlBladeEdge-${uid})`}
             opacity="0.88"
           />
           {/* Blade fuller / center ridge */}
@@ -964,14 +966,14 @@ export const ShelfDecorArt: React.FC<{ id: ShelfDecorPropId; className?: string 
           {/* Back center sculpted rose enveloping blade */}
           <g transform="translate(50,94)">
             <circle cx="0" cy="0" r="11.5" fill="#7f1d1d" stroke="#4c0519" strokeWidth="1" />
-            <path d="M-8 -3 C-8 -10 8 -10 8 -2 C8 5 -6 7 -8 -3 Z" fill="url(#nlRoseBloom)" />
+            <path d="M-8 -3 C-8 -10 8 -10 8 -2 C8 5 -6 7 -8 -3 Z" fill={`url(#nlRoseBloom-${uid})`} />
             <path d="M-5 -2 C-3 -7 4 -7 4 -2 C4 2 -4 3 -5 -2 Z" fill="#9f1239" />
             <path d="M-2 -1 Q0 -3 2 -1 Q0 1 -2 -1" fill="#f43f5e" />
           </g>
           {/* Left sculpted crimson rose */}
           <g transform="translate(34,107)">
             <circle cx="0" cy="0" r="12.5" fill="#881337" stroke="#4c0519" strokeWidth="1" />
-            <path d="M-10 3 C-12 -8 -3 -12 5 -10 C11 -7 12 4 6 9 C-2 12 -8 8 -10 3 Z" fill="url(#nlRoseBloom)" />
+            <path d="M-10 3 C-12 -8 -3 -12 5 -10 C11 -7 12 4 6 9 C-2 12 -8 8 -10 3 Z" fill={`url(#nlRoseBloom-${uid})`} />
             <path d="M-6 -2 C-5 -8 6 -8 5 -1 C5 4 -4 5 -6 -2 Z" fill="#be123c" stroke="#fda4af" strokeWidth="0.4" strokeOpacity="0.45" />
             <path d="M-3 -1 C-2 -4 3 -4 2 0 C2 2 -2 2 -3 -1 Z" fill="#4c0519" />
             <path d="M-1 -1 Q1 -3 2 -1" stroke="#fb7185" strokeWidth="0.9" fill="none" />
@@ -979,7 +981,7 @@ export const ShelfDecorArt: React.FC<{ id: ShelfDecorPropId; className?: string 
           {/* Right sculpted crimson rose */}
           <g transform="translate(65,107)">
             <circle cx="0" cy="0" r="12.5" fill="#881337" stroke="#4c0519" strokeWidth="1" />
-            <path d="M-10 3 C-12 -8 -3 -12 5 -10 C11 -7 12 4 6 9 C-2 12 -8 8 -10 3 Z" fill="url(#nlRoseBloom)" />
+            <path d="M-10 3 C-12 -8 -3 -12 5 -10 C11 -7 12 4 6 9 C-2 12 -8 8 -10 3 Z" fill={`url(#nlRoseBloom-${uid})`} />
             <path d="M-6 -2 C-5 -8 6 -8 5 -1 C5 4 -4 5 -6 -2 Z" fill="#be123c" stroke="#fda4af" strokeWidth="0.4" strokeOpacity="0.45" />
             <path d="M-3 -1 C-2 -4 3 -4 2 0 C2 2 -2 2 -3 -1 Z" fill="#4c0519" />
             <path d="M-1 -1 Q1 -3 2 -1" stroke="#fb7185" strokeWidth="0.9" fill="none" />
@@ -998,7 +1000,7 @@ export const ShelfDecorArt: React.FC<{ id: ShelfDecorPropId; className?: string 
       return (
         <svg viewBox="14 6 72 118" preserveAspectRatio="xMidYMax meet" className={className} aria-hidden="true">
           <defs>
-            <linearGradient id="nlHoodFigure" x1="0%" y1="0%" x2="100%" y2="100%">
+            <linearGradient id={`nlHoodFigure-${uid}`} x1="0%" y1="0%" x2="100%" y2="100%">
               <stop offset="0%" stopColor="#cbd5e1" />
               <stop offset="55%" stopColor="#64748b" />
               <stop offset="100%" stopColor="#1e293b" />
@@ -1016,7 +1018,7 @@ export const ShelfDecorArt: React.FC<{ id: ShelfDecorPropId; className?: string 
           <rect x="63" y="68" width="4" height="7" fill="#facc15" />
           <rect x="47" y="74" width="6" height="12" rx="3" fill="#fde047" />
           {/* Hooded shadowed figure */}
-          <path d="M40 116 L45 72 C46 62 67 62 71 74 L74 102 L68 116 Z" fill="url(#nlHoodFigure)" />
+          <path d="M40 116 L45 72 C46 62 67 62 71 74 L74 102 L68 116 Z" fill={`url(#nlHoodFigure-${uid})`} />
           <path d="M49 54 C49 44 63 44 64 56 C64 62 59 68 55 68 C50 68 48 61 49 54 Z" fill="#94a3b8" />
           <ellipse cx="56" cy="58" rx="4.5" ry="6" fill="#09090b" />
           {/* Single red rose */}
@@ -1025,7 +1027,7 @@ export const ShelfDecorArt: React.FC<{ id: ShelfDecorPropId; className?: string 
         </svg>
       );
   }
-};
+});
 
 interface ShelfDecorationProps {
   type: DecorationType;
@@ -1035,7 +1037,7 @@ interface ShelfDecorationProps {
   onBeforeClick?: () => boolean;
 }
 
-export const ShelfDecoration: React.FC<ShelfDecorationProps> = ({
+export const ShelfDecoration: React.FC<ShelfDecorationProps> = memo(({
   type,
   position = 'inline',
   compact = false,
@@ -1111,12 +1113,12 @@ export const ShelfDecoration: React.FC<ShelfDecorationProps> = ({
       >
         <ShelfDecorArt
           id={propId}
-          className="w-full h-full drop-shadow-[0_3px_5px_rgba(0,0,0,0.75)] transition-transform duration-150 group-hover:scale-105"
+          className="w-full h-full transition-transform duration-150 group-hover:scale-105"
         />
       </div>
     </div>
   );
-};
+});
 
 /* ==========================================================================
    Bookends (Sujetalibros Izquierdo & Derecho descansando sobre la repisa)
@@ -1125,10 +1127,20 @@ export const ShelfBookendArt: React.FC<{
   id: Exclude<ShelfBookendId, 'none'>;
   side: 'left' | 'right';
   className?: string;
-}> = ({ id, side, className = 'w-full h-full' }) => {
+}> = memo(({ id, side, className = 'w-full h-full' }) => {
+  const uid = useId().replace(/:/g, '');
   const isRight = side === 'right';
 
   switch (id) {
+    // 0. DARK CAMBIANTE (Vista combinada en miniatura)
+    case 'dark-dynamic':
+      return (
+        <ShelfBookendArt
+          id={isRight ? 'dark-rose-sword' : 'gothic-raven-skull'}
+          side={side}
+          className={className}
+        />
+      );
     // 1. SUJETALIBROS LECTORES EN SILUETA (Chica a la izq., Chico a la der.)
     case 'readers-silhouette':
       return (
@@ -1175,7 +1187,7 @@ export const ShelfBookendArt: React.FC<{
 
     // 2. SUJETALIBROS ALAS DE HADA (Madera de nogal + vitral ámbar)
     case 'fairy-wings': {
-      const wingGradId = `nlWingStained-${side}`;
+      const wingGradId = `nlWingStained-${side}-${uid}`;
       return (
         <svg viewBox="0 6 82 114" preserveAspectRatio="xMidYMax meet" className={className} aria-hidden="true">
           <defs>
@@ -1272,8 +1284,102 @@ export const ShelfBookendArt: React.FC<{
           )}
         </svg>
       );
+
+    // 4. SUJETALIBROS CRÁNEO Y CUERVO GÓTICO (Dark gratis)
+    case 'gothic-raven-skull':
+      return (
+        <svg viewBox="0 6 80 114" preserveAspectRatio="xMidYMax meet" className={className} aria-hidden="true">
+          <defs>
+            <linearGradient id={`nlBoneSkull-${uid}`} x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" stopColor="#f5f5f4" />
+              <stop offset="60%" stopColor="#d6d3d1" />
+              <stop offset="100%" stopColor="#78716c" />
+            </linearGradient>
+          </defs>
+          <ellipse cx="40" cy="117.5" rx="34" ry="2.2" fill="rgba(0,0,0,0.72)" />
+          <g transform={isRight ? 'translate(80,0) scale(-1,1)' : undefined}>
+            {/* Obsidian Gothic L-bracket */}
+            <rect x="67" y="14" width="9" height="101" rx="2" fill="#18181b" stroke="#3f3f46" strokeWidth="1.2" />
+            <rect x="8" y="109" width="68" height="8" rx="2" fill="#09090b" stroke="#3f3f46" strokeWidth="1.2" />
+            {/* Carved gothic skull resting on base */}
+            <path
+              d="M23 93 C21 76 34 65 48 68 C58 70 64 78 62 91 C60 98 55 101 53 109 H33 L31 100 C26 98 24 96 23 93 Z"
+              fill={`url(#nlBoneSkull-${uid})`}
+              stroke="#44403c"
+              strokeWidth="1.2"
+            />
+            {/* Skull eye sockets & teeth */}
+            <ellipse cx="36" cy="84" rx="4.8" ry="5.5" fill="#09090b" />
+            <ellipse cx="50" cy="85" rx="4.4" ry="5.2" fill="#09090b" />
+            <circle cx="36" cy="84" r="1.4" fill="#fb7185" opacity="0.7" />
+            <polygon points="42,91 39.5,96 44.5,96" fill="#09090b" />
+            <line x1="37" y1="102" x2="37" y2="108" stroke="#44403c" strokeWidth="1.2" />
+            <line x1="43" y1="102" x2="43" y2="108" stroke="#44403c" strokeWidth="1.2" />
+            <line x1="49" y1="102" x2="49" y2="108" stroke="#44403c" strokeWidth="1.2" />
+            {/* Perched Midnight Raven atop the skull */}
+            <path
+              d="M29 66 C26 52 34 39 47 36 C56 34 62 41 61 52 L53 69 L37 68 Z"
+              fill="#09090b"
+              stroke="#52525b"
+              strokeWidth="1.1"
+            />
+            <path d="M29 63 L14 75 L25 71 L20 79 L35 68 Z" fill="#18181b" stroke="#3f3f46" strokeWidth="0.9" />
+            <circle cx="52" cy="34" r="8" fill="#09090b" stroke="#52525b" strokeWidth="1" />
+            <polygon points="58,32 69,36 58,39" fill="#334155" stroke="#94a3b8" strokeWidth="0.6" />
+            <circle cx="54" cy="33" r="1.5" fill="#fda4af" />
+            <path d="M41 67 L40 72 M48 67 L47 72" stroke="#52525b" strokeWidth="1.5" strokeLinecap="round" />
+          </g>
+        </svg>
+      );
+
+    // 5. SUJETALIBROS ESPADA GÓTICA Y ROSAS CARMESÍ (Dark VIP)
+    case 'dark-rose-sword':
+      return (
+        <svg viewBox="0 6 80 114" preserveAspectRatio="xMidYMax meet" className={className} aria-hidden="true">
+          <defs>
+            <linearGradient id={`nlSwordBlade-${uid}`} x1="0%" y1="0%" x2="100%" y2="0%">
+              <stop offset="0%" stopColor="#64748b" />
+              <stop offset="50%" stopColor="#f8fafc" />
+              <stop offset="100%" stopColor="#475569" />
+            </linearGradient>
+          </defs>
+          <ellipse cx="40" cy="117.5" rx="34" ry="2.2" fill="rgba(0,0,0,0.74)" />
+          <g transform={isRight ? 'translate(80,0) scale(-1,1)' : undefined}>
+            {/* Pointed gothic arch L-bracket */}
+            <path
+              d="M62 115 V30 C62 18 71 10 76 10 V115 Z"
+              fill="#18181b"
+              stroke="#52525b"
+              strokeWidth="1.2"
+            />
+            <rect x="9" y="109" width="67" height="8" rx="2" fill="#09090b" stroke="#52525b" strokeWidth="1.2" />
+            {/* Sword blade rising behind roses */}
+            <polygon points="39,14 44,24 44,109 34,109 34,24" fill={`url(#nlSwordBlade-${uid})`} stroke="#1e293b" strokeWidth="1" />
+            <line x1="39" y1="22" x2="39" y2="104" stroke="#334155" strokeWidth="1" />
+            {/* Ornate dark crossguard & pommel */}
+            <path d="M25 36 Q39 42 53 36 L51 41 Q39 46 27 41 Z" fill="#27272a" stroke="#e2e8f0" strokeWidth="0.9" />
+            <rect x="36.5" y="19" width="5" height="18" rx="1.5" fill="#18181b" stroke="#71717a" strokeWidth="0.8" />
+            <circle cx="39" cy="17" r="3.4" fill="#be123c" stroke="#fda4af" strokeWidth="0.8" />
+            {/* Climbing thorny vine & crimson roses */}
+            <path d="M24 109 Q34 90 48 76 Q32 62 43 44" fill="none" stroke="#3f6212" strokeWidth="2.4" strokeLinecap="round" />
+            <g transform="translate(26,99)">
+              <circle cx="0" cy="0" r="9.5" fill="#881337" stroke="#4c0519" strokeWidth="0.9" />
+              <path d="M-6 -2 C-5 -7 5 -7 5 -1 C4 4 -4 5 -6 -2 Z" fill="#e11d48" />
+              <circle cx="0" cy="-1" r="2.6" fill="#4c0519" />
+            </g>
+            <g transform="translate(46,80)">
+              <circle cx="0" cy="0" r="8.5" fill="#9f1239" stroke="#4c0519" strokeWidth="0.9" />
+              <path d="M-5 -2 C-4 -6 4 -6 4 -1 C4 3 -4 4 -5 -2 Z" fill="#f43f5e" />
+            </g>
+            <g transform="translate(36,61)">
+              <circle cx="0" cy="0" r="7.5" fill="#881337" />
+              <path d="M-4 -1 C-3 -5 4 -5 3 -1 C3 2 -3 3 -4 -1 Z" fill="#e11d48" />
+            </g>
+          </g>
+        </svg>
+      );
   }
-};
+});
 
 interface ShelfBookendProps {
   id: Exclude<ShelfBookendId, 'none'>;
@@ -1284,7 +1390,7 @@ interface ShelfBookendProps {
   onBeforeClick?: () => boolean;
 }
 
-export const ShelfBookend: React.FC<ShelfBookendProps> = ({
+export const ShelfBookend: React.FC<ShelfBookendProps> = memo(({
   id,
   side,
   compact = false,
@@ -1363,18 +1469,18 @@ export const ShelfBookend: React.FC<ShelfBookendProps> = ({
         <ShelfBookendArt
           id={id}
           side={side}
-          className="w-full h-full drop-shadow-[0_3px_5px_rgba(0,0,0,0.75)] transition-transform duration-150 group-hover:scale-105"
+          className="w-full h-full transition-transform duration-150 group-hover:scale-105"
         />
       </div>
     </div>
   );
-};
+});
 
 /* ==========================================================================
    Atmospheric Bookcase Backwall Overlay (Hanging Vines, Starry Moon Wallpaper,
    Gothic Arch Vignette)
    ========================================================================== */
-export const ShelfAtmosphereBackwall: React.FC<{ config: ShelfDecorConfig }> = ({ config }) => {
+export const ShelfAtmosphereBackwall: React.FC<{ config: ShelfDecorConfig }> = memo(({ config }) => {
   if (config.theme === 'none') return null;
 
   return (
@@ -1437,9 +1543,9 @@ export const ShelfAtmosphereBackwall: React.FC<{ config: ShelfDecorConfig }> = (
       )}
     </div>
   );
-};
+});
 
-const HangingIvySvg: React.FC<{ side: 'left' | 'right'; variant: 'kawaii' | 'fantasy' }> = ({
+const HangingIvySvg: React.FC<{ side: 'left' | 'right'; variant: 'kawaii' | 'fantasy' }> = memo(({
   side,
   variant,
 }) => {
@@ -1465,7 +1571,7 @@ const HangingIvySvg: React.FC<{ side: 'left' | 'right'; variant: 'kawaii' | 'fan
       <path d="M26 112 Q42 110 40 124 Q28 125 26 112 Z" fill={leafFillA} />
     </svg>
   );
-};
+});
 
 export const getLedGlowClass = (theme: ShelfDecorTheme, enabled: boolean): string => {
   if (!enabled || theme === 'none') return '';

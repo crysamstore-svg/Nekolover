@@ -378,7 +378,6 @@ body {
   z-index: 0;
   will-change: transform;
   transform: translate3d(0, var(--shelf-parallax-y, 0px), 0) scale(1.03);
-  transition: transform 0.12s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.45s ease;
 }
 
 /* Bottom Bookcase Plinth / Base */
@@ -407,9 +406,7 @@ body {
   position: relative;
   z-index: 14;
   margin-bottom: -5px;
-  will-change: transform;
   transform: translate3d(0, var(--shelf-books-parallax-y, 0px), 0);
-  transition: transform 0.12s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 .bookcase-plank-wrap {
@@ -417,9 +414,7 @@ body {
   z-index: 10;
   margin-left: -4px;
   margin-right: -4px;
-  will-change: transform;
   transform: translate3d(0, var(--shelf-plank-parallax-y, 0px), 0);
-  transition: transform 0.12s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 /* Top horizontal surface where books rest (3D perspective ledge) */

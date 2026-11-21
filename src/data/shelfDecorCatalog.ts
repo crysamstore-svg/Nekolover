@@ -12,6 +12,7 @@ export interface ShelfDecorCatalogItem {
   subtitle: string;
   reaction: string;
   accentColor: string;
+  vipOnly?: boolean;
 }
 
 export interface ShelfBookendCatalogItem {
@@ -21,6 +22,7 @@ export interface ShelfBookendCatalogItem {
   subtitle: string;
   reaction: string;
   accentColor: string;
+  vipOnly?: boolean;
 }
 
 export interface ShelfDecorPreset {
@@ -35,6 +37,11 @@ export interface ShelfDecorPreset {
   hangingVines: boolean;
   cardAccent: string;
 }
+
+export const DARK_BOOKEND_ROTATION: Exclude<
+  ShelfBookendId,
+  'none' | 'dark-dynamic' | 'readers-silhouette' | 'fairy-wings'
+>[] = ['gothic-raven-skull', 'dark-rose-sword', 'crimson-hands'];
 
 export const SHELF_BOOKEND_CATALOG: ShelfBookendCatalogItem[] = [
   {
@@ -52,6 +59,24 @@ export const SHELF_BOOKEND_CATALOG: ShelfBookendCatalogItem[] = [
     subtitle: 'Madera cálida y vitral ámbar',
     reaction: 'Alas translúcidas brillando con magia del bosque.',
     accentColor: '#fbbf24',
+    vipOnly: true,
+  },
+  {
+    id: 'gothic-raven-skull',
+    category: 'dark',
+    name: 'Cráneo y Cuervo',
+    subtitle: 'Cuervo nocturno sobre cráneo gótico',
+    reaction: 'Un cuervo vigila en silencio tus historias más oscuras.',
+    accentColor: '#e2e8f0',
+  },
+  {
+    id: 'dark-rose-sword',
+    category: 'dark',
+    name: 'Espada y Rosas',
+    subtitle: 'Hoja de obsidiana y espinas carmesí',
+    reaction: 'Acero gótico envuelto en rosas carmesí custodiando la balda.',
+    accentColor: '#f43f5e',
+    vipOnly: true,
   },
   {
     id: 'crimson-hands',
@@ -60,6 +85,16 @@ export const SHELF_BOOKEND_CATALOG: ShelfBookendCatalogItem[] = [
     subtitle: 'Manos atadas con cuerda carmesí',
     reaction: 'Manos atadas con cuerda carmesí resguardando tus tomos oscuros.',
     accentColor: '#e11d48',
+    vipOnly: true,
+  },
+  {
+    id: 'dark-dynamic',
+    category: 'dark',
+    name: 'Dark Cambiante',
+    subtitle: 'Alterna los sujetalibros dark en cada repisa',
+    reaction: 'Cada repisa cambia entre Cráneo & Cuervo, Espada & Rosas y Cuerda Carmesí.',
+    accentColor: '#fb7185',
+    vipOnly: true,
   },
 ];
 
@@ -70,7 +105,7 @@ export const SHELF_DECOR_PRESETS: ShelfDecorPreset[] = [
     shortLabel: 'Kawaii',
     subtitle: 'Luz cálida, café y hiedra',
     description:
-      'Nicho Café Soleado, sujetalibros de lectores, lámpara nube, tulipanes, mini radio pastel, conejita y osito.',
+      'Nicho Café Soleado, sujetalibros de lectores, lámpara nube, tulipanes, mini radio pastel y conejita.',
     props: [
       'kawaii-sunshine-cafe',
       'kawaii-cloud-lamp',
@@ -78,6 +113,7 @@ export const SHELF_DECOR_PRESETS: ShelfDecorPreset[] = [
       'kawaii-retro-radio',
       'kawaii-bunny-bear',
       'kawaii-moon-lamp',
+      'kawaii-quote-frame',
     ],
     bookend: 'readers-silhouette',
     ledGlow: true,
@@ -90,7 +126,7 @@ export const SHELF_DECOR_PRESETS: ShelfDecorPreset[] = [
     shortLabel: 'Fantasía',
     subtitle: 'Arcos mágicos, dragón y caballero',
     description:
-      'Sujetalibros Alas de Hada, Dragón con libro dorado, Nicho Arco Estelar, Caballero Lector, farol y gato negro.',
+      'Alas de Hada, Dragón con libro dorado, Nicho Arco Estelar, Caballero Lector, farol y gato negro.',
     props: [
       'fantasy-reading-dragon',
       'fantasy-arch-nook',
@@ -98,6 +134,7 @@ export const SHELF_DECOR_PRESETS: ShelfDecorPreset[] = [
       'fantasy-lantern',
       'fantasy-black-cat',
       'fantasy-moon-potion',
+      'fantasy-cat-lamp',
     ],
     bookend: 'fairy-wings',
     ledGlow: true,
@@ -108,9 +145,9 @@ export const SHELF_DECOR_PRESETS: ShelfDecorPreset[] = [
     id: 'dark',
     name: 'Dark Romance',
     shortLabel: 'Dark',
-    subtitle: 'Portales góticos, dagas y rosas',
+    subtitle: 'Cuervos, dagas, rosas y nichos',
     description:
-      'Sujetalibros Cuerda Carmesí, Portal de Calaveras, Daga entre Rosas, Nicho Mansión y Rosa y velas negras.',
+      'Sujetalibros Dark cambiantes, Portal de Calaveras, Daga entre Rosas, Nicho Mansión y velas negras.',
     props: [
       'dark-skull-portal',
       'dark-dagger-roses',
@@ -118,8 +155,9 @@ export const SHELF_DECOR_PRESETS: ShelfDecorPreset[] = [
       'dark-crimson-roses',
       'dark-masquerade-mask',
       'dark-candles',
+      'dark-crescent-moon',
     ],
-    bookend: 'crimson-hands',
+    bookend: 'dark-dynamic',
     ledGlow: true,
     hangingVines: true,
     cardAccent: '#fb7185',
@@ -135,6 +173,7 @@ export const SHELF_DECOR_CATALOG: ShelfDecorCatalogItem[] = [
     subtitle: 'Book nook casita café con gatito',
     reaction: 'Café recién hecho y un gatito amarillo dormitando entre libros.',
     accentColor: '#fde68a',
+    vipOnly: true,
   },
   {
     id: 'kawaii-cloud-lamp',
@@ -159,6 +198,7 @@ export const SHELF_DECOR_CATALOG: ShelfDecorCatalogItem[] = [
     subtitle: 'Altavoz vintage',
     reaction: 'Radio pastel: sintonizando melodías suaves de lluvia y café.',
     accentColor: '#f472b6',
+    vipOnly: true,
   },
   {
     id: 'kawaii-bunny-bear',
@@ -183,6 +223,7 @@ export const SHELF_DECOR_CATALOG: ShelfDecorCatalogItem[] = [
     subtitle: 'Sobre base de madera',
     reaction: 'Luna llena dorada lista para acompañar lecturas nocturnas.',
     accentColor: '#fcd34d',
+    vipOnly: true,
   },
 
   // 2. FANTASÍA CELESTIAL
@@ -193,6 +234,7 @@ export const SHELF_DECOR_CATALOG: ShelfDecorCatalogItem[] = [
     subtitle: 'Book nook montaña y aldea nocturna',
     reaction: 'Un portal iluminado hacia la ciudad bajo las estrellas.',
     accentColor: '#fbbf24',
+    vipOnly: true,
   },
   {
     id: 'fantasy-reading-dragon',
@@ -201,6 +243,7 @@ export const SHELF_DECOR_CATALOG: ShelfDecorCatalogItem[] = [
     subtitle: 'Obsidiana con tomo dorado',
     reaction: 'Tu dragón de obsidiana devora otro capítulo épico.',
     accentColor: '#fcd34d',
+    vipOnly: true,
   },
   {
     id: 'fantasy-reading-knight',
@@ -209,6 +252,7 @@ export const SHELF_DECOR_CATALOG: ShelfDecorCatalogItem[] = [
     subtitle: 'Armadura plateada en descanso',
     reaction: 'Hasta el guardián del reino se detiene a leer una página más.',
     accentColor: '#cbd5e1',
+    vipOnly: true,
   },
   {
     id: 'fantasy-cat-lamp',
@@ -267,6 +311,7 @@ export const SHELF_DECOR_CATALOG: ShelfDecorCatalogItem[] = [
     subtitle: 'Book nook gótico con cuervo',
     reaction: 'El umbral sombrío aguarda a quienes cruzan el bosque.',
     accentColor: '#fbbf24',
+    vipOnly: true,
   },
   {
     id: 'dark-dagger-roses',
@@ -275,6 +320,7 @@ export const SHELF_DECOR_CATALOG: ShelfDecorCatalogItem[] = [
     subtitle: 'Hoja ondulada y rosas de terciopelo',
     reaction: 'Amor y peligro entrelazados entre pétalos carmesí.',
     accentColor: '#e11d48',
+    vipOnly: true,
   },
   {
     id: 'dark-manor-nook',
@@ -283,6 +329,7 @@ export const SHELF_DECOR_CATALOG: ShelfDecorCatalogItem[] = [
     subtitle: 'Book nook figura en sombra',
     reaction: 'Una rosa carmesí frente a la mansión iluminada en penumbra.',
     accentColor: '#f43f5e',
+    vipOnly: true,
   },
   {
     id: 'dark-masquerade-mask',
@@ -336,8 +383,8 @@ export const SHELF_DECOR_CATALOG: ShelfDecorCatalogItem[] = [
 
 export const DEFAULT_SHELF_DECOR: ShelfDecorConfig = {
   theme: 'kawaii',
-  enabledProps: [...SHELF_DECOR_PRESETS[0].props],
-  bookend: SHELF_DECOR_PRESETS[0].bookend,
+  enabledProps: ['kawaii-cloud-lamp', 'kawaii-tulips-vase', 'kawaii-bunny-bear', 'kawaii-quote-frame'],
+  bookend: 'readers-silhouette',
   ledGlow: true,
   hangingVines: true,
 };
@@ -345,6 +392,80 @@ export const DEFAULT_SHELF_DECOR: ShelfDecorConfig = {
 export function getPresetByTheme(theme: ShelfDecorTheme): ShelfDecorPreset | undefined {
   if (theme === 'none') return undefined;
   return SHELF_DECOR_PRESETS.find((p) => p.id === theme);
+}
+
+export function isShelfPropVip(id: ShelfDecorPropId): boolean {
+  return Boolean(SHELF_DECOR_CATALOG.find((item) => item.id === id)?.vipOnly);
+}
+
+export function isShelfBookendVip(id: ShelfBookendId): boolean {
+  if (id === 'none') return false;
+  return Boolean(SHELF_BOOKEND_CATALOG.find((item) => item.id === id)?.vipOnly);
+}
+
+export function getPresetConfigForUser(
+  theme: Exclude<ShelfDecorTheme, 'none'>,
+  isVip: boolean
+): ShelfDecorConfig {
+  const preset = getPresetByTheme(theme) || SHELF_DECOR_PRESETS[0];
+  const props = preset.props.filter((id) => isVip || !isShelfPropVip(id));
+  const fallbackFreeBookend =
+    SHELF_BOOKEND_CATALOG.find((b) => b.category === theme && !b.vipOnly)?.id ||
+    'readers-silhouette';
+
+  const bookend: ShelfBookendId =
+    preset.bookend !== 'none' && (isVip || !isShelfBookendVip(preset.bookend))
+      ? preset.bookend
+      : fallbackFreeBookend;
+
+  return {
+    theme: preset.id,
+    enabledProps: props.slice(0, 6),
+    bookend,
+    ledGlow: preset.ledGlow,
+    hangingVines: preset.hangingVines,
+  };
+}
+
+export function randomizeShelfDecorConfig(isVip: boolean): ShelfDecorConfig {
+  const themes: Exclude<ShelfDecorTheme, 'none'>[] = ['kawaii', 'fantasy', 'dark'];
+  const pickedTheme = themes[Math.floor(Math.random() * themes.length)];
+
+  const availableProps = SHELF_DECOR_CATALOG.filter((item) => isVip || !item.vipOnly);
+  const themeProps = availableProps.filter((item) => item.category === pickedTheme);
+  const otherProps = availableProps.filter((item) => item.category !== pickedTheme);
+
+  const shuffleList = <T,>(list: T[]): T[] => {
+    const copy = [...list];
+    for (let i = copy.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [copy[i], copy[j]] = [copy[j], copy[i]];
+    }
+    return copy;
+  };
+
+  const count = 4 + Math.floor(Math.random() * 3); // 4 to 6 pieces
+  const pickedThemeProps = shuffleList(themeProps).slice(0, Math.min(themeProps.length, count - 1));
+  const remainingNeeded = Math.max(0, count - pickedThemeProps.length);
+  const pickedAccentProps = shuffleList(otherProps).slice(0, remainingNeeded);
+
+  const combinedProps = shuffleList([...pickedThemeProps, ...pickedAccentProps]).map(
+    (p) => p.id
+  );
+
+  const eligibleBookends = SHELF_BOOKEND_CATALOG.filter((b) => isVip || !b.vipOnly);
+  const themeBookends = eligibleBookends.filter((b) => b.category === pickedTheme);
+  const bookendPool = themeBookends.length > 0 && Math.random() < 0.72 ? themeBookends : eligibleBookends;
+  const pickedBookend =
+    bookendPool[Math.floor(Math.random() * bookendPool.length)]?.id || 'readers-silhouette';
+
+  return {
+    theme: pickedTheme,
+    enabledProps: combinedProps,
+    bookend: pickedBookend,
+    ledGlow: Math.random() > 0.2,
+    hangingVines: Math.random() > 0.25,
+  };
 }
 
 export function isValidShelfDecorProp(id: string): id is ShelfDecorPropId {

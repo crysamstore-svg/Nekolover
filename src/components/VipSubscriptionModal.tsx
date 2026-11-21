@@ -27,7 +27,7 @@ interface VipSubscriptionModalProps {
   onClose: () => void;
   onSubscribed?: () => void;
   onOpenLegalModal?: (tab: LegalTab) => void;
-  featureReason?: 'music' | 'fonts' | 'shelf_bg' | 'stickers' | 'highlights' | 'notes' | null;
+  featureReason?: 'music' | 'fonts' | 'shelf_bg' | 'stickers' | 'highlights' | 'notes' | 'shelf_decor' | null;
 }
 
 export const VipSubscriptionModal: React.FC<VipSubscriptionModalProps> = ({
@@ -171,6 +171,11 @@ export const VipSubscriptionModal: React.FC<VipSubscriptionModalProps> = ({
       title: 'Baúl de Notas & Citas Ilimitadas',
       desc: 'Has alcanzado el límite gratuito de 3 notas literarias. Desbloquea citas infinitas con tu suscripción VIP.',
       icon: '🪶'
+    },
+    shelf_decor: {
+      title: 'Decoraciones & Sujetalibros Exclusivos VIP',
+      desc: 'Desbloquea los Book Nooks coleccionables (Café Soleado, Arco Estelar, Mansión, Portal de Calaveras), Dragón, Caballero, Daga entre Rosas y los Sujetalibros Dark Cambiantes.',
+      icon: '👑'
     }
   };
 
@@ -438,6 +443,23 @@ export const VipSubscriptionModal: React.FC<VipSubscriptionModalProps> = ({
                   <div className="text-right">
                     <span className="text-[10px] text-[var(--text-muted)] block">Gratis: 3 notas</span>
                     <span className="text-[11px] text-amber-300 font-bold">VIP: Ilimitadas 👑</span>
+                  </div>
+                </div>
+
+                {/* 7. Decoraciones & Sujetalibros Coleccionables */}
+                <div className="flex items-center justify-between p-2.5 rounded-xl bg-black/40 border border-amber-400/20">
+                  <div className="flex items-center gap-2.5">
+                    <div className="p-1.5 rounded-lg bg-rose-500/20 text-rose-300">
+                      <Sparkles className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <span className="font-bold text-white block">Book Nooks & Sujetalibros Dark VIP</span>
+                      <span className="text-[10px] text-[var(--text-muted)]">Nichos 3D, Dragón, Caballero, Daga y Dark Cambiante</span>
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <span className="text-[10px] text-[var(--text-muted)] block">Gratis: Básicas</span>
+                    <span className="text-[11px] text-amber-300 font-bold">VIP: Colección completa 👑</span>
                   </div>
                 </div>
               </div>

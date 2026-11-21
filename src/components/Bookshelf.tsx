@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { 
   Search, 
   Heart, 
@@ -42,7 +42,12 @@ import {
   ShelfAtmosphereBackwall,
   getLedGlowClass,
 } from './ShelfDecoration';
-import { DEFAULT_SHELF_DECOR } from '../data/shelfDecorCatalog';
+import {
+  DEFAULT_SHELF_DECOR,
+  DARK_BOOKEND_ROTATION,
+  isShelfPropVip,
+  isShelfBookendVip,
+} from '../data/shelfDecorCatalog';
 import { HeaderButtonsConfig } from './SettingsView';
 import { resolveCoverGradient, normalizeBookEmoji } from '../utils/db';
 import { sanitizeImageUrl } from '../utils/sanitizeHtml';
@@ -140,7 +145,22 @@ export const Bookshelf: React.FC<BookshelfProps> = ({
   };
 
   const [isBgModalOpen, setIsBgModalOpen] = useState<boolean>(false);
-  const effectiveDecorConfig = propShelfDecorConfig ?? DEFAULT_SHELF_DECOR;
+  const rawDecorConfig = propShelfDecorConfig ?? DEFAULT_SHELF_DECOR;
+  const effectiveDecorConfig = useMemo<ShelfDecorConfig>(() => {
+    if (isVip) return rawDecorConfig;
+    const filteredProps = rawDecorConfig.enabledProps.filter((id) => !isShelfPropVip(id));
+    const safeBookend =
+      rawDecorConfig.bookend && isShelfBookendVip(rawDecorConfig.bookend)
+        ? rawDecorConfig.theme === 'dark'
+          ? 'gothic-raven-skull'
+          : 'readers-silhouette'
+        : rawDecorConfig.bookend;
+    return {
+      ...rawDecorConfig,
+      enabledProps: filteredProps,
+      bookend: safeBookend,
+    };
+  }, [rawDecorConfig, isVip]);
 
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState<number>(24);
@@ -321,9 +341,42 @@ export const Bookshelf: React.FC<BookshelfProps> = ({
   // Unified Drag & Drop + Touch Slide Reorder state (Books, Decorations, Bookends)
   const [touchActiveSlotId, setTouchActiveSlotId] = useState<string | null>(null);
   const [touchOverSlotId, setTouchOverSlotId] = useState<string | null>(null);
-  const [touchOffset, setTouchOffset] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
   const touchStartPos = useRef<{ x: number; y: number } | null>(null);
   const isTouchDragging = useRef<boolean>(false);
+  const activeTouchElRef = useRef<HTMLElement | null>(null);
+  const activeTouchBaseTransformRef = useRef<string>('');
+  const touchActiveSlotIdRef = useRef<string | null>(null);
+  const touchOverSlotIdRef = useRef<string | null>(null);
+
+  const resetTouchDragState = () => {
+    if (activeTouchElRef.current) {
+      activeTouchElRef.current.style.transform = activeTouchBaseTransformRef.current;
+      activeTouchElRef.current = null;
+    }
+    activeTouchBaseTransformRef.current = '';
+    isTouchDragging.current = false;
+    touchStartPos.current = null;
+    touchActiveSlotIdRef.current = null;
+    touchOverSlotIdRef.current = null;
+    setTouchActiveSlotId(null);
+    setTouchOverSlotId(null);
+  };
+
+  useEffect(() => {
+    const handleWindowBlur = () => {
+      handlePressEnd();
+      resetTouchDragState();
+      setDraggedSlotId(null);
+      setDragOverSlotId(null);
+    };
+    window.addEventListener('blur', handleWindowBlur);
+    return () => {
+      window.removeEventListener('blur', handleWindowBlur);
+      if (longPressTimerRef.current) {
+        clearTimeout(longPressTimerRef.current);
+      }
+    };
+  }, []);
 
   // Quick batch sort helpers
   const handleQuickSort = (preset: 'title-asc' | 'author-asc' | 'progress-desc' | 'reverse' | 'favorites') => {
@@ -348,58 +401,63 @@ export const Bookshelf: React.FC<BookshelfProps> = ({
   };
 
   // Filter books across whole collection (Capacity up to 2000 books)
-  const filteredBooks = books.filter((book) => {
+  const filteredBooks = useMemo(() => {
     const query = searchQuery.toLowerCase().trim();
-    const matchesSearch =
-      query === '' ||
-      book.title.toLowerCase().includes(query) ||
-      book.author.toLowerCase().includes(query) ||
-      (book.genres || []).some((g) => g.toLowerCase().includes(query));
+    return books.filter((book) => {
+      const matchesSearch =
+        query === '' ||
+        book.title.toLowerCase().includes(query) ||
+        book.author.toLowerCase().includes(query) ||
+        (book.genres || []).some((g) => g.toLowerCase().includes(query));
 
-    if (!matchesSearch) return false;
+      if (!matchesSearch) return false;
 
-    if (activeCategory === 'all') return true;
-    if (activeCategory === 'favorites') return book.favorite;
-    return book.category === activeCategory;
-  });
+      if (activeCategory === 'all') return true;
+      if (activeCategory === 'favorites') return book.favorite;
+      return book.category === activeCategory;
+    });
+  }, [books, searchQuery, activeCategory]);
 
   // Sort books: 'custom' preserves the user's manual arrangement perfectly
-  const sortedBooks = [...filteredBooks].sort((a, b) => {
-    if (sortBy === 'custom') {
-      return 0; // Maintain custom user order
-    }
-    if (sortBy === 'progress-desc') {
-      return (b.progressPercent || 0) - (a.progressPercent || 0);
-    }
-    if (sortBy === 'progress-asc') {
-      return (a.progressPercent || 0) - (b.progressPercent || 0);
-    }
-    if (sortBy === 'title-asc') {
-      return a.title.localeCompare(b.title);
-    }
-    if (sortBy === 'title-desc') {
-      return b.title.localeCompare(a.title);
-    }
-    if (sortBy === 'author-asc') {
-      return a.author.localeCompare(b.author);
-    }
-    if (sortBy === 'favorites') {
-      return (b.favorite ? 1 : 0) - (a.favorite ? 1 : 0);
-    }
-    if (sortBy === 'newest') {
-      return (b.addedAt || 0) - (a.addedAt || 0);
-    }
-    if (sortBy === 'oldest') {
-      return (a.addedAt || 0) - (b.addedAt || 0);
-    }
-    // Default fallback: 'recent'
-    return (b.lastReadAt || b.addedAt || 0) - (a.lastReadAt || a.addedAt || 0);
-  });
+  const sortedBooks = useMemo(() => {
+    if (sortBy === 'custom') return filteredBooks;
+    return [...filteredBooks].sort((a, b) => {
+      if (sortBy === 'progress-desc') {
+        return (b.progressPercent || 0) - (a.progressPercent || 0);
+      }
+      if (sortBy === 'progress-asc') {
+        return (a.progressPercent || 0) - (b.progressPercent || 0);
+      }
+      if (sortBy === 'title-asc') {
+        return a.title.localeCompare(b.title);
+      }
+      if (sortBy === 'title-desc') {
+        return b.title.localeCompare(a.title);
+      }
+      if (sortBy === 'author-asc') {
+        return a.author.localeCompare(b.author);
+      }
+      if (sortBy === 'favorites') {
+        return (b.favorite ? 1 : 0) - (a.favorite ? 1 : 0);
+      }
+      if (sortBy === 'newest') {
+        return (b.addedAt || 0) - (a.addedAt || 0);
+      }
+      if (sortBy === 'oldest') {
+        return (a.addedAt || 0) - (b.addedAt || 0);
+      }
+      // Default fallback: 'recent'
+      return (b.lastReadAt || b.addedAt || 0) - (a.lastReadAt || a.addedAt || 0);
+    });
+  }, [filteredBooks, sortBy]);
 
   // Pagination for high capacity (2000 books)
   const totalPages = Math.max(1, Math.ceil(sortedBooks.length / pageSize));
   const effectivePage = Math.min(currentPage, totalPages);
-  const paginatedBooks = sortedBooks.slice((effectivePage - 1) * pageSize, effectivePage * pageSize);
+  const paginatedBooks = useMemo(
+    () => sortedBooks.slice((effectivePage - 1) * pageSize, effectivePage * pageSize),
+    [sortedBooks, effectivePage, pageSize]
+  );
 
   // Efecto de paralaje suave mediante transformaciones CSS al hacer scroll en la biblioteca
   useEffect(() => {
@@ -445,15 +503,33 @@ export const Bookshelf: React.FC<BookshelfProps> = ({
 
   // Stats
   const totalBooks = books.length;
-  const readingCount = books.filter((b) => b.category === 'reading').length;
-  const unreadCount = books.filter((b) => b.category === 'unread').length;
-  const completedCount = books.filter((b) => b.category === 'completed').length;
-  const abandonedCount = books.filter((b) => b.category === 'abandoned').length;
-  const favoritesCount = books.filter((b) => b.favorite).length;
+  const { readingCount, unreadCount, completedCount, abandonedCount, favoritesCount } = useMemo(() => {
+    let reading = 0;
+    let unread = 0;
+    let completed = 0;
+    let abandoned = 0;
+    let favorites = 0;
+    for (const b of books) {
+      if (b.category === 'reading') reading++;
+      else if (b.category === 'unread') unread++;
+      else if (b.category === 'completed') completed++;
+      else if (b.category === 'abandoned') abandoned++;
+      if (b.favorite) favorites++;
+    }
+    return {
+      readingCount: reading,
+      unreadCount: unread,
+      completedCount: completed,
+      abandonedCount: abandoned,
+      favoritesCount: favorites,
+    };
+  }, [books]);
 
   // Active shelf decorations & bookends calculation
-  const activeDecorProps =
-    effectiveDecorConfig.theme !== 'none' ? effectiveDecorConfig.enabledProps : [];
+  const activeDecorProps = useMemo(
+    () => (effectiveDecorConfig.theme !== 'none' ? effectiveDecorConfig.enabledProps : []),
+    [effectiveDecorConfig]
+  );
   const hasDecorOnShelves = activeDecorProps.length > 0;
   const activeBookend =
     effectiveDecorConfig.theme !== 'none' &&
@@ -468,7 +544,7 @@ export const Bookshelf: React.FC<BookshelfProps> = ({
     | { slotId: string; kind: 'bookend'; bookendId: Exclude<ShelfBookendId, 'none'>; side: 'left' | 'right' };
 
   // Build balanced default shelf slot stream (books + decors + bookends)
-  const defaultSlots: ShelfSlotItem[] = (() => {
+  const defaultSlots: ShelfSlotItem[] = useMemo(() => {
     const decorPerRow =
       viewMode === 'covers'
         ? viewportWidth >= 1024 && activeDecorProps.length >= 4
@@ -584,30 +660,35 @@ export const Bookshelf: React.FC<BookshelfProps> = ({
         }
       }
 
-      if (activeBookend) {
+      const resolvedRowBookend =
+        activeBookend === 'dark-dynamic'
+          ? DARK_BOOKEND_ROTATION[shelfIdx % DARK_BOOKEND_ROTATION.length]
+          : activeBookend;
+
+      if (activeBookend && resolvedRowBookend) {
         result.push({
           slotId: `bookend:${activeBookend}:left:${shelfIdx}`,
           kind: 'bookend',
-          bookendId: activeBookend,
+          bookendId: resolvedRowBookend,
           side: 'left',
         });
       }
       result.push(...rowItems);
-      if (activeBookend) {
+      if (activeBookend && resolvedRowBookend) {
         result.push({
           slotId: `bookend:${activeBookend}:right:${shelfIdx}`,
           kind: 'bookend',
-          bookendId: activeBookend,
+          bookendId: resolvedRowBookend,
           side: 'right',
         });
       }
     }
 
     return result;
-  })();
+  }, [paginatedBooks, viewMode, viewportWidth, activeDecorProps, hasDecorOnShelves, activeBookend]);
 
   // Apply user's persisted custom arrangement across books, decorations & bookends
-  const orderedSlots: ShelfSlotItem[] = (() => {
+  const orderedSlots: ShelfSlotItem[] = useMemo(() => {
     if (sortBy !== 'custom' || customSlotOrder.length === 0) {
       return defaultSlots;
     }
@@ -641,10 +722,10 @@ export const Bookshelf: React.FC<BookshelfProps> = ({
     }
 
     return mergedIds.map((id) => slotMap.get(id)!);
-  })();
+  }, [defaultSlots, sortBy, customSlotOrder]);
 
   // Pack orderedSlots into shelf rows matching exact mobile/desktop width capacity
-  const shelfRows: ShelfSlotItem[][] = (() => {
+  const shelfRows: ShelfSlotItem[][] = useMemo(() => {
     if (orderedSlots.length === 0) return [];
 
     if (viewMode === 'covers') {
@@ -751,7 +832,7 @@ export const Bookshelf: React.FC<BookshelfProps> = ({
     }
     if (currentRow.length > 0) rows.push(currentRow);
     return rows;
-  })();
+  }, [orderedSlots, viewMode, viewportWidth, activeBookend]);
 
   // Unified slot move & drag/touch handlers (works identically for books, decorations & bookends)
   const handleSlotMove = (sourceSlotId: string, targetSlotId: string) => {
@@ -823,7 +904,8 @@ export const Bookshelf: React.FC<BookshelfProps> = ({
     }
   };
 
-  const handleSlotDragLeave = (_e: React.DragEvent, slotId: string) => {
+  const handleSlotDragLeave = (e: React.DragEvent, slotId: string) => {
+    if (e.currentTarget.contains(e.relatedTarget as Node | null)) return;
     if (dragOverSlotId === slotId) {
       setDragOverSlotId(null);
     }
@@ -844,7 +926,17 @@ export const Bookshelf: React.FC<BookshelfProps> = ({
   };
 
   const handleSlotTouchStart = (slotId: string, e: React.TouchEvent, bookId?: string) => {
+    if (e.touches.length > 1) {
+      resetTouchDragState();
+      return;
+    }
     const touch = e.touches[0];
+    const targetEl = e.currentTarget as HTMLElement;
+    if (activeTouchElRef.current && activeTouchElRef.current !== targetEl) {
+      activeTouchElRef.current.style.transform = activeTouchBaseTransformRef.current;
+    }
+    activeTouchElRef.current = targetEl;
+    activeTouchBaseTransformRef.current = targetEl.style.transform || '';
     touchStartPos.current = { x: touch.clientX, y: touch.clientY };
     isTouchDragging.current = false;
     if (bookId) {
@@ -853,7 +945,7 @@ export const Bookshelf: React.FC<BookshelfProps> = ({
   };
 
   const handleSlotTouchMove = (slotId: string, e: React.TouchEvent) => {
-    if (!touchStartPos.current) return;
+    if (!touchStartPos.current || e.touches.length !== 1) return;
     const touch = e.touches[0];
     const dx = touch.clientX - touchStartPos.current.x;
     const dy = touch.clientY - touchStartPos.current.y;
@@ -867,11 +959,13 @@ export const Bookshelf: React.FC<BookshelfProps> = ({
 
       if (Math.abs(dy) >= Math.abs(dx) * 1.1) {
         touchStartPos.current = null;
+        activeTouchElRef.current = null;
         return;
       }
 
       if (Math.abs(dx) > 14 && Math.abs(dx) > Math.abs(dy) * 1.25) {
         isTouchDragging.current = true;
+        touchActiveSlotIdRef.current = slotId;
         setTouchActiveSlotId(slotId);
       } else {
         return;
@@ -883,18 +977,18 @@ export const Bookshelf: React.FC<BookshelfProps> = ({
         e.preventDefault();
       }
 
-      setTouchOffset({ x: dx, y: dy });
+      if (activeTouchElRef.current) {
+        activeTouchElRef.current.style.transform = `translate3d(${dx}px, ${dy}px, 0)`;
+      }
 
       const elem = document.elementFromPoint(touch.clientX, touch.clientY);
       const targetSlot = elem?.closest('[data-slot-id]');
-      const targetId = targetSlot?.getAttribute('data-slot-id');
+      const targetId = targetSlot?.getAttribute('data-slot-id') || null;
+      const nextOver = targetId && targetId !== slotId ? targetId : null;
 
-      if (targetId && targetId !== slotId) {
-        if (touchOverSlotId !== targetId) {
-          setTouchOverSlotId(targetId);
-        }
-      } else {
-        setTouchOverSlotId(null);
+      if (touchOverSlotIdRef.current !== nextOver) {
+        touchOverSlotIdRef.current = nextOver;
+        setTouchOverSlotId(nextOver);
       }
     }
   };
@@ -903,6 +997,9 @@ export const Bookshelf: React.FC<BookshelfProps> = ({
     handlePressEnd();
 
     const wasDragging = isTouchDragging.current;
+    const activeId = touchActiveSlotIdRef.current;
+    const overId = touchOverSlotIdRef.current;
+
     if (wasDragging) {
       suppressClickRef.current = true;
       setTimeout(() => {
@@ -910,15 +1007,11 @@ export const Bookshelf: React.FC<BookshelfProps> = ({
       }, 350);
     }
 
-    if (wasDragging && touchActiveSlotId && touchOverSlotId && touchActiveSlotId !== touchOverSlotId) {
-      handleSlotMove(touchActiveSlotId, touchOverSlotId);
-    }
+    resetTouchDragState();
 
-    isTouchDragging.current = false;
-    touchStartPos.current = null;
-    setTouchActiveSlotId(null);
-    setTouchOverSlotId(null);
-    setTouchOffset({ x: 0, y: 0 });
+    if (wasDragging && activeId && overId && activeId !== overId) {
+      handleSlotMove(activeId, overId);
+    }
   };
 
   const handleSlotTouchCancel = () => {
@@ -929,11 +1022,7 @@ export const Bookshelf: React.FC<BookshelfProps> = ({
         suppressClickRef.current = false;
       }, 350);
     }
-    isTouchDragging.current = false;
-    touchStartPos.current = null;
-    setTouchActiveSlotId(null);
-    setTouchOverSlotId(null);
-    setTouchOffset({ x: 0, y: 0 });
+    resetTouchDragState();
   };
 
   // Shelf CSS class based on style
@@ -1519,7 +1608,12 @@ export const Bookshelf: React.FC<BookshelfProps> = ({
               </div>
 
               {/* Shelves rows */}
-              <div className="space-y-4 sm:space-y-5 relative z-10 mt-2">
+              <div
+                onContextMenu={(e) => {
+                  if (isTouchDragging.current) e.preventDefault();
+                }}
+                className="space-y-4 sm:space-y-5 relative z-10 mt-2"
+              >
                 {shelfRows.map((rowSlots, shelfIndex) => (
               <div
                 key={shelfIndex}
@@ -1556,9 +1650,6 @@ export const Bookshelf: React.FC<BookshelfProps> = ({
                             onTouchCancel={handleSlotTouchCancel}
                             style={{
                               touchAction: 'pan-y',
-                              transform: isTouchingCurrent
-                                ? `translate3d(${touchOffset.x}px, ${touchOffset.y}px, 0)`
-                                : undefined,
                               zIndex: isTouchingCurrent ? 60 : undefined,
                               pointerEvents: isTouchingCurrent ? 'none' : 'auto',
                             }}
@@ -1579,7 +1670,7 @@ export const Bookshelf: React.FC<BookshelfProps> = ({
                             }`}
                           >
                             {isDropTarget && (
-                              <div className="absolute inset-0 z-50 bg-[var(--accent-pink)]/20 backdrop-blur-xs rounded-xl flex items-center justify-center pointer-events-none border-2 border-[var(--accent-pink)]">
+                              <div className="absolute inset-0 z-50 bg-[var(--accent-pink)]/25 rounded-xl flex items-center justify-center pointer-events-none border-2 border-[var(--accent-pink)]">
                                 <span className="text-[9px] font-bold text-white bg-black/90 px-2 py-0.5 rounded-full shadow-lg border border-[var(--accent-pink)] animate-bounce">
                                   ✨
                                 </span>
@@ -1635,9 +1726,6 @@ export const Bookshelf: React.FC<BookshelfProps> = ({
                           }}
                           style={{
                             touchAction: 'pan-y',
-                            transform: isTouchingCurrent 
-                              ? `translate3d(${touchOffset.x}px, ${touchOffset.y}px, 0)` 
-                              : undefined,
                             zIndex: isTouchingCurrent ? 60 : undefined,
                             pointerEvents: isTouchingCurrent ? 'none' : 'auto'
                           }}
@@ -1658,7 +1746,7 @@ export const Bookshelf: React.FC<BookshelfProps> = ({
                         >
                           {/* Drop Target Indicator when dragging or sliding with finger */}
                           {isDropTarget && (
-                            <div className="absolute inset-0 z-50 bg-[var(--accent-pink)]/20 backdrop-blur-xs rounded-xl flex items-center justify-center pointer-events-none border-2 border-[var(--accent-pink)]">
+                            <div className="absolute inset-0 z-50 bg-[var(--accent-pink)]/25 rounded-xl flex items-center justify-center pointer-events-none border-2 border-[var(--accent-pink)]">
                               <span className="text-[10px] font-bold text-white bg-black/90 px-2.5 py-1 rounded-full shadow-lg border border-[var(--accent-pink)] animate-bounce">
                                 ✨ Soltar aquí
                               </span>
@@ -1730,7 +1818,7 @@ export const Bookshelf: React.FC<BookshelfProps> = ({
                             <div className="relative z-10 flex items-center justify-between gap-0.5">
                               <button
                                 onClick={(e) => onToggleFavorite(book.id, e)}
-                                className="p-0.5 sm:p-1 rounded-full bg-black/50 backdrop-blur-md text-white/70 hover:text-[var(--accent-pink)] transition"
+                                className="p-0.5 sm:p-1 rounded-full bg-black/75 text-white/70 hover:text-[var(--accent-pink)] transition"
                                 title={book.favorite ? 'Quitar de favoritos' : 'Añadir a favoritos'}
                               >
                                 <Heart
@@ -1742,7 +1830,7 @@ export const Bookshelf: React.FC<BookshelfProps> = ({
                                 />
                               </button>
 
-                              <span className="text-[6px] sm:text-[8px] font-mono uppercase bg-black/60 backdrop-blur-md px-1 sm:px-1.5 py-0.2 rounded-full text-[var(--accent-purple)] border border-white/5 leading-tight">
+                              <span className="text-[6px] sm:text-[8px] font-mono uppercase bg-black/75 px-1 sm:px-1.5 py-0.2 rounded-full text-[var(--accent-purple)] border border-white/5 leading-tight">
                                 {book.type === 'epub'
                                   ? 'EPUB'
                                   : book.type === 'pdf'
@@ -1790,7 +1878,7 @@ export const Bookshelf: React.FC<BookshelfProps> = ({
                             {isMarked && (
                               <div
                                 onClick={(e) => e.stopPropagation()}
-                                className="absolute bottom-1 inset-x-0.5 sm:inset-x-1.5 z-40 flex items-center justify-around gap-0.5 sm:gap-1 bg-black/90 backdrop-blur-md border border-[var(--accent-pink)]/60 rounded-md sm:rounded-lg py-0.5 sm:py-1 px-0.5 sm:px-1 shadow-xl animate-popIn"
+                                className="absolute bottom-1 inset-x-0.5 sm:inset-x-1.5 z-40 flex items-center justify-around gap-0.5 sm:gap-1 bg-black/95 border border-[var(--accent-pink)]/60 rounded-md sm:rounded-lg py-0.5 sm:py-1 px-0.5 sm:px-1 shadow-xl animate-popIn"
                               >
                                 <button
                                   type="button"
@@ -1877,9 +1965,6 @@ export const Bookshelf: React.FC<BookshelfProps> = ({
                             onTouchCancel={handleSlotTouchCancel}
                             style={{
                               touchAction: 'pan-y',
-                              transform: isTouchingCurrent
-                                ? `translate3d(${touchOffset.x}px, ${touchOffset.y}px, 0)`
-                                : undefined,
                               zIndex: isTouchingCurrent ? 60 : undefined,
                               pointerEvents: isTouchingCurrent ? 'none' : 'auto',
                             }}
@@ -1963,9 +2048,6 @@ export const Bookshelf: React.FC<BookshelfProps> = ({
                             height: spineHeight,
                             boxShadow: '3px 0 10px rgba(0,0,0,0.5)',
                             touchAction: 'pan-y',
-                            transform: isTouchingCurrent 
-                              ? `translate3d(${touchOffset.x}px, ${touchOffset.y}px, 0)` 
-                              : undefined,
                             zIndex: isTouchingCurrent ? 60 : undefined,
                             pointerEvents: isTouchingCurrent ? 'none' : 'auto'
                           }}
@@ -2079,9 +2161,6 @@ export const Bookshelf: React.FC<BookshelfProps> = ({
                               onTouchCancel={handleSlotTouchCancel}
                               style={{
                                 touchAction: 'pan-y',
-                                transform: isTouchingCurrent
-                                  ? `translate3d(${touchOffset.x}px, ${touchOffset.y}px, 0)`
-                                  : undefined,
                                 zIndex: isTouchingCurrent ? 60 : undefined,
                                 pointerEvents: isTouchingCurrent ? 'none' : 'auto',
                               }}
@@ -2170,11 +2249,7 @@ export const Bookshelf: React.FC<BookshelfProps> = ({
                                   style={{
                                     background: resolveCoverGradient(book.coverGradient),
                                     touchAction: 'pan-y',
-                                    transform: isTouchingCurrent
-                                      ? `translate3d(${touchOffset.x}px, ${touchOffset.y}px, 0)`
-                                      : stackOffsetPx !== 0
-                                      ? `translateX(${stackOffsetPx}px)`
-                                      : undefined,
+                                    transform: stackOffsetPx !== 0 ? `translateX(${stackOffsetPx}px)` : undefined,
                                     zIndex: isTouchingCurrent ? 60 : stackIdx + 1,
                                     pointerEvents: isTouchingCurrent ? 'none' : 'auto'
                                   }}
@@ -2196,7 +2271,7 @@ export const Bookshelf: React.FC<BookshelfProps> = ({
                                   <div className="absolute right-0.5 top-1 bottom-1 w-[2px] rounded-full bg-amber-100/20 pointer-events-none" />
 
                                   {isDropTarget && (
-                                    <div className="absolute inset-0 z-40 bg-[var(--accent-pink)]/25 backdrop-blur-xs rounded-md flex items-center justify-center pointer-events-none border border-[var(--accent-pink)]">
+                                    <div className="absolute inset-0 z-40 bg-[var(--accent-pink)]/25 rounded-md flex items-center justify-center pointer-events-none border border-[var(--accent-pink)]">
                                       <span className="text-[9px] font-bold text-white bg-black/90 px-1.5 py-0.5 rounded-full shadow">
                                         ✨ Soltar aquí
                                       </span>

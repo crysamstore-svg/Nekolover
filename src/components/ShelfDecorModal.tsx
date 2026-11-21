@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, Check, Sparkles, Sun, Trees, Eraser, BookMarked } from 'lucide-react';
+import { X, Check, Sparkles, Sun, Trees, Eraser, BookMarked, Shuffle, Crown, Lock } from 'lucide-react';
 import {
   ShelfBookendId,
   ShelfDecorConfig,
@@ -10,6 +10,10 @@ import {
   SHELF_BOOKEND_CATALOG,
   SHELF_DECOR_CATALOG,
   SHELF_DECOR_PRESETS,
+  getPresetConfigForUser,
+  isShelfBookendVip,
+  isShelfPropVip,
+  randomizeShelfDecorConfig,
 } from '../data/shelfDecorCatalog';
 import { ShelfBookendArt, ShelfDecorArt } from './ShelfDecoration';
 
@@ -18,6 +22,8 @@ interface ShelfDecorModalProps {
   onClose: () => void;
   config: ShelfDecorConfig;
   onSaveConfig: (nextConfig: ShelfDecorConfig) => void;
+  isVip?: boolean;
+  onOpenVipModal?: () => void;
 }
 
 export const ShelfDecorModal: React.FC<ShelfDecorModalProps> = ({
@@ -25,6 +31,8 @@ export const ShelfDecorModal: React.FC<ShelfDecorModalProps> = ({
   onClose,
   config,
   onSaveConfig,
+  isVip = false,
+  onOpenVipModal,
 }) => {
   const [draft, setDraft] = useState<ShelfDecorConfig>(() => ({
     theme: config.theme,
@@ -52,19 +60,22 @@ export const ShelfDecorModal: React.FC<ShelfDecorModalProps> = ({
   if (!isOpen) return null;
 
   const handleSelectPreset = (presetId: Exclude<ShelfDecorTheme, 'none'>) => {
-    const preset = SHELF_DECOR_PRESETS.find((p) => p.id === presetId);
-    if (!preset) return;
-    setDraft({
-      theme: preset.id,
-      enabledProps: [...preset.props],
-      bookend: preset.bookend,
-      ledGlow: preset.ledGlow,
-      hangingVines: preset.hangingVines,
-    });
-    setFilterCat(preset.id);
+    const nextCfg = getPresetConfigForUser(presetId, Boolean(isVip));
+    setDraft(nextCfg);
+    setFilterCat(presetId);
+  };
+
+  const handleRandomize = () => {
+    const randomCfg = randomizeShelfDecorConfig(Boolean(isVip));
+    setDraft(randomCfg);
+    setFilterCat(randomCfg.theme === 'none' ? 'all' : randomCfg.theme);
   };
 
   const handleSelectBookend = (bookendId: ShelfBookendId) => {
+    if (bookendId !== 'none' && !isVip && isShelfBookendVip(bookendId)) {
+      onOpenVipModal?.();
+      return;
+    }
     setDraft((prev) => {
       const bookendMeta = SHELF_BOOKEND_CATALOG.find((b) => b.id === bookendId);
       const nextTheme: ShelfDecorTheme =
@@ -80,6 +91,12 @@ export const ShelfDecorModal: React.FC<ShelfDecorModalProps> = ({
   };
 
   const handleToggleProp = (propId: ShelfDecorPropId) => {
+    const isAlreadyEnabled = draft.enabledProps.includes(propId);
+    if (!isAlreadyEnabled && !isVip && isShelfPropVip(propId)) {
+      onOpenVipModal?.();
+      return;
+    }
+
     setDraft((prev) => {
       const exists = prev.enabledProps.includes(propId);
       const nextProps = exists
@@ -158,15 +175,26 @@ export const ShelfDecorModal: React.FC<ShelfDecorModalProps> = ({
         <div className="p-3.5 sm:p-6 overflow-y-auto space-y-5 sm:space-y-6 flex-1 text-xs">
           {/* Live Shelf Preview */}
           <div>
-            <div className="flex items-center justify-between mb-2 gap-2">
+            <div className="flex flex-wrap items-center justify-between mb-2 gap-2">
               <span className="font-bold text-white flex items-center gap-1.5">
                 <Sparkles className="w-3.5 h-3.5 text-[var(--accent-pink)]" />
                 <span>Vista previa de repisa</span>
               </span>
-              <span className="text-[11px] text-[var(--text-muted)] tabular-nums truncate">
-                {draft.enabledProps.length} piezas
-                {activeBookend ? ' · Sujetalibros activos' : ''}
-              </span>
+              <div className="flex items-center gap-2">
+                <span className="text-[11px] text-[var(--text-muted)] tabular-nums truncate">
+                  {draft.enabledProps.length} piezas
+                  {activeBookend ? ' · Sujetalibros activos' : ''}
+                </span>
+                <button
+                  type="button"
+                  onClick={handleRandomize}
+                  className="min-h-[34px] px-3 py-1 rounded-xl bg-gradient-to-r from-[var(--accent-pink)]/20 to-[var(--accent-purple)]/25 border border-[var(--accent-pink)]/60 hover:bg-[var(--accent-pink)] hover:text-black text-[var(--accent-pink)] font-bold text-[11px] flex items-center gap-1.5 transition active:scale-95 shadow-sm"
+                  title="Elegir aleatoriamente estilo, decoraciones y sujetalibros"
+                >
+                  <Shuffle className="w-3.5 h-3.5" />
+                  <span>Aleatorio</span>
+                </button>
+              </div>
             </div>
 
             <div
@@ -318,9 +346,10 @@ export const ShelfDecorModal: React.FC<ShelfDecorModalProps> = ({
               </span>
             </div>
 
-            <div className="grid grid-cols-1 min-[420px]:grid-cols-2 sm:grid-cols-4 gap-2.5">
+            <div className="grid grid-cols-1 min-[420px]:grid-cols-2 sm:grid-cols-3 gap-2.5">
               {SHELF_BOOKEND_CATALOG.map((bk) => {
                 const isSelected = draft.bookend === bk.id;
+                const isLocked = Boolean(bk.vipOnly && !isVip);
                 const catLabel =
                   bk.category === 'kawaii'
                     ? 'Kawaii'
@@ -333,9 +362,11 @@ export const ShelfDecorModal: React.FC<ShelfDecorModalProps> = ({
                     key={bk.id}
                     type="button"
                     onClick={() => handleSelectBookend(bk.id)}
-                    className={`min-h-[86px] p-3 rounded-2xl border text-left transition flex flex-col justify-between gap-2 ${
+                    className={`min-h-[88px] p-3 rounded-2xl border text-left transition flex flex-col justify-between gap-2 relative ${
                       isSelected
                         ? 'border-[var(--accent-pink)] bg-white/10 shadow-md'
+                        : isLocked
+                        ? 'border-amber-400/35 bg-black/45 hover:border-amber-400/75'
                         : 'border-[var(--border-color)] bg-black/35 hover:border-white/25'
                     }`}
                   >
@@ -349,11 +380,25 @@ export const ShelfDecorModal: React.FC<ShelfDecorModalProps> = ({
                           <ShelfBookendArt id={bk.id} side="right" />
                         </div>
                       </div>
-                      {isSelected && (
-                        <span className="w-5 h-5 rounded-full bg-[var(--accent-pink)] text-black flex items-center justify-center shrink-0">
-                          <Check className="w-3 h-3 stroke-[3]" />
-                        </span>
-                      )}
+                      <div className="flex items-center gap-1 shrink-0">
+                        {bk.vipOnly && (
+                          <span
+                            className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-md text-[9px] font-extrabold border ${
+                              isLocked
+                                ? 'bg-amber-400/15 text-amber-300 border-amber-400/50'
+                                : 'bg-amber-400 text-black border-amber-300'
+                            }`}
+                          >
+                            {isLocked ? <Lock className="w-2.5 h-2.5" /> : <Crown className="w-2.5 h-2.5 fill-black" />}
+                            <span>VIP</span>
+                          </span>
+                        )}
+                        {isSelected && (
+                          <span className="w-5 h-5 rounded-full bg-[var(--accent-pink)] text-black flex items-center justify-center shrink-0">
+                            <Check className="w-3 h-3 stroke-[3]" />
+                          </span>
+                        )}
+                      </div>
                     </div>
                     <div className="min-w-0">
                       <span className="font-bold text-white text-xs block truncate">
@@ -483,6 +528,7 @@ export const ShelfDecorModal: React.FC<ShelfDecorModalProps> = ({
             <div className="grid grid-cols-1 min-[380px]:grid-cols-2 sm:grid-cols-3 gap-2.5">
               {filteredCatalog.map((item) => {
                 const isSelected = draft.enabledProps.includes(item.id);
+                const isLocked = Boolean(item.vipOnly && !isVip);
                 const catLabel =
                   item.category === 'kawaii'
                     ? 'Kawaii'
@@ -498,6 +544,8 @@ export const ShelfDecorModal: React.FC<ShelfDecorModalProps> = ({
                     className={`min-h-[84px] p-3 rounded-2xl border flex items-center gap-2.5 text-left transition ${
                       isSelected
                         ? 'border-[var(--accent-pink)] bg-white/10 shadow-md'
+                        : isLocked
+                        ? 'border-amber-400/35 bg-black/45 hover:border-amber-400/75'
                         : 'border-[var(--border-color)] bg-black/35 hover:border-white/25'
                     }`}
                   >
@@ -505,9 +553,23 @@ export const ShelfDecorModal: React.FC<ShelfDecorModalProps> = ({
                       <ShelfDecorArt id={item.id} />
                     </div>
                     <div className="min-w-0 flex-1">
-                      <span className="font-bold text-white text-xs block truncate">
-                        {item.name}
-                      </span>
+                      <div className="flex items-center gap-1.5">
+                        <span className="font-bold text-white text-xs block truncate">
+                          {item.name}
+                        </span>
+                        {item.vipOnly && (
+                          <span
+                            className={`inline-flex items-center gap-0.5 px-1.5 py-0.2 rounded text-[9px] font-extrabold shrink-0 border ${
+                              isLocked
+                                ? 'bg-amber-400/15 text-amber-300 border-amber-400/50'
+                                : 'bg-amber-400 text-black border-amber-300'
+                            }`}
+                          >
+                            {isLocked ? <Lock className="w-2.5 h-2.5" /> : <Crown className="w-2.5 h-2.5 fill-black" />}
+                            <span>VIP</span>
+                          </span>
+                        )}
+                      </div>
                       <span className="text-[10px] text-[var(--text-muted)] block truncate mt-0.5">
                         {catLabel} · {item.subtitle}
                       </span>

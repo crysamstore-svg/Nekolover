@@ -25,14 +25,15 @@ import {
   Scale,
   FileText,
   Cookie,
-  Clock
+  Clock,
+  Shuffle
 } from 'lucide-react';
 import { ReaderModeId, ThemeId, ShelfStyle, ShelfViewMode, ShelfBackgroundConfig, ShelfDecorConfig, ShelfDecorTheme } from '../types';
 import { READER_MODES, FONT_OPTIONS, THEME_OPTIONS } from '../data/defaultBooks';
 import { ShelfBackgroundModal, DEFAULT_SHELF_BG } from './ShelfBackgroundModal';
 import { ShelfDecorModal } from './ShelfDecorModal';
 import { ShelfDecorArt } from './ShelfDecoration';
-import { SHELF_DECOR_PRESETS, DEFAULT_SHELF_DECOR } from '../data/shelfDecorCatalog';
+import { SHELF_DECOR_PRESETS, DEFAULT_SHELF_DECOR, getPresetConfigForUser, randomizeShelfDecorConfig } from '../data/shelfDecorCatalog';
 import { LegalTab } from './LegalModal';
 import { vipManager } from '../utils/vipManager';
 
@@ -83,6 +84,8 @@ interface SettingsViewProps {
   onOpenQuotes?: () => void;
   quotesCount?: number;
   highlightsCount?: number;
+  isVip?: boolean;
+  onOpenVipModal?: (reason?: 'music' | 'fonts' | 'shelf_bg' | 'stickers' | 'highlights' | 'notes' | 'shelf_decor') => void;
 }
 
 export const SettingsView: React.FC<SettingsViewProps> = ({
@@ -116,7 +119,9 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   onOpenStats,
   onOpenQuotes,
   quotesCount = 0,
-  highlightsCount = 0
+  highlightsCount = 0,
+  isVip = false,
+  onOpenVipModal,
 }) => {
   const [activeTab, setActiveTab] = useState<'contrast' | 'typography' | 'margins' | 'header' | 'shelf' | 'legal'>('contrast');
   const [isBgModalOpen, setIsBgModalOpen] = useState<boolean>(false);
@@ -138,15 +143,11 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       });
       return;
     }
-    const preset = SHELF_DECOR_PRESETS.find((p) => p.id === theme);
-    if (!preset) return;
-    onUpdateShelfDecorConfig?.({
-      theme: preset.id,
-      enabledProps: [...preset.props],
-      bookend: preset.bookend,
-      ledGlow: preset.ledGlow,
-      hangingVines: preset.hangingVines,
-    });
+    onUpdateShelfDecorConfig?.(getPresetConfigForUser(theme, Boolean(isVip)));
+  };
+
+  const handleRandomizeDecor = () => {
+    onUpdateShelfDecorConfig?.(randomizeShelfDecorConfig(Boolean(isVip)));
   };
 
   const currentModeConfig = READER_MODES.find(m => m.id === readerMode) || READER_MODES[0];
@@ -843,14 +844,26 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 </button>
               </div>
 
-              <button
-                type="button"
-                onClick={() => setIsDecorModalOpen(true)}
-                className="w-full sm:w-auto min-h-[44px] px-4 py-2.5 rounded-xl bg-gradient-to-r from-[var(--accent-pink)] to-[var(--accent-purple)] text-black font-cute font-bold text-xs shadow-lg hover:opacity-90 active:scale-95 transition flex items-center justify-center gap-2"
-              >
-                <Sparkles className="w-4 h-4" />
-                <span>Decorar Estantería y Elegir Piezas</span>
-              </button>
+              <div className="flex flex-col sm:flex-row sm:flex-wrap items-stretch sm:items-center gap-2.5">
+                <button
+                  type="button"
+                  onClick={() => setIsDecorModalOpen(true)}
+                  className="w-full sm:w-auto min-h-[44px] px-4 py-2.5 rounded-xl bg-gradient-to-r from-[var(--accent-pink)] to-[var(--accent-purple)] text-black font-cute font-bold text-xs shadow-lg hover:opacity-90 active:scale-95 transition flex items-center justify-center gap-2"
+                >
+                  <Sparkles className="w-4 h-4" />
+                  <span>Decorar Estantería y Elegir Piezas</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleRandomizeDecor}
+                  className="w-full sm:w-auto min-h-[44px] px-4 py-2.5 rounded-xl bg-black/50 border border-[var(--accent-pink)]/55 text-[var(--accent-pink)] hover:bg-[var(--accent-pink)] hover:text-black font-cute font-bold text-xs shadow-md active:scale-95 transition flex items-center justify-center gap-2"
+                  title="Elegir decoración y sujetalibros aleatoriamente"
+                >
+                  <Shuffle className="w-4 h-4" />
+                  <span>Aleatorio</span>
+                </button>
+              </div>
             </div>
 
             {/* Custom Photo & Texture Background Section */}
@@ -1193,6 +1206,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         onSaveConfig={(nextCfg) => {
           onUpdateShelfDecorConfig?.(nextCfg);
         }}
+        isVip={isVip}
+        onOpenVipModal={() => onOpenVipModal?.('shelf_decor')}
       />
 
       {/* In-App Confirmation Modal to Reset Stats to Zero */}
