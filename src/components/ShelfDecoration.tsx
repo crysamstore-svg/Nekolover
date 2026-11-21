@@ -1031,12 +1031,16 @@ interface ShelfDecorationProps {
   type: DecorationType;
   position?: 'inline' | 'bookend-left' | 'bookend-right';
   compact?: boolean;
+  inSlot?: boolean;
+  onBeforeClick?: () => boolean;
 }
 
 export const ShelfDecoration: React.FC<ShelfDecorationProps> = ({
   type,
   position = 'inline',
   compact = false,
+  inSlot = false,
+  onBeforeClick,
 }) => {
   const [bounce, setBounce] = useState(false);
   const [reactionMsg, setReactionMsg] = useState<string | null>(null);
@@ -1050,8 +1054,8 @@ export const ShelfDecoration: React.FC<ShelfDecorationProps> = ({
     };
   }, []);
 
-  const handleClick = (e: React.MouseEvent) => {
-    e.stopPropagation();
+  const triggerReaction = () => {
+    if (onBeforeClick && !onBeforeClick()) return;
     setBounce(true);
     setReactionMsg(meta.reaction);
     if (timerRef.current) window.clearTimeout(timerRef.current);
@@ -1061,14 +1065,23 @@ export const ShelfDecoration: React.FC<ShelfDecorationProps> = ({
     }, 2200);
   };
 
+  const handleClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    triggerReaction();
+  };
+
   return (
     <div
-      className={`relative flex flex-col items-center justify-end self-end mb-[-3px] ${
-        compact
-          ? 'w-[54px] sm:w-[66px] h-[84px] sm:h-[104px] shrink-0'
-          : position === 'inline'
-          ? 'w-full max-w-[78px] sm:max-w-[96px] md:max-w-[106px] aspect-[2/3] mx-auto'
-          : 'w-16 sm:w-20 h-24'
+      className={`relative flex flex-col items-center justify-end ${
+        inSlot
+          ? 'w-full h-full'
+          : `self-end mb-[-3px] ${
+              compact
+                ? 'w-[54px] sm:w-[66px] h-[84px] sm:h-[104px] shrink-0'
+                : position === 'inline'
+                ? 'w-full max-w-[78px] sm:max-w-[96px] md:max-w-[106px] aspect-[2/3] mx-auto'
+                : 'w-16 sm:w-20 h-24'
+            }`
       }`}
     >
       {reactionMsg && (
@@ -1080,20 +1093,27 @@ export const ShelfDecoration: React.FC<ShelfDecorationProps> = ({
         </span>
       )}
 
-      <button
-        type="button"
+      <div
+        role="button"
+        tabIndex={0}
         onClick={handleClick}
-        className={`group w-full h-full select-none flex items-end justify-center cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent-pink)] rounded-lg transition-transform duration-150 ${
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            triggerReaction();
+          }
+        }}
+        className={`group w-full h-full select-none flex items-end justify-center focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent-pink)] rounded-lg transition-transform duration-150 ${
           bounce ? '-translate-y-1.5 scale-105' : 'hover:-translate-y-0.5'
         }`}
-        title={`${meta.name} — ${meta.subtitle}`}
+        title={`${meta.name} — ${meta.subtitle} (Arrastra o desliza para mover)`}
         aria-label={`${meta.name}: ${meta.subtitle}`}
       >
         <ShelfDecorArt
           id={propId}
           className="w-full h-full drop-shadow-[0_3px_5px_rgba(0,0,0,0.75)] transition-transform duration-150 group-hover:scale-105"
         />
-      </button>
+      </div>
     </div>
   );
 };
@@ -1259,12 +1279,18 @@ interface ShelfBookendProps {
   id: Exclude<ShelfBookendId, 'none'>;
   side: 'left' | 'right';
   compact?: boolean;
+  gridSlot?: boolean;
+  inSlot?: boolean;
+  onBeforeClick?: () => boolean;
 }
 
 export const ShelfBookend: React.FC<ShelfBookendProps> = ({
   id,
   side,
   compact = false,
+  gridSlot = false,
+  inSlot = false,
+  onBeforeClick,
 }) => {
   const [bounce, setBounce] = useState(false);
   const [reactionMsg, setReactionMsg] = useState<string | null>(null);
@@ -1279,8 +1305,8 @@ export const ShelfBookend: React.FC<ShelfBookendProps> = ({
     };
   }, []);
 
-  const handleClick = (e: React.MouseEvent) => {
-    e.stopPropagation();
+  const triggerReaction = () => {
+    if (onBeforeClick && !onBeforeClick()) return;
     setBounce(true);
     setReactionMsg(meta.reaction);
     if (timerRef.current) window.clearTimeout(timerRef.current);
@@ -1290,12 +1316,23 @@ export const ShelfBookend: React.FC<ShelfBookendProps> = ({
     }, 2200);
   };
 
+  const handleClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    triggerReaction();
+  };
+
   return (
     <div
-      className={`relative flex flex-col items-center justify-end self-end mb-[-3px] shrink-0 ${
-        compact
-          ? 'w-[34px] sm:w-[48px] h-[90px] sm:h-[118px]'
-          : 'w-[40px] sm:w-[58px] md:w-[66px] h-[96px] sm:h-[128px] md:h-[142px]'
+      className={`relative flex flex-col items-center justify-end ${
+        inSlot
+          ? 'w-full h-full'
+          : `self-end mb-[-3px] ${
+              gridSlot
+                ? 'w-full max-w-[78px] sm:max-w-[96px] md:max-w-[106px] aspect-[2/3] mx-auto'
+                : compact
+                ? 'w-[38px] sm:w-[50px] h-[90px] sm:h-[118px] shrink-0'
+                : 'w-[44px] sm:w-[58px] md:w-[66px] h-[96px] sm:h-[128px] md:h-[142px] shrink-0'
+            }`
       }`}
     >
       {reactionMsg && (
@@ -1307,13 +1344,20 @@ export const ShelfBookend: React.FC<ShelfBookendProps> = ({
         </span>
       )}
 
-      <button
-        type="button"
+      <div
+        role="button"
+        tabIndex={0}
         onClick={handleClick}
-        className={`group w-full h-full select-none flex items-end justify-center cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent-pink)] rounded-lg transition-transform duration-150 ${
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            triggerReaction();
+          }
+        }}
+        className={`group w-full h-full select-none flex items-end justify-center focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent-pink)] rounded-lg transition-transform duration-150 ${
           bounce ? '-translate-y-1 scale-105' : 'hover:-translate-y-0.5'
         }`}
-        title={`Sujetalibros ${meta.name} — ${meta.subtitle}`}
+        title={`Sujetalibros ${meta.name} — ${meta.subtitle} (Arrastra o desliza para mover)`}
         aria-label={`Sujetalibros ${meta.name} (${side === 'left' ? 'izquierdo' : 'derecho'})`}
       >
         <ShelfBookendArt
@@ -1321,7 +1365,7 @@ export const ShelfBookend: React.FC<ShelfBookendProps> = ({
           side={side}
           className="w-full h-full drop-shadow-[0_3px_5px_rgba(0,0,0,0.75)] transition-transform duration-150 group-hover:scale-105"
         />
-      </button>
+      </div>
     </div>
   );
 };

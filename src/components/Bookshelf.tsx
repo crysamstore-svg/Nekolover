@@ -34,7 +34,7 @@ import {
   Shuffle,
   GripVertical
 } from 'lucide-react';
-import { Book, BookCategory, ShelfStyle, ShelfViewMode, ShelfBackgroundConfig, ShelfDecorConfig, ShelfDecorPropId } from '../types';
+import { Book, BookCategory, ShelfStyle, ShelfViewMode, ShelfBackgroundConfig, ShelfDecorConfig, ShelfDecorPropId, ShelfBookendId } from '../types';
 import { ShelfBackgroundModal, DEFAULT_SHELF_BG } from './ShelfBackgroundModal';
 import {
   ShelfDecoration,
@@ -148,8 +148,25 @@ export const Bookshelf: React.FC<BookshelfProps> = ({
   // Modo de eliminación por mantener presionado (Long-Press to Mark for Deletion)
   const [markedForDeleteIds, setMarkedForDeleteIds] = useState<string[]>([]);
   const [brokenCoverIds, setBrokenCoverIds] = useState<Record<string, boolean>>({});
-  const [draggedBookId, setDraggedBookId] = useState<string | null>(null);
-  const [dragOverBookId, setDragOverBookId] = useState<string | null>(null);
+  const [customSlotOrder, setCustomSlotOrder] = useState<string[]>(() => {
+    try {
+      const raw = localStorage.getItem('nl_shelf_slot_order_v1');
+      const parsed = raw ? JSON.parse(raw) : [];
+      return Array.isArray(parsed) ? parsed.filter((x): x is string => typeof x === 'string') : [];
+    } catch {
+      return [];
+    }
+  });
+  const saveCustomSlotOrder = (nextOrder: string[]) => {
+    setCustomSlotOrder(nextOrder);
+    try {
+      localStorage.setItem('nl_shelf_slot_order_v1', JSON.stringify(nextOrder));
+    } catch {
+      // Ignore storage quota errors
+    }
+  };
+  const [draggedSlotId, setDraggedSlotId] = useState<string | null>(null);
+  const [dragOverSlotId, setDragOverSlotId] = useState<string | null>(null);
   const longPressTimerRef = useRef<any>(null);
   const suppressClickRef = useRef<boolean>(false);
 
@@ -258,6 +275,20 @@ export const Bookshelf: React.FC<BookshelfProps> = ({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [markedForDeleteIds.length]);
 
+  const syncBookOrderInCustomSlots = (reorderedBooks: Book[]) => {
+    if (customSlotOrder.length === 0) return;
+    const reorderedBookSlotIds = reorderedBooks.map((b) => `book:${b.id}`);
+    const bookSlotSet = new Set(reorderedBookSlotIds);
+    let cursor = 0;
+    const nextOrder = customSlotOrder.map((id) => {
+      if (bookSlotSet.has(id) && cursor < reorderedBookSlotIds.length) {
+        return reorderedBookSlotIds[cursor++];
+      }
+      return id;
+    });
+    saveCustomSlotOrder(nextOrder);
+  };
+
   // Move book: left, right, first, or last in bookshelf array
   const handleMoveBook = (
     bookId: string, 
@@ -280,174 +311,19 @@ export const Bookshelf: React.FC<BookshelfProps> = ({
     const [moved] = newBooks.splice(index, 1);
     newBooks.splice(targetIndex, 0, moved);
 
+    syncBookOrderInCustomSlots(newBooks);
     handleSetSortBy('custom');
     if (onReorderBooks) {
       onReorderBooks(newBooks);
     }
   };
 
-  // Drag and Drop Handlers for free movement anywhere
-  const handleDragStart = (e: React.DragEvent, bookId: string) => {
-    e.dataTransfer.setData('text/plain', bookId);
-    e.dataTransfer.effectAllowed = 'move';
-    setDraggedBookId(bookId);
-  };
-
-  const handleDragOver = (e: React.DragEvent, bookId: string) => {
-    e.preventDefault();
-    e.dataTransfer.dropEffect = 'move';
-    if (dragOverBookId !== bookId) {
-      setDragOverBookId(bookId);
-    }
-  };
-
-  const handleDragLeave = (_e: React.DragEvent, bookId: string) => {
-    if (dragOverBookId === bookId) {
-      setDragOverBookId(null);
-    }
-  };
-
-  const handleDrop = (e: React.DragEvent, targetBookId: string) => {
-    e.preventDefault();
-    setDragOverBookId(null);
-    const sourceBookId = e.dataTransfer.getData('text/plain') || draggedBookId;
-    setDraggedBookId(null);
-
-    if (!sourceBookId || sourceBookId === targetBookId) return;
-
-    const fromIndex = books.findIndex((b) => b.id === sourceBookId);
-    const toIndex = books.findIndex((b) => b.id === targetBookId);
-
-    if (fromIndex === -1 || toIndex === -1) return;
-
-    const newBooks = [...books];
-    const [moved] = newBooks.splice(fromIndex, 1);
-    newBooks.splice(toIndex, 0, moved);
-
-    handleSetSortBy('custom');
-    if (onReorderBooks) {
-      onReorderBooks(newBooks);
-    }
-  };
-
-  const handleDragEnd = () => {
-    setDraggedBookId(null);
-    setDragOverBookId(null);
-  };
-
-  // Deslizar con el dedo en pantallas táctiles (Touch Slide Reorder)
-  const [touchActiveBookId, setTouchActiveBookId] = useState<string | null>(null);
-  const [touchOverBookId, setTouchOverBookId] = useState<string | null>(null);
+  // Unified Drag & Drop + Touch Slide Reorder state (Books, Decorations, Bookends)
+  const [touchActiveSlotId, setTouchActiveSlotId] = useState<string | null>(null);
+  const [touchOverSlotId, setTouchOverSlotId] = useState<string | null>(null);
   const [touchOffset, setTouchOffset] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
   const touchStartPos = useRef<{ x: number; y: number } | null>(null);
   const isTouchDragging = useRef<boolean>(false);
-
-  const handleBookTouchStart = (bookId: string, e: React.TouchEvent) => {
-    const touch = e.touches[0];
-    touchStartPos.current = { x: touch.clientX, y: touch.clientY };
-    isTouchDragging.current = false;
-    handlePressStart(bookId);
-  };
-
-  const handleBookTouchMove = (bookId: string, e: React.TouchEvent) => {
-    if (!touchStartPos.current) return;
-    const touch = e.touches[0];
-    const dx = touch.clientX - touchStartPos.current.x;
-    const dy = touch.clientY - touchStartPos.current.y;
-    const distance = Math.hypot(dx, dy);
-
-    // Si aún no estamos arrastrando y el usuario mueve verticalmente, es scroll móvil: cancelar long-press y no bloquear scroll
-    if (!isTouchDragging.current && distance > 8) {
-      if (longPressTimerRef.current) {
-        clearTimeout(longPressTimerRef.current);
-        longPressTimerRef.current = null;
-      }
-
-      if (Math.abs(dy) >= Math.abs(dx) * 1.1) {
-        touchStartPos.current = null;
-        return;
-      }
-
-      // Solo iniciar reordenamiento táctil si el gesto inicial es claramente horizontal
-      if (Math.abs(dx) > 14 && Math.abs(dx) > Math.abs(dy) * 1.25) {
-        isTouchDragging.current = true;
-        setTouchActiveBookId(bookId);
-      } else {
-        return;
-      }
-    }
-
-    if (isTouchDragging.current) {
-      // Prevenir desplazamiento de la página durante el arrastre activo del libro
-      if (e.cancelable) {
-        e.preventDefault();
-      }
-
-      setTouchOffset({ x: dx, y: dy });
-
-      // Detectar el libro que se encuentra debajo del dedo
-      const elem = document.elementFromPoint(touch.clientX, touch.clientY);
-      const targetCard = elem?.closest('[data-book-id]');
-      const targetId = targetCard?.getAttribute('data-book-id');
-
-      if (targetId && targetId !== bookId) {
-        if (touchOverBookId !== targetId) {
-          setTouchOverBookId(targetId);
-        }
-      } else {
-        setTouchOverBookId(null);
-      }
-    }
-  };
-
-  const handleBookTouchEnd = (bookId: string) => {
-    handlePressEnd();
-
-    const wasDragging = isTouchDragging.current;
-    if (wasDragging) {
-      suppressClickRef.current = true;
-      setTimeout(() => {
-        suppressClickRef.current = false;
-      }, 350);
-    }
-
-    if (wasDragging && touchActiveBookId && touchOverBookId && touchActiveBookId !== touchOverBookId) {
-      const fromIndex = books.findIndex((b) => b.id === touchActiveBookId);
-      const toIndex = books.findIndex((b) => b.id === touchOverBookId);
-
-      if (fromIndex !== -1 && toIndex !== -1) {
-        const newBooks = [...books];
-        const [moved] = newBooks.splice(fromIndex, 1);
-        newBooks.splice(toIndex, 0, moved);
-
-        handleSetSortBy('custom');
-        if (onReorderBooks) {
-          onReorderBooks(newBooks);
-        }
-      }
-    }
-
-    isTouchDragging.current = false;
-    touchStartPos.current = null;
-    setTouchActiveBookId(null);
-    setTouchOverBookId(null);
-    setTouchOffset({ x: 0, y: 0 });
-  };
-
-  const handleBookTouchCancel = () => {
-    handlePressEnd();
-    if (isTouchDragging.current) {
-      suppressClickRef.current = true;
-      setTimeout(() => {
-        suppressClickRef.current = false;
-      }, 350);
-    }
-    isTouchDragging.current = false;
-    touchStartPos.current = null;
-    setTouchActiveBookId(null);
-    setTouchOverBookId(null);
-    setTouchOffset({ x: 0, y: 0 });
-  };
 
   // Quick batch sort helpers
   const handleQuickSort = (preset: 'title-asc' | 'author-asc' | 'progress-desc' | 'reverse' | 'favorites') => {
@@ -464,6 +340,7 @@ export const Bookshelf: React.FC<BookshelfProps> = ({
       sorted.sort((a, b) => (b.favorite ? 1 : 0) - (a.favorite ? 1 : 0));
     }
 
+    syncBookOrderInCustomSlots(sorted);
     handleSetSortBy('custom');
     if (onReorderBooks) {
       onReorderBooks(sorted);
@@ -585,115 +462,478 @@ export const Bookshelf: React.FC<BookshelfProps> = ({
       ? effectiveDecorConfig.bookend
       : null;
 
-  // Chunk books per shelf matching the exact columns visible at each screen width
-  // so every single row of books + decorations always rests directly on its own shelf plank
-  const chunkSize = (() => {
-    if (viewMode === 'covers') {
-      const cols = activeBookend
-        ? viewportWidth < 640
-          ? 3
-          : viewportWidth < 768
-          ? 4
-          : viewportWidth < 1024
-          ? 5
-          : 6
-        : viewportWidth < 640
-        ? 4
-        : viewportWidth < 768
-        ? 5
-        : viewportWidth < 1024
-        ? 6
-        : 7;
-      if (!hasDecorOnShelves) return cols;
-      const decorPerRow = viewportWidth >= 1024 && activeDecorProps.length >= 4 ? 2 : 1;
-      return Math.max(2, cols - decorPerRow);
-    }
-    if (viewMode === 'spines') {
-      const cols = activeBookend
-        ? viewportWidth < 420
-          ? 4
-          : viewportWidth < 640
-          ? 5
-          : viewportWidth < 768
-          ? 7
-          : viewportWidth < 1024
-          ? 9
-          : 11
-        : viewportWidth < 420
-        ? 5
-        : viewportWidth < 640
-        ? 6
-        : viewportWidth < 768
-        ? 8
-        : viewportWidth < 1024
-        ? 10
-        : 12;
-      if (!hasDecorOnShelves) return cols;
-      const decorPerRow = viewportWidth >= 768 && activeDecorProps.length >= 4 ? 2 : 1;
-      return Math.max(2, cols - decorPerRow);
-    }
-    // viewMode === 'stacks' (pilas de hasta 4 libros acostados por columna)
-    const maxPiles = viewportWidth < 640 ? 2 : viewportWidth < 1024 ? 3 : 4;
-    const bookPiles = hasDecorOnShelves ? Math.max(1, maxPiles - 1) : maxPiles;
-    return bookPiles * 4;
-  })();
+  type ShelfSlotItem =
+    | { slotId: string; kind: 'book'; book: Book }
+    | { slotId: string; kind: 'decor'; propId: ShelfDecorPropId }
+    | { slotId: string; kind: 'bookend'; bookendId: Exclude<ShelfBookendId, 'none'>; side: 'left' | 'right' };
 
-  const shelves: Book[][] = [];
-  for (let i = 0; i < paginatedBooks.length; i += chunkSize) {
-    shelves.push(paginatedBooks.slice(i, i + chunkSize));
-  }
-
-  type ShelfSlot =
-    | { kind: 'book'; book: Book }
-    | { kind: 'decor'; propId: ShelfDecorPropId; key: string };
-
-  const buildRowSlots = (
-    shelfBooks: Book[],
-    shelfIndex: number,
-    mode: 'covers' | 'spines'
-  ): ShelfSlot[] => {
-    const slots: ShelfSlot[] = shelfBooks.map((book) => ({ kind: 'book', book }));
-    if (!hasDecorOnShelves) return slots;
-
+  // Build balanced default shelf slot stream (books + decors + bookends)
+  const defaultSlots: ShelfSlotItem[] = (() => {
     const decorPerRow =
-      mode === 'covers'
+      viewMode === 'covers'
         ? viewportWidth >= 1024 && activeDecorProps.length >= 4
           ? 2
           : 1
-        : viewportWidth >= 768 && activeDecorProps.length >= 4
+        : viewMode === 'spines'
+        ? viewportWidth >= 768 && activeDecorProps.length >= 4
+          ? 2
+          : 1
+        : activeDecorProps.length > 1
         ? 2
         : 1;
 
-    const firstProp = activeDecorProps[(shelfIndex * decorPerRow) % activeDecorProps.length];
-    const secondProp =
-      decorPerRow > 1
-        ? activeDecorProps[(shelfIndex * decorPerRow + 1) % activeDecorProps.length]
-        : null;
+    const defaultBookChunkSize = (() => {
+      if (viewMode === 'covers') {
+        const cols = activeBookend
+          ? viewportWidth < 640
+            ? 3
+            : viewportWidth < 768
+            ? 4
+            : viewportWidth < 1024
+            ? 5
+            : 6
+          : viewportWidth < 640
+          ? 4
+          : viewportWidth < 768
+          ? 5
+          : viewportWidth < 1024
+          ? 6
+          : 7;
+        if (!hasDecorOnShelves) return cols;
+        return Math.max(2, cols - decorPerRow);
+      }
+      if (viewMode === 'spines') {
+        const cols = activeBookend
+          ? viewportWidth < 420
+            ? 4
+            : viewportWidth < 640
+            ? 5
+            : viewportWidth < 768
+            ? 7
+            : viewportWidth < 1024
+            ? 9
+            : 11
+          : viewportWidth < 420
+          ? 5
+          : viewportWidth < 640
+          ? 6
+          : viewportWidth < 768
+          ? 8
+          : viewportWidth < 1024
+          ? 10
+          : 12;
+        if (!hasDecorOnShelves) return cols;
+        return Math.max(2, cols - decorPerRow);
+      }
+      const maxPiles = viewportWidth < 640 ? 2 : viewportWidth < 1024 ? 3 : 4;
+      const bookPiles = hasDecorOnShelves ? Math.max(1, maxPiles - 1) : maxPiles;
+      return bookPiles * 4;
+    })();
 
-    // Alternating organic shelf placement so props look curated rather than rigid
-    const firstPosOptions = [
-      Math.min(shelfBooks.length, 2),
-      0,
-      Math.min(shelfBooks.length, 3),
-      shelfBooks.length,
-    ];
-    const pos1 = firstPosOptions[shelfIndex % firstPosOptions.length];
-    slots.splice(pos1, 0, {
-      kind: 'decor',
-      propId: firstProp,
-      key: `decor-${shelfIndex}-0-${firstProp}`,
-    });
+    const result: ShelfSlotItem[] = [];
+    const decorOccCounter: Record<string, number> = {};
 
-    if (secondProp) {
-      const pos2 = shelfIndex % 2 === 0 ? slots.length : Math.min(slots.length, 1);
-      slots.splice(pos2, 0, {
-        kind: 'decor',
-        propId: secondProp,
-        key: `decor-${shelfIndex}-1-${secondProp}`,
-      });
+    for (let i = 0, shelfIdx = 0; i < paginatedBooks.length; i += defaultBookChunkSize, shelfIdx++) {
+      const bChunk = paginatedBooks.slice(i, i + defaultBookChunkSize);
+      const rowItems: ShelfSlotItem[] = bChunk.map((book) => ({
+        slotId: `book:${book.id}`,
+        kind: 'book',
+        book,
+      }));
+
+      if (hasDecorOnShelves) {
+        const firstProp = activeDecorProps[(shelfIdx * decorPerRow) % activeDecorProps.length];
+        const occ1 = decorOccCounter[firstProp] || 0;
+        decorOccCounter[firstProp] = occ1 + 1;
+        const firstSlot: ShelfSlotItem = {
+          slotId: `decor:${firstProp}:${occ1}`,
+          kind: 'decor',
+          propId: firstProp,
+        };
+
+        if (viewMode === 'stacks') {
+          rowItems.push(firstSlot);
+        } else {
+          const firstPosOptions = [
+            Math.min(bChunk.length, 2),
+            0,
+            Math.min(bChunk.length, 3),
+            bChunk.length,
+          ];
+          const pos1 = firstPosOptions[shelfIdx % firstPosOptions.length];
+          rowItems.splice(pos1, 0, firstSlot);
+        }
+
+        if (decorPerRow > 1 && (viewMode !== 'stacks' || activeDecorProps.length > 1)) {
+          const secondProp =
+            activeDecorProps[(shelfIdx * decorPerRow + 1) % activeDecorProps.length];
+          const occ2 = decorOccCounter[secondProp] || 0;
+          decorOccCounter[secondProp] = occ2 + 1;
+          const secondSlot: ShelfSlotItem = {
+            slotId: `decor:${secondProp}:${occ2}`,
+            kind: 'decor',
+            propId: secondProp,
+          };
+
+          if (viewMode === 'stacks') {
+            rowItems.push(secondSlot);
+          } else {
+            const pos2 = shelfIdx % 2 === 0 ? rowItems.length : Math.min(rowItems.length, 1);
+            rowItems.splice(pos2, 0, secondSlot);
+          }
+        }
+      }
+
+      if (activeBookend) {
+        result.push({
+          slotId: `bookend:${activeBookend}:left:${shelfIdx}`,
+          kind: 'bookend',
+          bookendId: activeBookend,
+          side: 'left',
+        });
+      }
+      result.push(...rowItems);
+      if (activeBookend) {
+        result.push({
+          slotId: `bookend:${activeBookend}:right:${shelfIdx}`,
+          kind: 'bookend',
+          bookendId: activeBookend,
+          side: 'right',
+        });
+      }
     }
 
-    return slots;
+    return result;
+  })();
+
+  // Apply user's persisted custom arrangement across books, decorations & bookends
+  const orderedSlots: ShelfSlotItem[] = (() => {
+    if (sortBy !== 'custom' || customSlotOrder.length === 0) {
+      return defaultSlots;
+    }
+
+    const slotMap = new Map<string, ShelfSlotItem>(defaultSlots.map((s) => [s.slotId, s]));
+    const knownSet = new Set<string>();
+    const mergedIds: string[] = [];
+
+    for (const id of customSlotOrder) {
+      if (slotMap.has(id) && !knownSet.has(id)) {
+        knownSet.add(id);
+        mergedIds.push(id);
+      }
+    }
+
+    for (let i = 0; i < defaultSlots.length; i++) {
+      const id = defaultSlots[i].slotId;
+      if (knownSet.has(id)) continue;
+
+      let insertAt = 0;
+      for (let j = i - 1; j >= 0; j--) {
+        const prevId = defaultSlots[j].slotId;
+        const posInMerged = mergedIds.indexOf(prevId);
+        if (posInMerged !== -1) {
+          insertAt = posInMerged + 1;
+          break;
+        }
+      }
+      mergedIds.splice(insertAt, 0, id);
+      knownSet.add(id);
+    }
+
+    return mergedIds.map((id) => slotMap.get(id)!);
+  })();
+
+  // Pack orderedSlots into shelf rows matching exact mobile/desktop width capacity
+  const shelfRows: ShelfSlotItem[][] = (() => {
+    if (orderedSlots.length === 0) return [];
+
+    if (viewMode === 'covers') {
+      const maxWeight =
+        viewportWidth < 640
+          ? 4.25
+          : viewportWidth < 768
+          ? 5.25
+          : viewportWidth < 1024
+          ? 6.25
+          : 7.45;
+      const getWeight = (slot: ShelfSlotItem) =>
+        slot.kind === 'bookend' ? 0.58 : slot.kind === 'decor' ? 0.98 : 1.0;
+
+      const rows: ShelfSlotItem[][] = [];
+      let currentRow: ShelfSlotItem[] = [];
+      let currentWeight = 0;
+
+      for (const slot of orderedSlots) {
+        const w = getWeight(slot);
+        if (currentRow.length > 0 && currentWeight + w > maxWeight) {
+          rows.push(currentRow);
+          currentRow = [slot];
+          currentWeight = w;
+        } else {
+          currentRow.push(slot);
+          currentWeight += w;
+        }
+      }
+      if (currentRow.length > 0) rows.push(currentRow);
+      return rows;
+    }
+
+    if (viewMode === 'spines') {
+      const maxWeight =
+        viewportWidth < 420
+          ? 5.45
+          : viewportWidth < 640
+          ? 6.45
+          : viewportWidth < 768
+          ? 8.45
+          : viewportWidth < 1024
+          ? 10.45
+          : 12.45;
+      const getWeight = (slot: ShelfSlotItem) =>
+        slot.kind === 'bookend' ? 1.05 : slot.kind === 'decor' ? 1.45 : 1.0;
+
+      const rows: ShelfSlotItem[][] = [];
+      let currentRow: ShelfSlotItem[] = [];
+      let currentWeight = 0;
+
+      for (const slot of orderedSlots) {
+        const w = getWeight(slot);
+        if (currentRow.length > 0 && currentWeight + w > maxWeight) {
+          rows.push(currentRow);
+          currentRow = [slot];
+          currentWeight = w;
+        } else {
+          currentRow.push(slot);
+          currentWeight += w;
+        }
+      }
+      if (currentRow.length > 0) rows.push(currentRow);
+      return rows;
+    }
+
+    // viewMode === 'stacks': group up to 4 consecutive books per pile while respecting orderedSlots positions
+    const maxPiles = viewportWidth < 640 ? 2 : viewportWidth < 1024 ? 3 : 4;
+    const maxColBudget = maxPiles + (activeBookend ? 1.15 : 0.2);
+    const rows: ShelfSlotItem[][] = [];
+    let currentRow: ShelfSlotItem[] = [];
+    let currentColWeight = 0;
+    let consecutiveBooksInPile = 0;
+
+    for (const slot of orderedSlots) {
+      let addedWeight = 0;
+      if (slot.kind === 'book') {
+        if (consecutiveBooksInPile === 0 || consecutiveBooksInPile >= 4) {
+          addedWeight = 1.0;
+          consecutiveBooksInPile = 1;
+        } else {
+          addedWeight = 0;
+          consecutiveBooksInPile += 1;
+        }
+      } else {
+        consecutiveBooksInPile = 0;
+        addedWeight = slot.kind === 'bookend' ? 0.55 : 0.85;
+      }
+
+      if (currentRow.length > 0 && currentColWeight + addedWeight > maxColBudget) {
+        rows.push(currentRow);
+        currentRow = [slot];
+        if (slot.kind === 'book') {
+          currentColWeight = 1.0;
+          consecutiveBooksInPile = 1;
+        } else {
+          currentColWeight = addedWeight;
+          consecutiveBooksInPile = 0;
+        }
+      } else {
+        currentRow.push(slot);
+        currentColWeight += addedWeight;
+      }
+    }
+    if (currentRow.length > 0) rows.push(currentRow);
+    return rows;
+  })();
+
+  // Unified slot move & drag/touch handlers (works identically for books, decorations & bookends)
+  const handleSlotMove = (sourceSlotId: string, targetSlotId: string) => {
+    if (!sourceSlotId || !targetSlotId || sourceSlotId === targetSlotId) return;
+
+    const currentIds = orderedSlots.map((s) => s.slotId);
+    const fromIndex = currentIds.indexOf(sourceSlotId);
+    const toIndex = currentIds.indexOf(targetSlotId);
+    if (fromIndex === -1 || toIndex === -1) return;
+
+    const nextVisibleIds = [...currentIds];
+    const [movedId] = nextVisibleIds.splice(fromIndex, 1);
+    nextVisibleIds.splice(toIndex, 0, movedId);
+
+    const visibleSet = new Set(currentIds);
+    const mergedOrder: string[] = [];
+    let visibleCursor = 0;
+
+    for (const existingId of customSlotOrder) {
+      if (visibleSet.has(existingId)) {
+        if (visibleCursor < nextVisibleIds.length) {
+          mergedOrder.push(nextVisibleIds[visibleCursor++]);
+        }
+      } else {
+        mergedOrder.push(existingId);
+      }
+    }
+    while (visibleCursor < nextVisibleIds.length) {
+      mergedOrder.push(nextVisibleIds[visibleCursor++]);
+    }
+
+    saveCustomSlotOrder(mergedOrder);
+    handleSetSortBy('custom');
+
+    if (sourceSlotId.startsWith('book:') && onReorderBooks) {
+      const visibleBookIdsInOrder = nextVisibleIds
+        .filter((id) => id.startsWith('book:'))
+        .map((id) => id.slice('book:'.length));
+      const visibleBookSet = new Set(visibleBookIdsInOrder);
+      const bookMap = new Map(books.map((b) => [b.id, b]));
+      const nextBooks: Book[] = [];
+      let bCursor = 0;
+
+      for (const b of books) {
+        if (visibleBookSet.has(b.id)) {
+          const nextId = visibleBookIdsInOrder[bCursor++];
+          if (nextId && bookMap.has(nextId)) {
+            nextBooks.push(bookMap.get(nextId)!);
+          }
+        } else {
+          nextBooks.push(b);
+        }
+      }
+      onReorderBooks(nextBooks);
+    }
+  };
+
+  const handleSlotDragStart = (e: React.DragEvent, slotId: string) => {
+    e.dataTransfer.setData('text/plain', slotId);
+    e.dataTransfer.effectAllowed = 'move';
+    setDraggedSlotId(slotId);
+  };
+
+  const handleSlotDragOver = (e: React.DragEvent, slotId: string) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    if (dragOverSlotId !== slotId) {
+      setDragOverSlotId(slotId);
+    }
+  };
+
+  const handleSlotDragLeave = (_e: React.DragEvent, slotId: string) => {
+    if (dragOverSlotId === slotId) {
+      setDragOverSlotId(null);
+    }
+  };
+
+  const handleSlotDrop = (e: React.DragEvent, targetSlotId: string) => {
+    e.preventDefault();
+    setDragOverSlotId(null);
+    const sourceSlotId = e.dataTransfer.getData('text/plain') || draggedSlotId;
+    setDraggedSlotId(null);
+    if (!sourceSlotId || sourceSlotId === targetSlotId) return;
+    handleSlotMove(sourceSlotId, targetSlotId);
+  };
+
+  const handleSlotDragEnd = () => {
+    setDraggedSlotId(null);
+    setDragOverSlotId(null);
+  };
+
+  const handleSlotTouchStart = (slotId: string, e: React.TouchEvent, bookId?: string) => {
+    const touch = e.touches[0];
+    touchStartPos.current = { x: touch.clientX, y: touch.clientY };
+    isTouchDragging.current = false;
+    if (bookId) {
+      handlePressStart(bookId);
+    }
+  };
+
+  const handleSlotTouchMove = (slotId: string, e: React.TouchEvent) => {
+    if (!touchStartPos.current) return;
+    const touch = e.touches[0];
+    const dx = touch.clientX - touchStartPos.current.x;
+    const dy = touch.clientY - touchStartPos.current.y;
+    const distance = Math.hypot(dx, dy);
+
+    if (!isTouchDragging.current && distance > 8) {
+      if (longPressTimerRef.current) {
+        clearTimeout(longPressTimerRef.current);
+        longPressTimerRef.current = null;
+      }
+
+      if (Math.abs(dy) >= Math.abs(dx) * 1.1) {
+        touchStartPos.current = null;
+        return;
+      }
+
+      if (Math.abs(dx) > 14 && Math.abs(dx) > Math.abs(dy) * 1.25) {
+        isTouchDragging.current = true;
+        setTouchActiveSlotId(slotId);
+      } else {
+        return;
+      }
+    }
+
+    if (isTouchDragging.current) {
+      if (e.cancelable) {
+        e.preventDefault();
+      }
+
+      setTouchOffset({ x: dx, y: dy });
+
+      const elem = document.elementFromPoint(touch.clientX, touch.clientY);
+      const targetSlot = elem?.closest('[data-slot-id]');
+      const targetId = targetSlot?.getAttribute('data-slot-id');
+
+      if (targetId && targetId !== slotId) {
+        if (touchOverSlotId !== targetId) {
+          setTouchOverSlotId(targetId);
+        }
+      } else {
+        setTouchOverSlotId(null);
+      }
+    }
+  };
+
+  const handleSlotTouchEnd = () => {
+    handlePressEnd();
+
+    const wasDragging = isTouchDragging.current;
+    if (wasDragging) {
+      suppressClickRef.current = true;
+      setTimeout(() => {
+        suppressClickRef.current = false;
+      }, 350);
+    }
+
+    if (wasDragging && touchActiveSlotId && touchOverSlotId && touchActiveSlotId !== touchOverSlotId) {
+      handleSlotMove(touchActiveSlotId, touchOverSlotId);
+    }
+
+    isTouchDragging.current = false;
+    touchStartPos.current = null;
+    setTouchActiveSlotId(null);
+    setTouchOverSlotId(null);
+    setTouchOffset({ x: 0, y: 0 });
+  };
+
+  const handleSlotTouchCancel = () => {
+    handlePressEnd();
+    if (isTouchDragging.current) {
+      suppressClickRef.current = true;
+      setTimeout(() => {
+        suppressClickRef.current = false;
+      }, 350);
+    }
+    isTouchDragging.current = false;
+    touchStartPos.current = null;
+    setTouchActiveSlotId(null);
+    setTouchOverSlotId(null);
+    setTouchOffset({ x: 0, y: 0 });
   };
 
   // Shelf CSS class based on style
@@ -1040,12 +1280,11 @@ export const Bookshelf: React.FC<BookshelfProps> = ({
             {onOpenSettings && (
               <button
                 onClick={onOpenSettings}
-                className="min-h-[38px] min-w-[38px] px-2.5 py-1.5 bg-black/40 border border-[var(--border-color)] hover:border-[var(--accent-pink)] rounded-xl text-xs text-[var(--accent-pink)] flex items-center justify-center gap-1 transition shrink-0 hover:bg-[var(--accent-pink)]/10"
+                className="min-h-[38px] min-w-[38px] px-2.5 py-1.5 bg-black/40 border border-[var(--border-color)] hover:border-[var(--accent-pink)] rounded-xl text-xs text-[var(--accent-pink)] flex items-center justify-center transition shrink-0 hover:bg-[var(--accent-pink)]/10"
                 title="Configuración de lectura, decoraciones, tipografía y márgenes"
                 aria-label="Abrir panel de configuraciones"
               >
                 <Settings className="w-4 h-4" />
-                <span className="hidden md:inline font-cute font-bold">Ajustes</span>
               </button>
             )}
           </div>
@@ -1281,7 +1520,7 @@ export const Bookshelf: React.FC<BookshelfProps> = ({
 
               {/* Shelves rows */}
               <div className="space-y-4 sm:space-y-5 relative z-10 mt-2">
-                {shelves.map((shelfBooks, shelfIndex) => (
+                {shelfRows.map((rowSlots, shelfIndex) => (
               <div
                 key={shelfIndex}
                 className="conventional-shelf-row"
@@ -1292,44 +1531,97 @@ export const Bookshelf: React.FC<BookshelfProps> = ({
                 }
               >
                 <div className="bookcase-books-layer">
-                {/* MODE 1: COVERS VIEW (Portadas frontales + decoraciones y sujetalibros descansando sobre la repisa) */}
+                {/* MODE 1: COVERS VIEW (Portadas, decoraciones y sujetalibros movibles descansando sobre la repisa) */}
                 {viewMode === 'covers' && (
-                  <div className="flex items-end gap-1 sm:gap-2 px-1 sm:px-2 pb-0">
-                    {activeBookend && (
-                      <ShelfBookend id={activeBookend} side="left" compact={viewportWidth < 640} />
-                    )}
-                    <div
-                      className={`flex-1 min-w-0 grid gap-2 sm:gap-3 lg:gap-4 items-end ${
-                        activeBookend
-                          ? 'grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6'
-                          : 'grid-cols-4 sm:grid-cols-5 md:grid-cols-6 lg:grid-cols-7'
-                      }`}
-                    >
-                      {buildRowSlots(shelfBooks, shelfIndex, 'covers').map((slot) => {
-                        if (slot.kind === 'decor') {
-                          return <ShelfDecoration key={slot.key} type={slot.propId} />;
-                        }
+                  <div className="flex items-end justify-center gap-1.5 sm:gap-2.5 lg:gap-3.5 px-1 sm:px-2 pb-0">
+                    {rowSlots.map((slot) => {
+                      const isTouchingCurrent = touchActiveSlotId === slot.slotId;
+                      const isDraggingCurrent = draggedSlotId === slot.slotId || isTouchingCurrent;
+                      const isDropTarget = (dragOverSlotId === slot.slotId || touchOverSlotId === slot.slotId) && !isDraggingCurrent;
+
+                      if (slot.kind === 'decor' || slot.kind === 'bookend') {
+                        return (
+                          <div
+                            key={slot.slotId}
+                            data-slot-id={slot.slotId}
+                            draggable={true}
+                            onDragStart={(e) => handleSlotDragStart(e, slot.slotId)}
+                            onDragOver={(e) => handleSlotDragOver(e, slot.slotId)}
+                            onDragLeave={(e) => handleSlotDragLeave(e, slot.slotId)}
+                            onDrop={(e) => handleSlotDrop(e, slot.slotId)}
+                            onDragEnd={handleSlotDragEnd}
+                            onTouchStart={(e) => handleSlotTouchStart(slot.slotId, e)}
+                            onTouchMove={(e) => handleSlotTouchMove(slot.slotId, e)}
+                            onTouchEnd={handleSlotTouchEnd}
+                            onTouchCancel={handleSlotTouchCancel}
+                            style={{
+                              touchAction: 'pan-y',
+                              transform: isTouchingCurrent
+                                ? `translate3d(${touchOffset.x}px, ${touchOffset.y}px, 0)`
+                                : undefined,
+                              zIndex: isTouchingCurrent ? 60 : undefined,
+                              pointerEvents: isTouchingCurrent ? 'none' : 'auto',
+                            }}
+                            className={`relative self-end mb-[-3px] shrink-0 cursor-grab active:cursor-grabbing flex items-end justify-center transition-all duration-200 select-none ${
+                              slot.kind === 'bookend'
+                                ? 'w-[34px] min-[400px]:w-[40px] sm:w-[54px] md:w-[62px] h-[86px] min-[400px]:h-[98px] sm:h-[126px] md:h-[138px]'
+                                : 'w-[60px] min-[400px]:w-[68px] sm:w-[88px] md:w-[96px] lg:w-[104px] aspect-[2/3]'
+                            } ${
+                              isTouchingCurrent
+                                ? 'scale-105 shadow-[0_20px_45px_rgba(255,121,198,0.7)] ring-2 ring-[var(--accent-pink)] transition-none rounded-xl'
+                                : ''
+                            } ${
+                              draggedSlotId === slot.slotId ? 'opacity-40 scale-95' : ''
+                            } ${
+                              isDropTarget
+                                ? 'ring-4 ring-[var(--accent-pink)] scale-105 shadow-[0_0_25px_rgba(255,121,198,0.8)] z-30 rounded-xl'
+                                : ''
+                            }`}
+                          >
+                            {isDropTarget && (
+                              <div className="absolute inset-0 z-50 bg-[var(--accent-pink)]/20 backdrop-blur-xs rounded-xl flex items-center justify-center pointer-events-none border-2 border-[var(--accent-pink)]">
+                                <span className="text-[9px] font-bold text-white bg-black/90 px-2 py-0.5 rounded-full shadow-lg border border-[var(--accent-pink)] animate-bounce">
+                                  ✨
+                                </span>
+                              </div>
+                            )}
+                            {slot.kind === 'decor' ? (
+                              <ShelfDecoration
+                                type={slot.propId}
+                                inSlot
+                                onBeforeClick={() => !suppressClickRef.current && !isTouchDragging.current}
+                              />
+                            ) : (
+                              <ShelfBookend
+                                id={slot.bookendId}
+                                side={slot.side}
+                                inSlot
+                                onBeforeClick={() => !suppressClickRef.current && !isTouchDragging.current}
+                              />
+                            )}
+                          </div>
+                        );
+                      }
+
                       const book = slot.book;
                       const percent = book.progressPercent || 0;
                       const isMarked = isBookMarked(book.id);
-                      const isTouchingCurrent = touchActiveBookId === book.id;
-                      const isDraggingCurrent = draggedBookId === book.id || isTouchingCurrent;
-                      const isDropTarget = (dragOverBookId === book.id || touchOverBookId === book.id) && !isDraggingCurrent;
 
                       return (
                         <div
                           key={book.id}
+                          data-slot-id={slot.slotId}
                           data-book-id={book.id}
                           draggable={true}
-                          onDragStart={(e) => handleDragStart(e, book.id)}
-                          onDragOver={(e) => handleDragOver(e, book.id)}
-                          onDragLeave={(e) => handleDragLeave(e, book.id)}
-                          onDrop={(e) => handleDrop(e, book.id)}
-                          onDragEnd={handleDragEnd}
-                          onTouchStart={(e) => handleBookTouchStart(book.id, e)}
-                          onTouchMove={(e) => handleBookTouchMove(book.id, e)}
-                          onTouchEnd={() => handleBookTouchEnd(book.id)}
-                          onTouchCancel={handleBookTouchCancel}
+                          onDragStart={(e) => handleSlotDragStart(e, slot.slotId)}
+                          onDragOver={(e) => handleSlotDragOver(e, slot.slotId)}
+                          onDragLeave={(e) => handleSlotDragLeave(e, slot.slotId)}
+                          onDrop={(e) => handleSlotDrop(e, slot.slotId)}
+                          onDragEnd={handleSlotDragEnd}
+                          onTouchStart={(e) => handleSlotTouchStart(slot.slotId, e, book.id)}
+                          onTouchMove={(e) => handleSlotTouchMove(slot.slotId, e)}
+                          onTouchEnd={handleSlotTouchEnd}
+                          onTouchCancel={handleSlotTouchCancel}
                           onMouseDown={() => handlePressStart(book.id)}
                           onMouseUp={handlePressEnd}
                           onMouseLeave={handlePressEnd}
@@ -1349,12 +1641,12 @@ export const Bookshelf: React.FC<BookshelfProps> = ({
                             zIndex: isTouchingCurrent ? 60 : undefined,
                             pointerEvents: isTouchingCurrent ? 'none' : 'auto'
                           }}
-                          className={`group cursor-grab active:cursor-grabbing flex flex-col items-center transition-all duration-200 relative select-none ${
+                          className={`group shrink-0 w-[60px] min-[400px]:w-[68px] sm:w-[88px] md:w-[96px] lg:w-[104px] cursor-grab active:cursor-grabbing flex flex-col items-center transition-all duration-200 relative select-none ${
                             isTouchingCurrent 
-                              ? 'scale-105 shadow-[0_20px_45px_rgba(255,121,198,0.7)] ring-2 ring-[var(--accent-pink)] transition-none' 
+                              ? 'scale-105 shadow-[0_20px_45px_rgba(255,121,198,0.7)] ring-2 ring-[var(--accent-pink)] transition-none rounded-xl' 
                               : ''
                           } ${
-                            draggedBookId === book.id ? 'opacity-40 scale-95' : ''
+                            draggedSlotId === slot.slotId ? 'opacity-40 scale-95' : ''
                           } ${
                             isDropTarget ? 'ring-4 ring-[var(--accent-pink)] scale-105 shadow-[0_0_25px_rgba(255,121,198,0.8)] z-30 rounded-xl' : ''
                           } ${
@@ -1557,45 +1849,103 @@ export const Bookshelf: React.FC<BookshelfProps> = ({
                         </div>
                       );
                     })}
-                    </div>
-                    {activeBookend && (
-                      <ShelfBookend id={activeBookend} side="right" compact={viewportWidth < 640} />
-                    )}
                   </div>
                 )}
 
-                {/* MODE 2: SPINES VIEW (Lomos verticales alineados + decoraciones y sujetalibros en estantería) */}
+                {/* MODE 2: SPINES VIEW (Lomos verticales, decoraciones y sujetalibros movibles) */}
                 {viewMode === 'spines' && (
                   <div className="flex items-end justify-center gap-1.5 sm:gap-2 px-1 sm:px-3 pt-2 pb-0 overflow-visible min-h-[172px] sm:min-h-[188px]">
-                    {activeBookend && (
-                      <ShelfBookend id={activeBookend} side="left" compact />
-                    )}
-                    {buildRowSlots(shelfBooks, shelfIndex, 'spines').map((slot) => {
-                      if (slot.kind === 'decor') {
-                        return <ShelfDecoration key={slot.key} type={slot.propId} compact />;
+                    {rowSlots.map((slot) => {
+                      const isTouchingCurrent = touchActiveSlotId === slot.slotId;
+                      const isDraggingCurrent = draggedSlotId === slot.slotId || isTouchingCurrent;
+                      const isDropTarget = (dragOverSlotId === slot.slotId || touchOverSlotId === slot.slotId) && !isDraggingCurrent;
+
+                      if (slot.kind === 'decor' || slot.kind === 'bookend') {
+                        return (
+                          <div
+                            key={slot.slotId}
+                            data-slot-id={slot.slotId}
+                            draggable={true}
+                            onDragStart={(e) => handleSlotDragStart(e, slot.slotId)}
+                            onDragOver={(e) => handleSlotDragOver(e, slot.slotId)}
+                            onDragLeave={(e) => handleSlotDragLeave(e, slot.slotId)}
+                            onDrop={(e) => handleSlotDrop(e, slot.slotId)}
+                            onDragEnd={handleSlotDragEnd}
+                            onTouchStart={(e) => handleSlotTouchStart(slot.slotId, e)}
+                            onTouchMove={(e) => handleSlotTouchMove(slot.slotId, e)}
+                            onTouchEnd={handleSlotTouchEnd}
+                            onTouchCancel={handleSlotTouchCancel}
+                            style={{
+                              touchAction: 'pan-y',
+                              transform: isTouchingCurrent
+                                ? `translate3d(${touchOffset.x}px, ${touchOffset.y}px, 0)`
+                                : undefined,
+                              zIndex: isTouchingCurrent ? 60 : undefined,
+                              pointerEvents: isTouchingCurrent ? 'none' : 'auto',
+                            }}
+                            className={`relative self-end mb-[-3px] shrink-0 cursor-grab active:cursor-grabbing flex items-end justify-center transition-all duration-200 select-none ${
+                              slot.kind === 'bookend'
+                                ? 'w-[38px] sm:w-[50px] h-[90px] sm:h-[118px]'
+                                : 'w-[54px] sm:w-[66px] h-[84px] sm:h-[104px]'
+                            } ${
+                              isTouchingCurrent
+                                ? 'scale-105 shadow-[0_20px_45px_rgba(255,121,198,0.7)] ring-2 ring-[var(--accent-pink)] transition-none rounded-lg'
+                                : ''
+                            } ${
+                              draggedSlotId === slot.slotId ? 'opacity-40 scale-95' : ''
+                            } ${
+                              isDropTarget
+                                ? 'ring-4 ring-[var(--accent-pink)] scale-105 shadow-[0_0_20px_rgba(255,121,198,0.8)] z-30 rounded-lg'
+                                : ''
+                            }`}
+                          >
+                            {isDropTarget && (
+                              <div className="absolute inset-0 z-40 bg-[var(--accent-pink)]/20 rounded-lg flex items-center justify-center pointer-events-none border border-[var(--accent-pink)]">
+                                <span className="text-[8px] font-bold text-white bg-black/90 px-1 py-0.5 rounded shadow">
+                                  ✨
+                                </span>
+                              </div>
+                            )}
+                            {slot.kind === 'decor' ? (
+                              <ShelfDecoration
+                                type={slot.propId}
+                                compact
+                                inSlot
+                                onBeforeClick={() => !suppressClickRef.current && !isTouchDragging.current}
+                              />
+                            ) : (
+                              <ShelfBookend
+                                id={slot.bookendId}
+                                side={slot.side}
+                                compact
+                                inSlot
+                                onBeforeClick={() => !suppressClickRef.current && !isTouchDragging.current}
+                              />
+                            )}
+                          </div>
+                        );
                       }
+
                       const book = slot.book;
                       const isMarked = isBookMarked(book.id);
-                      const isTouchingCurrent = touchActiveBookId === book.id;
-                      const isDraggingCurrent = draggedBookId === book.id || isTouchingCurrent;
-                      const isDropTarget = (dragOverBookId === book.id || touchOverBookId === book.id) && !isDraggingCurrent;
                       const spineWidth = viewportWidth < 420 ? '36px' : viewportWidth < 640 ? '38px' : '38px';
                       const spineHeight = viewportWidth < 640 ? '164px' : '175px';
 
                       return (
                         <div
                           key={book.id}
+                          data-slot-id={slot.slotId}
                           data-book-id={book.id}
                           draggable={true}
-                          onDragStart={(e) => handleDragStart(e, book.id)}
-                          onDragOver={(e) => handleDragOver(e, book.id)}
-                          onDragLeave={(e) => handleDragLeave(e, book.id)}
-                          onDrop={(e) => handleDrop(e, book.id)}
-                          onDragEnd={handleDragEnd}
-                          onTouchStart={(e) => handleBookTouchStart(book.id, e)}
-                          onTouchMove={(e) => handleBookTouchMove(book.id, e)}
-                          onTouchEnd={() => handleBookTouchEnd(book.id)}
-                          onTouchCancel={handleBookTouchCancel}
+                          onDragStart={(e) => handleSlotDragStart(e, slot.slotId)}
+                          onDragOver={(e) => handleSlotDragOver(e, slot.slotId)}
+                          onDragLeave={(e) => handleSlotDragLeave(e, slot.slotId)}
+                          onDrop={(e) => handleSlotDrop(e, slot.slotId)}
+                          onDragEnd={handleSlotDragEnd}
+                          onTouchStart={(e) => handleSlotTouchStart(slot.slotId, e, book.id)}
+                          onTouchMove={(e) => handleSlotTouchMove(slot.slotId, e)}
+                          onTouchEnd={handleSlotTouchEnd}
+                          onTouchCancel={handleSlotTouchCancel}
                           onMouseDown={() => handlePressStart(book.id)}
                           onMouseUp={handlePressEnd}
                           onMouseLeave={handlePressEnd}
@@ -1624,7 +1974,7 @@ export const Bookshelf: React.FC<BookshelfProps> = ({
                               ? 'scale-105 shadow-[0_20px_45px_rgba(255,121,198,0.7)] ring-2 ring-[var(--accent-pink)] transition-none' 
                               : ''
                           } ${
-                            draggedBookId === book.id ? 'opacity-40 scale-95' : ''
+                            draggedSlotId === slot.slotId ? 'opacity-40 scale-95' : ''
                           } ${
                             isDropTarget ? 'ring-4 ring-[var(--accent-pink)] scale-105 shadow-[0_0_20px_rgba(255,121,198,0.8)] z-30' : ''
                           } ${
@@ -1673,151 +2023,216 @@ export const Bookshelf: React.FC<BookshelfProps> = ({
                         </div>
                       );
                     })}
-                    {activeBookend && (
-                      <ShelfBookend id={activeBookend} side="right" compact />
-                    )}
                   </div>
                 )}
 
-                {/* MODE 3: STACKS VIEW (Libros acostados más pequeños, apilados hasta 4 por pila sobre la repisa) */}
+                {/* MODE 3: STACKS VIEW (Pilas de libros acostados + decoraciones y sujetalibros movibles) */}
                 {viewMode === 'stacks' && (() => {
-                  const piles: Book[][] = [];
-                  for (let i = 0; i < shelfBooks.length; i += 4) {
-                    piles.push(shelfBooks.slice(i, i + 4));
+                  type StackSegment =
+                    | { kind: 'pile'; key: string; books: Book[] }
+                    | { kind: 'slot'; slot: Exclude<ShelfSlotItem, { kind: 'book' }> };
+
+                  const segments: StackSegment[] = [];
+                  let currentPile: Book[] = [];
+
+                  rowSlots.forEach((slot, idx) => {
+                    if (slot.kind === 'book') {
+                      currentPile.push(slot.book);
+                      if (currentPile.length === 4) {
+                        segments.push({ kind: 'pile', key: `pile-${shelfIndex}-${idx}`, books: currentPile });
+                        currentPile = [];
+                      }
+                    } else {
+                      if (currentPile.length > 0) {
+                        segments.push({ kind: 'pile', key: `pile-${shelfIndex}-${idx}`, books: currentPile });
+                        currentPile = [];
+                      }
+                      segments.push({ kind: 'slot', slot });
+                    }
+                  });
+                  if (currentPile.length > 0) {
+                    segments.push({ kind: 'pile', key: `pile-${shelfIndex}-end`, books: currentPile });
                   }
 
                   return (
-                    <div className="flex items-end gap-1.5 sm:gap-2.5 px-1 sm:px-3 pt-2 pb-0">
-                      {activeBookend && (
-                        <ShelfBookend id={activeBookend} side="left" compact />
-                      )}
-                      <div className="flex-1 min-w-0 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2 sm:gap-3.5 items-end">
-                      {piles.map((pileBooks, pileIndex) => (
-                        <div
-                          key={`pile-${shelfIndex}-${pileIndex}`}
-                          className="flex flex-col-reverse gap-[2px] items-stretch justify-start min-w-0"
-                        >
-                          {pileBooks.map((book, stackIdx) => {
-                            const isMarked = isBookMarked(book.id);
-                            const isTouchingCurrent = touchActiveBookId === book.id;
-                            const isDraggingCurrent = draggedBookId === book.id || isTouchingCurrent;
-                            const isDropTarget = (dragOverBookId === book.id || touchOverBookId === book.id) && !isDraggingCurrent;
-                            // Pequeño desplazamiento horizontal alternado para dar aspecto real de pila de libros
-                            const stackOffsetPx = stackIdx === 1 ? 2 : stackIdx === 2 ? -2 : stackIdx === 3 ? 1 : 0;
+                    <div className="flex flex-wrap sm:flex-nowrap items-end justify-center gap-2 sm:gap-3 px-1 sm:px-3 pt-2 pb-0">
+                      {segments.map((seg) => {
+                        if (seg.kind === 'slot') {
+                          const slot = seg.slot;
+                          const isTouchingCurrent = touchActiveSlotId === slot.slotId;
+                          const isDraggingCurrent = draggedSlotId === slot.slotId || isTouchingCurrent;
+                          const isDropTarget = (dragOverSlotId === slot.slotId || touchOverSlotId === slot.slotId) && !isDraggingCurrent;
 
-                            return (
-                              <div
-                                key={book.id}
-                                data-book-id={book.id}
-                                draggable={true}
-                                onDragStart={(e) => handleDragStart(e, book.id)}
-                                onDragOver={(e) => handleDragOver(e, book.id)}
-                                onDragLeave={(e) => handleDragLeave(e, book.id)}
-                                onDrop={(e) => handleDrop(e, book.id)}
-                                onDragEnd={handleDragEnd}
-                                onTouchStart={(e) => handleBookTouchStart(book.id, e)}
-                                onTouchMove={(e) => handleBookTouchMove(book.id, e)}
-                                onTouchEnd={() => handleBookTouchEnd(book.id)}
-                                onTouchCancel={handleBookTouchCancel}
-                                onMouseDown={() => handlePressStart(book.id)}
-                                onMouseUp={handlePressEnd}
-                                onMouseLeave={handlePressEnd}
-                                onClick={() => {
-                                  if (suppressClickRef.current) return;
-                                  if (markedForDeleteIds.length > 0) {
-                                    toggleMarkForDelete(book.id);
-                                  } else if (!isTouchDragging.current) {
-                                    onOpenBook(book);
-                                  }
-                                }}
-                                style={{
-                                  background: resolveCoverGradient(book.coverGradient),
-                                  touchAction: 'pan-y',
-                                  transform: isTouchingCurrent
-                                    ? `translate3d(${touchOffset.x}px, ${touchOffset.y}px, 0)`
-                                    : stackOffsetPx !== 0
-                                    ? `translateX(${stackOffsetPx}px)`
-                                    : undefined,
-                                  zIndex: isTouchingCurrent ? 60 : stackIdx + 1,
-                                  pointerEvents: isTouchingCurrent ? 'none' : 'auto'
-                                }}
-                                className={`relative group cursor-grab active:cursor-grabbing px-2 py-1 sm:px-2.5 sm:py-1.5 rounded-md border border-white/15 border-b-2 border-b-black/50 transition-all duration-200 flex items-center justify-between gap-1.5 shadow-[0_2px_5px_rgba(0,0,0,0.65)] select-none min-h-[28px] sm:min-h-[32px] ${
-                                  isTouchingCurrent
-                                    ? 'scale-105 shadow-[0_14px_30px_rgba(255,121,198,0.7)] ring-2 ring-[var(--accent-pink)] transition-none'
-                                    : ''
-                                } ${
-                                  draggedBookId === book.id ? 'opacity-40 scale-95' : ''
-                                } ${
-                                  isDropTarget ? 'ring-2 ring-[var(--accent-pink)] scale-[1.03] shadow-[0_0_16px_rgba(255,121,198,0.8)] z-30' : ''
-                                } ${
-                                  isMarked
-                                    ? 'ring-2 ring-rose-500 scale-[1.02] shadow-[0_0_16px_rgba(244,63,94,0.75)] z-20'
-                                    : 'hover:-translate-y-0.5'
-                                }`}
-                                title={`${book.title} — ${book.author} (${isMarked ? 'Marcado para eliminar' : 'Mantén presionado para opciones o desliza para mover'})`}
-                              >
-                                {/* Borde sutil lateral tipo hojas de libro acostado */}
-                                <div className="absolute right-0.5 top-1 bottom-1 w-[2px] rounded-full bg-amber-100/20 pointer-events-none" />
-
-                                {/* Drop target indicator */}
-                                {isDropTarget && (
-                                  <div className="absolute inset-0 z-40 bg-[var(--accent-pink)]/25 backdrop-blur-xs rounded-md flex items-center justify-center pointer-events-none border border-[var(--accent-pink)]">
-                                    <span className="text-[9px] font-bold text-white bg-black/90 px-1.5 py-0.5 rounded-full shadow">
-                                      ✨ Soltar aquí
-                                    </span>
-                                  </div>
-                                )}
-
-                                {isMarked && (
-                                  <button
-                                    type="button"
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      onDeleteBook(book.id, e);
-                                      setMarkedForDeleteIds((prev) => prev.filter((id) => id !== book.id));
-                                    }}
-                                    className="absolute -top-2 -left-1.5 z-50 w-5 h-5 rounded-full bg-rose-600 hover:bg-rose-700 text-white font-bold text-[10px] flex items-center justify-center shadow border border-white cursor-pointer active:scale-90 animate-popIn"
-                                    title="Eliminar de la estantería ahora"
-                                  >
-                                    ✕
-                                  </button>
-                                )}
-
-                                <div className="flex items-center gap-1.5 overflow-hidden min-w-0">
-                                  <span className="text-xs sm:text-sm shrink-0 leading-none">{normalizeBookEmoji(book.emoji)}</span>
-                                  <h4 className="text-[10px] sm:text-[11px] font-bold text-white truncate leading-tight">
-                                    {book.title}
-                                  </h4>
+                          return (
+                            <div
+                              key={slot.slotId}
+                              data-slot-id={slot.slotId}
+                              draggable={true}
+                              onDragStart={(e) => handleSlotDragStart(e, slot.slotId)}
+                              onDragOver={(e) => handleSlotDragOver(e, slot.slotId)}
+                              onDragLeave={(e) => handleSlotDragLeave(e, slot.slotId)}
+                              onDrop={(e) => handleSlotDrop(e, slot.slotId)}
+                              onDragEnd={handleSlotDragEnd}
+                              onTouchStart={(e) => handleSlotTouchStart(slot.slotId, e)}
+                              onTouchMove={(e) => handleSlotTouchMove(slot.slotId, e)}
+                              onTouchEnd={handleSlotTouchEnd}
+                              onTouchCancel={handleSlotTouchCancel}
+                              style={{
+                                touchAction: 'pan-y',
+                                transform: isTouchingCurrent
+                                  ? `translate3d(${touchOffset.x}px, ${touchOffset.y}px, 0)`
+                                  : undefined,
+                                zIndex: isTouchingCurrent ? 60 : undefined,
+                                pointerEvents: isTouchingCurrent ? 'none' : 'auto',
+                              }}
+                              className={`relative self-end mb-[-3px] shrink-0 cursor-grab active:cursor-grabbing flex items-end justify-center transition-all duration-200 select-none ${
+                                slot.kind === 'bookend'
+                                  ? 'w-[38px] sm:w-[50px] h-[90px] sm:h-[118px]'
+                                  : 'w-[54px] sm:w-[66px] h-[84px] sm:h-[104px]'
+                              } ${
+                                isTouchingCurrent
+                                  ? 'scale-105 shadow-[0_20px_45px_rgba(255,121,198,0.7)] ring-2 ring-[var(--accent-pink)] transition-none rounded-lg'
+                                  : ''
+                              } ${
+                                draggedSlotId === slot.slotId ? 'opacity-40 scale-95' : ''
+                              } ${
+                                isDropTarget
+                                  ? 'ring-4 ring-[var(--accent-pink)] scale-105 shadow-[0_0_20px_rgba(255,121,198,0.8)] z-30 rounded-lg'
+                                  : ''
+                              }`}
+                            >
+                              {isDropTarget && (
+                                <div className="absolute inset-0 z-40 bg-[var(--accent-pink)]/20 rounded-lg flex items-center justify-center pointer-events-none border border-[var(--accent-pink)]">
+                                  <span className="text-[8px] font-bold text-white bg-black/90 px-1 py-0.5 rounded shadow">
+                                    ✨
+                                  </span>
                                 </div>
-                                <span className="text-[9px] font-mono font-bold text-[var(--accent-pink)] shrink-0 pr-1">
-                                  {book.progressPercent || 0}%
-                                </span>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      ))}
-                      {hasDecorOnShelves && (
-                        <div
-                          key={`decor-stack-col-${shelfIndex}`}
-                          className="flex items-end justify-center gap-1.5 sm:gap-3 pb-0 min-w-0"
-                        >
-                          <ShelfDecoration
-                            type={activeDecorProps[(shelfIndex * 2) % activeDecorProps.length]}
-                            compact
-                          />
-                          {activeDecorProps.length > 1 && (
-                            <ShelfDecoration
-                              type={activeDecorProps[(shelfIndex * 2 + 1) % activeDecorProps.length]}
-                              compact
-                            />
-                          )}
-                        </div>
-                      )}
-                      </div>
-                      {activeBookend && (
-                        <ShelfBookend id={activeBookend} side="right" compact />
-                      )}
+                              )}
+                              {slot.kind === 'decor' ? (
+                                <ShelfDecoration
+                                  type={slot.propId}
+                                  compact
+                                  inSlot
+                                  onBeforeClick={() => !suppressClickRef.current && !isTouchDragging.current}
+                                />
+                              ) : (
+                                <ShelfBookend
+                                  id={slot.bookendId}
+                                  side={slot.side}
+                                  compact
+                                  inSlot
+                                  onBeforeClick={() => !suppressClickRef.current && !isTouchDragging.current}
+                                />
+                              )}
+                            </div>
+                          );
+                        }
+
+                        return (
+                          <div
+                            key={seg.key}
+                            className="flex-1 min-w-[110px] max-w-[230px] flex flex-col-reverse gap-[2px] items-stretch justify-start"
+                          >
+                            {seg.books.map((book, stackIdx) => {
+                              const slotId = `book:${book.id}`;
+                              const isMarked = isBookMarked(book.id);
+                              const isTouchingCurrent = touchActiveSlotId === slotId;
+                              const isDraggingCurrent = draggedSlotId === slotId || isTouchingCurrent;
+                              const isDropTarget = (dragOverSlotId === slotId || touchOverSlotId === slotId) && !isDraggingCurrent;
+                              const stackOffsetPx = stackIdx === 1 ? 2 : stackIdx === 2 ? -2 : stackIdx === 3 ? 1 : 0;
+
+                              return (
+                                <div
+                                  key={book.id}
+                                  data-slot-id={slotId}
+                                  data-book-id={book.id}
+                                  draggable={true}
+                                  onDragStart={(e) => handleSlotDragStart(e, slotId)}
+                                  onDragOver={(e) => handleSlotDragOver(e, slotId)}
+                                  onDragLeave={(e) => handleSlotDragLeave(e, slotId)}
+                                  onDrop={(e) => handleSlotDrop(e, slotId)}
+                                  onDragEnd={handleSlotDragEnd}
+                                  onTouchStart={(e) => handleSlotTouchStart(slotId, e, book.id)}
+                                  onTouchMove={(e) => handleSlotTouchMove(slotId, e)}
+                                  onTouchEnd={handleSlotTouchEnd}
+                                  onTouchCancel={handleSlotTouchCancel}
+                                  onMouseDown={() => handlePressStart(book.id)}
+                                  onMouseUp={handlePressEnd}
+                                  onMouseLeave={handlePressEnd}
+                                  onClick={() => {
+                                    if (suppressClickRef.current) return;
+                                    if (markedForDeleteIds.length > 0) {
+                                      toggleMarkForDelete(book.id);
+                                    } else if (!isTouchDragging.current) {
+                                      onOpenBook(book);
+                                    }
+                                  }}
+                                  style={{
+                                    background: resolveCoverGradient(book.coverGradient),
+                                    touchAction: 'pan-y',
+                                    transform: isTouchingCurrent
+                                      ? `translate3d(${touchOffset.x}px, ${touchOffset.y}px, 0)`
+                                      : stackOffsetPx !== 0
+                                      ? `translateX(${stackOffsetPx}px)`
+                                      : undefined,
+                                    zIndex: isTouchingCurrent ? 60 : stackIdx + 1,
+                                    pointerEvents: isTouchingCurrent ? 'none' : 'auto'
+                                  }}
+                                  className={`relative group cursor-grab active:cursor-grabbing px-2 py-1 sm:px-2.5 sm:py-1.5 rounded-md border border-white/15 border-b-2 border-b-black/50 transition-all duration-200 flex items-center justify-between gap-1.5 shadow-[0_2px_5px_rgba(0,0,0,0.65)] select-none min-h-[28px] sm:min-h-[32px] ${
+                                    isTouchingCurrent
+                                      ? 'scale-105 shadow-[0_14px_30px_rgba(255,121,198,0.7)] ring-2 ring-[var(--accent-pink)] transition-none'
+                                      : ''
+                                  } ${
+                                    draggedSlotId === slotId ? 'opacity-40 scale-95' : ''
+                                  } ${
+                                    isDropTarget ? 'ring-2 ring-[var(--accent-pink)] scale-[1.03] shadow-[0_0_16px_rgba(255,121,198,0.8)] z-30' : ''
+                                  } ${
+                                    isMarked
+                                      ? 'ring-2 ring-rose-500 scale-[1.02] shadow-[0_0_16px_rgba(244,63,94,0.75)] z-20'
+                                      : 'hover:-translate-y-0.5'
+                                  }`}
+                                  title={`${book.title} — ${book.author} (${isMarked ? 'Marcado para eliminar' : 'Mantén presionado para opciones o desliza para mover'})`}
+                                >
+                                  <div className="absolute right-0.5 top-1 bottom-1 w-[2px] rounded-full bg-amber-100/20 pointer-events-none" />
+
+                                  {isDropTarget && (
+                                    <div className="absolute inset-0 z-40 bg-[var(--accent-pink)]/25 backdrop-blur-xs rounded-md flex items-center justify-center pointer-events-none border border-[var(--accent-pink)]">
+                                      <span className="text-[9px] font-bold text-white bg-black/90 px-1.5 py-0.5 rounded-full shadow">
+                                        ✨ Soltar aquí
+                                      </span>
+                                    </div>
+                                  )}
+
+                                  {isMarked && (
+                                    <button
+                                      type="button"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        onDeleteBook(book.id, e);
+                                        setMarkedForDeleteIds((prev) => prev.filter((id) => id !== book.id));
+                                      }}
+                                      className="absolute -top-2 -left-1.5 z-50 w-5 h-5 rounded-full bg-rose-600 hover:bg-rose-700 text-white font-bold text-[10px] flex items-center justify-center shadow border border-white cursor-pointer active:scale-90 animate-popIn"
+                                      title="Eliminar de la estantería ahora"
+                                    >
+                                      ✕
+                                    </button>
+                                  )}
+
+                                  <div className="flex items-center gap-1.5 overflow-hidden min-w-0">
+                                    <span className="text-xs sm:text-sm shrink-0 leading-none">{normalizeBookEmoji(book.emoji)}</span>
+                                    <h4 className="text-[10px] sm:text-[11px] font-bold text-white truncate leading-tight">
+                                      {book.title}
+                                    </h4>
+                                  </div>
+                                  <span className="text-[9px] font-mono font-bold text-[var(--accent-pink)] shrink-0 pr-1">
+                                    {book.progressPercent || 0}%
+                                  </span>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        );
+                      })}
                     </div>
                   );
                 })()}
