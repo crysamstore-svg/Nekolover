@@ -107,6 +107,7 @@ export default defineConfig(() => {
           ],
         },
         workbox: {
+          cleanupOutdatedCaches: true,
           globPatterns: ['**/*.{js,css,html,ico,png,svg,woff,woff2}'],
           globIgnores: ['**/NekoLoverRead-Android-Package.zip', '**/assets/aistudio/**', '**/screenshot-library.png', '**/pwa-*.png', '**/icon.svg'],
           navigateFallbackDenylist: [/^\/\.well-known\//],

@@ -10,7 +10,31 @@ declare global {
   }
 }
 
-registerSW({ immediate: true });
+registerSW({
+  immediate: true,
+  onRegisteredSW(_swUrl, registration) {
+    if (!registration) return;
+    let lastCheck = Date.now();
+    const checkForUpdate = () => {
+      const now = Date.now();
+      if (now - lastCheck < 30_000) return;
+      lastCheck = now;
+      if (navigator.onLine !== false) {
+        void registration.update().catch(() => {});
+      }
+    };
+    window.setTimeout(() => {
+      if (navigator.onLine !== false) {
+        void registration.update().catch(() => {});
+      }
+    }, 1500);
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') checkForUpdate();
+    });
+    window.addEventListener('online', checkForUpdate);
+    window.setInterval(checkForUpdate, 15 * 60 * 1000);
+  }
+});
 
 createRoot(document.getElementById('root')!).render(<App />);
 
