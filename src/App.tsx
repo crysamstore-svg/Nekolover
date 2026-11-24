@@ -403,7 +403,15 @@ export default function App() {
   const processBatchBooks = async (fileList: File[]) => {
     const validFiles = fileList.filter((f) => {
       const lower = f.name.toLowerCase();
-      return lower.endsWith('.pdf') || lower.endsWith('.epub') || lower.endsWith('.txt') || lower.endsWith('.md');
+      const mime = (f.type || '').toLowerCase();
+      return (
+        lower.endsWith('.pdf') ||
+        lower.endsWith('.epub') ||
+        lower.endsWith('.txt') ||
+        lower.endsWith('.md') ||
+        mime === 'application/pdf' ||
+        mime === 'application/epub+zip'
+      );
     });
 
     if (validFiles.length === 0) {
@@ -456,7 +464,9 @@ export default function App() {
     });
 
     const newBooksToAdd: Book[] = [];
-    const hasEpub = filesToImport.some((f) => f.name.toLowerCase().endsWith('.epub'));
+    const hasEpub = filesToImport.some(
+      (f) => f.name.toLowerCase().endsWith('.epub') || (f.type || '').toLowerCase() === 'application/epub+zip'
+    );
     const parseEpubMetaFn = hasEpub
       ? (await import('./utils/epubParser')).parseEpubMetadataOnly
       : null;
@@ -494,12 +504,16 @@ export default function App() {
         continue;
       }
 
-      const rawTitle = file.name.replace(/\.[^/.]+$/, '');
+      const rawTitle = file.name.replace(/\.[^/.]+$/, '') || 'Libro sin título';
       const smartEmoji = getSmartEmojiForTitle(rawTitle);
       const gradient = getRandomGothicGradient(currentBooksSnapshot.length + i);
+      const isEpubFile =
+        fileNameLower.endsWith('.epub') || (file.type || '').toLowerCase() === 'application/epub+zip';
+      const isPdfFile =
+        fileNameLower.endsWith('.pdf') || (file.type || '').toLowerCase() === 'application/pdf';
 
       // Case 1: EPUB (fast metadata-only scan; chapters parse lazily on open in Reader)
-      if (fileNameLower.endsWith('.epub')) {
+      if (isEpubFile) {
         let detectedTitle = rawTitle;
         let detectedAuthor = 'Autor EPUB';
         let detectedCover: string | undefined;
@@ -560,7 +574,7 @@ export default function App() {
       }
 
       // Case 2: Plain Text / Markdown
-      if (fileNameLower.endsWith('.txt') || fileNameLower.endsWith('.md')) {
+      if (!isPdfFile && (fileNameLower.endsWith('.txt') || fileNameLower.endsWith('.md'))) {
         try {
           const fullText = await file.text();
           const pageSize = 1200;
@@ -794,9 +808,9 @@ export default function App() {
     }
 
     if (isAndroidDevice) {
-      // Android WebViews / Chrome often ignore <input webkitdirectory>; offer direct multi-file & folder options
+      // Android 11+ disables "USAR ESTA CARPETA" in Download/Documents root; guide user clearly
       setFolderFallbackPrompt(
-        'En Android muchos navegadores no permiten elegir carpetas enteras directamente. Puedes seleccionar varios libros de golpe o probar el selector de carpeta:'
+        'Android bloquea el botón "Usar esta carpeta" en la raíz de Descargas/Documentos. Elige "Seleccionar Varios Libros" para marcar varios PDF/EPUB ahí mismo, o entra a una subcarpeta (ej. Descargas → Libros) con "Elegir Carpeta".'
       );
       return;
     }
@@ -1006,7 +1020,7 @@ export default function App() {
       <input
         id="global-file-input"
         type="file"
-        accept=".pdf,.epub,.txt,.md"
+        accept=".epub,.pdf,.txt,.md,application/epub+zip,application/pdf,text/plain,text/markdown"
         multiple
         className="hidden"
         onChange={(e) => {
