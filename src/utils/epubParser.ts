@@ -61,6 +61,169 @@ const getOpfTagTexts = (opfDoc: Document, localName: string): string[] => {
   return results;
 };
 
+export interface ParsedEpubMetadata {
+  title: string;
+  author: string;
+  coverImage?: string;
+  description?: string;
+  genres?: string[];
+  publisher?: string;
+  publishedYear?: string;
+  language?: string;
+  spineCount: number;
+}
+
+const resolveZipRelativePath = (baseDir: string, relativeHref: string): string => {
+  let clean = relativeHref.split('#')[0];
+  try {
+    clean = decodeURIComponent(clean);
+  } catch {
+    // Keep raw path if URI decoding fails
+  }
+  if (clean.startsWith('/')) return clean.slice(1);
+  const parts = (baseDir + clean).split('/');
+  const stack: string[] = [];
+  for (const part of parts) {
+    if (part === '.' || part === '') continue;
+    if (part === '..') stack.pop();
+    else stack.push(part);
+  }
+  return stack.join('/');
+};
+
+const findZipFileCaseInsensitive = (loadedZip: JSZip, targetPath: string) => {
+  let file = loadedZip.file(targetPath);
+  if (file) return file;
+  const lower = targetPath.toLowerCase();
+  const matchKey = Object.keys(loadedZip.files).find((k) => k.toLowerCase() === lower);
+  return matchKey ? loadedZip.file(matchKey) : null;
+};
+
+/**
+ * Fast metadata-only EPUB reader for batch/folder imports.
+ * Reads only container.xml, OPF metadata, spine count, and cover image
+ * (skips parsing all chapters so 100+ EPUBs import in seconds instead of minutes).
+ */
+export async function parseEpubMetadataOnly(data: ArrayBuffer | Blob): Promise<ParsedEpubMetadata> {
+  const byteSize = data instanceof Blob ? data.size : data.byteLength;
+  if (byteSize > MAX_EPUB_SIZE_BYTES) {
+    throw new Error('El archivo EPUB supera el límite seguro de 100 MB.');
+  }
+
+  const loadedZip = await new JSZip().loadAsync(data);
+  const containerFile = findZipFileCaseInsensitive(loadedZip, 'META-INF/container.xml');
+  if (!containerFile) {
+    throw new Error('Archivo EPUB no válido: falta META-INF/container.xml');
+  }
+
+  const parser = new DOMParser();
+  const containerXml = await containerFile.async('text');
+  const containerDoc = parser.parseFromString(containerXml, 'application/xml');
+  const opfPath = containerDoc.querySelector('rootfile')?.getAttribute('full-path') || 'OEBPS/content.opf';
+
+  const opfFile = findZipFileCaseInsensitive(loadedZip, opfPath);
+  if (!opfFile) {
+    throw new Error(`Archivo EPUB no válido: no se encontró ${opfPath}`);
+  }
+
+  const opfDir = opfPath.includes('/') ? opfPath.substring(0, opfPath.lastIndexOf('/') + 1) : '';
+  const opfXml = await opfFile.async('text');
+  const opfDoc = parser.parseFromString(opfXml, 'application/xml');
+
+  const title = getOpfTagTexts(opfDoc, 'title')[0] || 'Libro EPUB';
+  const author = getOpfTagTexts(opfDoc, 'creator')[0] || 'Autor Desconocido';
+  const rawDescription = getOpfTagTexts(opfDoc, 'description')[0] || '';
+  const description = rawDescription ? stripHtmlTagsToText(rawDescription) : undefined;
+  const publisher = getOpfTagTexts(opfDoc, 'publisher')[0] || undefined;
+  const language = getOpfTagTexts(opfDoc, 'language')[0] || undefined;
+  const rawDate = getOpfTagTexts(opfDoc, 'date')[0] || '';
+  const yearMatch = rawDate.match(/\b(1[4-9]\d{2}|20\d{2})\b/);
+  const publishedYear = yearMatch ? yearMatch[1] : undefined;
+
+  const subjectSet = new Set<string>();
+  getOpfTagTexts(opfDoc, 'subject').forEach((raw) => {
+    raw.split(/[;,/|]+/).forEach((part) => {
+      const clean = part.trim();
+      if (clean && clean.length >= 2 && clean.length <= 42) {
+        subjectSet.add(clean);
+      }
+    });
+  });
+  const genres = Array.from(subjectSet).slice(0, 6);
+
+  const manifestItems: Record<string, { href: string; mediaType: string; properties: string }> = {};
+  opfDoc.querySelectorAll('manifest > item').forEach((item) => {
+    const id = item.getAttribute('id');
+    const href = item.getAttribute('href');
+    const mediaType = item.getAttribute('media-type') || '';
+    const properties = item.getAttribute('properties') || '';
+    if (id && href) {
+      manifestItems[id] = { href, mediaType, properties };
+    }
+  });
+
+  const spineCount = Math.max(1, opfDoc.querySelectorAll('spine > itemref').length);
+
+  let coverImage: string | undefined;
+  try {
+    let coverHref: string | undefined;
+    const coverId = opfDoc.querySelector('meta[name="cover"]')?.getAttribute('content');
+    if (coverId && manifestItems[coverId]?.mediaType.startsWith('image/')) {
+      coverHref = manifestItems[coverId].href;
+    }
+    if (!coverHref) {
+      const propCover = Object.values(manifestItems).find(
+        (m) => m.properties.split(/\s+/).includes('cover-image') && m.mediaType.startsWith('image/')
+      );
+      if (propCover) coverHref = propCover.href;
+    }
+    if (!coverHref) {
+      const heuristicCover = Object.entries(manifestItems).find(
+        ([id, m]) =>
+          m.mediaType.startsWith('image/') &&
+          (id.toLowerCase().includes('cover') || m.href.toLowerCase().includes('cover'))
+      );
+      if (heuristicCover) coverHref = heuristicCover[1].href;
+    }
+
+    if (coverHref) {
+      const fullCoverPath = resolveZipRelativePath(opfDir, coverHref);
+      const ext = fullCoverPath.split('.').pop()?.toLowerCase() || 'png';
+      if (ext !== 'svg' && ext !== 'svgz') {
+        const coverFile = findZipFileCaseInsensitive(loadedZip, fullCoverPath);
+        if (coverFile) {
+          const base64 = await coverFile.async('base64');
+          if (base64.length <= MAX_IMAGE_BASE64_LEN) {
+            const mime =
+              ext === 'jpg' || ext === 'jpeg'
+                ? 'image/jpeg'
+                : ext === 'webp'
+                  ? 'image/webp'
+                  : ext === 'gif'
+                    ? 'image/gif'
+                    : 'image/png';
+            coverImage = `data:${mime};base64,${base64}`;
+          }
+        }
+      }
+    }
+  } catch {
+    // Cover extraction is optional
+  }
+
+  return {
+    title,
+    author,
+    coverImage,
+    description,
+    genres: genres.length > 0 ? genres : undefined,
+    publisher,
+    publishedYear,
+    language,
+    spineCount,
+  };
+}
+
 /**
  * Robust EPUB Parser using pure JSZip and DOMParser.
  * Works 100% offline, zero iframe dependencies, sanitized against XSS.

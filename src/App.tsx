@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef, lazy, Suspense } from 'react';
-import { Trash2, FolderSync, Loader2 } from 'lucide-react';
+import { Trash2, FolderSync, Loader2, UploadCloud, X } from 'lucide-react';
 import { Book, Quote, PageSticker, Bookmark, ThemeId, ReadingStatsData, TextHighlight, ReaderModeId, ShelfStyle, ShelfViewMode, ShelfBackgroundConfig, ShelfDecorConfig, ShelfDecorTheme } from './types';
 import { 
   DEFAULT_BOOKS, 
@@ -22,7 +22,6 @@ import { CookieConsentBanner } from './components/CookieConsentBanner';
 import { saveFileToDB, deleteFileFromDB, saveBooksToDB, getBooksFromDB, getSmartEmojiForTitle, getRandomGothicGradient } from './utils/db';
 import { soundscape } from './utils/audio';
 import { loadReadingStats, logReadingSession, resetReadingStatsToZero } from './utils/stats';
-import { parseEpubFile } from './utils/epubParser';
 import { compressCoverImage, autoEnrichBookFromNetwork } from './utils/bookMetadata';
 import { OfflineIndicator } from './components/PWAInstallButton';
 import { safeJsonParse, sanitizeImageUrl } from './utils/sanitizeHtml';
@@ -381,15 +380,24 @@ export default function App() {
   // Sync state for large batch / folder sync
   const [syncState, setSyncState] = useState<{
     isSyncing: boolean;
+    phase: 'scanning' | 'importing';
     current: number;
     total: number;
     currentFile: string;
   }>({
     isSyncing: false,
+    phase: 'scanning',
     current: 0,
     total: 0,
     currentFile: ''
   });
+  const syncCancelledRef = useRef(false);
+  const [folderFallbackPrompt, setFolderFallbackPrompt] = useState<string | null>(null);
+
+  const formatBookFileSize = (bytes: number): string => {
+    if (bytes >= 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+    return `${Math.max(1, Math.round(bytes / 1024))} KB`;
+  };
 
   // Batch process files into bookshelf (Capacity up to 2000 books)
   const processBatchBooks = async (fileList: File[]) => {
@@ -399,41 +407,86 @@ export default function App() {
     });
 
     if (validFiles.length === 0) {
+      setSyncState({ isSyncing: false, phase: 'scanning', current: 0, total: 0, currentFile: '' });
       showToast('No se encontraron archivos de lectura (.epub, .pdf, .txt, .md).');
       return;
     }
 
     const MAX_BOOKS = 2000;
-    if (books.length >= MAX_BOOKS) {
+    const currentBooksSnapshot = latestBooksRef.current;
+    if (currentBooksSnapshot.length >= MAX_BOOKS) {
+      setSyncState({ isSyncing: false, phase: 'scanning', current: 0, total: 0, currentFile: '' });
       showToast('⚠️ Capacidad máxima alcanzada (2000 libros).');
       return;
     }
 
+    // Deduplicate against already-imported files (name + formatted size) & within batch
+    const existingKeys = new Set(
+      currentBooksSnapshot
+        .filter((b) => b.fileName)
+        .map((b) => `${b.fileName!.toLowerCase()}|${b.fileSize || ''}`)
+    );
+    const filesToImport: File[] = [];
+    let skippedDuplicates = 0;
+
+    for (const f of validFiles) {
+      const sizeStr = formatBookFileSize(f.size);
+      const key = `${f.name.toLowerCase()}|${sizeStr}`;
+      if (existingKeys.has(key)) {
+        skippedDuplicates += 1;
+        continue;
+      }
+      existingKeys.add(key);
+      filesToImport.push(f);
+    }
+
+    if (filesToImport.length === 0) {
+      setSyncState({ isSyncing: false, phase: 'scanning', current: 0, total: 0, currentFile: '' });
+      showToast(`📚 Esos ${skippedDuplicates} libro(s) ya estaban en tu estantería.`);
+      return;
+    }
+
+    syncCancelledRef.current = false;
     setSyncState({
       isSyncing: true,
+      phase: 'importing',
       current: 0,
-      total: validFiles.length,
-      currentFile: validFiles[0]?.name || ''
+      total: filesToImport.length,
+      currentFile: filesToImport[0]?.name || ''
     });
 
     const newBooksToAdd: Book[] = [];
+    const hasEpub = filesToImport.some((f) => f.name.toLowerCase().endsWith('.epub'));
+    const parseEpubMetaFn = hasEpub
+      ? (await import('./utils/epubParser')).parseEpubMetadataOnly
+      : null;
 
-    for (let i = 0; i < validFiles.length; i++) {
-      if (books.length + newBooksToAdd.length >= MAX_BOOKS) {
+    for (let i = 0; i < filesToImport.length; i++) {
+      if (syncCancelledRef.current) {
+        break;
+      }
+      if (currentBooksSnapshot.length + newBooksToAdd.length >= MAX_BOOKS) {
         showToast('⚠️ Se alcanzó el límite de 2000 libros.');
         break;
       }
 
-      const file = validFiles[i];
+      const file = filesToImport[i];
       setSyncState({
         isSyncing: true,
+        phase: 'importing',
         current: i + 1,
-        total: validFiles.length,
+        total: filesToImport.length,
         currentFile: file.name
       });
 
+      // Yield briefly so the progress bar and Cancel button stay responsive during big batches
+      if (i > 0) {
+        await new Promise((r) => setTimeout(r, 0));
+      }
+
       const bookId = `book-${Date.now()}-${i}-${Math.random().toString(36).substring(2, 6)}`;
       const fileNameLower = file.name.toLowerCase();
+      const fileSizeStr = formatBookFileSize(file.size);
       const isTextFile = fileNameLower.endsWith('.txt') || fileNameLower.endsWith('.md');
       const maxAllowedSize = isTextFile ? MAX_TEXT_FILE_BYTES : MAX_BOOK_FILE_BYTES;
       if (file.size > maxAllowedSize) {
@@ -443,11 +496,10 @@ export default function App() {
 
       const rawTitle = file.name.replace(/\.[^/.]+$/, '');
       const smartEmoji = getSmartEmojiForTitle(rawTitle);
-      const gradient = getRandomGothicGradient(books.length + i);
+      const gradient = getRandomGothicGradient(currentBooksSnapshot.length + i);
 
-      // Case 1: EPUB
+      // Case 1: EPUB (fast metadata-only scan; chapters parse lazily on open in Reader)
       if (fileNameLower.endsWith('.epub')) {
-        let epubPages: string[] = [];
         let detectedTitle = rawTitle;
         let detectedAuthor = 'Autor EPUB';
         let detectedCover: string | undefined;
@@ -456,22 +508,25 @@ export default function App() {
         let detectedPublisher: string | undefined;
         let detectedYear: string | undefined;
         let detectedLang: string | undefined;
+        let estimatedPages = 1;
 
         try {
           const arrayBuffer = await file.arrayBuffer();
           await saveFileToDB(bookId, arrayBuffer);
-          const parsed = await parseEpubFile(arrayBuffer);
-          if (parsed.pages && parsed.pages.length > 0) epubPages = parsed.pages;
-          if (parsed.title) detectedTitle = parsed.title;
-          if (parsed.author) detectedAuthor = parsed.author;
-          if (parsed.description) detectedDescription = parsed.description;
-          if (parsed.genres) detectedGenres = parsed.genres;
-          if (parsed.publisher) detectedPublisher = parsed.publisher;
-          if (parsed.publishedYear) detectedYear = parsed.publishedYear;
-          if (parsed.language) detectedLang = parsed.language;
-          if (parsed.coverImage) {
-            const compressed = await compressCoverImage(parsed.coverImage, 360);
-            if (compressed) detectedCover = compressed;
+          if (parseEpubMetaFn) {
+            const parsed = await parseEpubMetaFn(arrayBuffer);
+            if (parsed.title) detectedTitle = parsed.title;
+            if (parsed.author) detectedAuthor = parsed.author;
+            if (parsed.description) detectedDescription = parsed.description;
+            if (parsed.genres) detectedGenres = parsed.genres;
+            if (parsed.publisher) detectedPublisher = parsed.publisher;
+            if (parsed.publishedYear) detectedYear = parsed.publishedYear;
+            if (parsed.language) detectedLang = parsed.language;
+            if (parsed.spineCount) estimatedPages = Math.max(1, parsed.spineCount);
+            if (parsed.coverImage) {
+              const compressed = await compressCoverImage(parsed.coverImage, 320);
+              if (compressed) detectedCover = compressed;
+            }
           }
         } catch {
           await saveFileToDB(bookId, file);
@@ -494,10 +549,10 @@ export default function App() {
           language: detectedLang,
           metadataSource:
             detectedCover || detectedDescription || detectedGenres ? 'epub' : undefined,
-          content: epubPages.length > 0 ? epubPages : undefined,
           fileName: file.name,
+          fileSize: fileSizeStr,
           currentPage: 1,
-          totalPages: Math.max(1, epubPages.length),
+          totalPages: estimatedPages,
           progressPercent: 0,
           addedAt: Date.now()
         });
@@ -525,6 +580,7 @@ export default function App() {
             coverGradient: gradient,
             content: pageChunks.length > 0 ? pageChunks : ['Documento sin texto legible.'],
             fileName: file.name,
+            fileSize: fileSizeStr,
             currentPage: 1,
             totalPages: Math.max(1, pageChunks.length),
             progressPercent: 0,
@@ -546,6 +602,7 @@ export default function App() {
         type: 'pdf',
         coverGradient: gradient,
         fileName: file.name,
+        fileSize: fileSizeStr,
         currentPage: 1,
         totalPages: 1,
         progressPercent: 0,
@@ -553,33 +610,45 @@ export default function App() {
       });
     }
 
-    setBooks((prev) => {
-      const merged = [...newBooksToAdd, ...prev].slice(0, MAX_BOOKS);
-      saveBooksToDB(merged);
-      return merged;
-    });
+    const wasCancelled = syncCancelledRef.current;
+    setSyncState({ isSyncing: false, phase: 'scanning', current: 0, total: 0, currentFile: '' });
 
-    setSyncState({ isSyncing: false, current: 0, total: 0, currentFile: '' });
-    showToast(`🐾 ¡Sincronización completada! ${newBooksToAdd.length} libro(s) colocados automáticamente en tu estantería.`);
+    if (newBooksToAdd.length > 0) {
+      setBooks((prev) => [...newBooksToAdd, ...prev].slice(0, MAX_BOOKS));
+    }
 
-    // Automatically enrich newly uploaded books from the web in background (up to 15 per batch)
-    const booksToEnrich = newBooksToAdd
-      .filter((b) => !b.coverImage || !b.description || !b.genres || b.genres.length === 0)
-      .slice(0, 15);
+    if (wasCancelled) {
+      showToast(
+        newBooksToAdd.length > 0
+          ? `⏹️ Sincronización detenida. Se guardaron ${newBooksToAdd.length} libro(s) procesados.`
+          : '⏹️ Sincronización cancelada.'
+      );
+    } else if (skippedDuplicates > 0) {
+      showToast(`🐾 ¡Listo! ${newBooksToAdd.length} libro(s) nuevos añadidos (${skippedDuplicates} ya estaban en tu estantería).`);
+    } else {
+      showToast(`🐾 ¡Sincronización completada! ${newBooksToAdd.length} libro(s) colocados automáticamente en tu estantería.`);
+    }
 
-    if (booksToEnrich.length > 0) {
-      void (async () => {
-        for (const item of booksToEnrich) {
-          try {
-            const { updated, matched } = await autoEnrichBookFromNetwork(item);
-            if (matched || updated.coverImage) {
-              setBooks((prev) => prev.map((b) => (b.id === updated.id ? { ...b, ...updated } : b)));
+    // Automatically enrich newly uploaded books from the web in background (up to 10 per batch when online)
+    if (typeof navigator === 'undefined' || navigator.onLine !== false) {
+      const booksToEnrich = newBooksToAdd
+        .filter((b) => !b.coverImage || !b.description || !b.genres || b.genres.length === 0)
+        .slice(0, 10);
+
+      if (booksToEnrich.length > 0) {
+        void (async () => {
+          for (const item of booksToEnrich) {
+            try {
+              const { updated, matched } = await autoEnrichBookFromNetwork(item);
+              if (matched || updated.coverImage) {
+                setBooks((prev) => prev.map((b) => (b.id === updated.id ? { ...b, ...updated } : b)));
+              }
+            } catch {
+              // Ignore transient network errors during background enrichment
             }
-          } catch {
-            // Ignore transient network errors during background enrichment
           }
-        }
-      })();
+        })();
+      }
     }
   };
 
@@ -614,54 +683,131 @@ export default function App() {
 
   // Internal Storage Directory Sync (Supports 2000 books automatic scanning)
   const handleSyncInternalStorage = async () => {
-    try {
-      if ('showDirectoryPicker' in window) {
-        showToast('📂 Selecciona tu carpeta de libros en tu almacenamiento...');
+    const isAndroidDevice =
+      typeof navigator !== 'undefined' && /android/i.test(navigator.userAgent);
+
+    if ('showDirectoryPicker' in window) {
+      try {
         const dirHandle = await (window as any).showDirectoryPicker({
           id: 'neko-reader-storage-sync',
           mode: 'read'
         });
 
-        const gatheredFiles: File[] = [];
+        const MAX_BOOKS = 2000;
+        const remainingSlots = Math.max(0, MAX_BOOKS - latestBooksRef.current.length);
+        if (remainingSlots === 0) {
+          showToast('⚠️ Capacidad máxima alcanzada (2000 libros).');
+          return;
+        }
 
-        async function readDirectoryRecursive(handle: any) {
+        syncCancelledRef.current = false;
+        setSyncState({
+          isSyncing: true,
+          phase: 'scanning',
+          current: 0,
+          total: 0,
+          currentFile: dirHandle.name || 'Escaneando carpeta...'
+        });
+
+        const gatheredFiles: File[] = [];
+        const SKIP_DIRS = new Set([
+          'node_modules',
+          'android',
+          '$recycle.bin',
+          'system volume information',
+          '__macosx'
+        ]);
+
+        let scannedEntries = 0;
+        async function readDirectoryRecursive(handle: any, depth = 0) {
+          if (syncCancelledRef.current || gatheredFiles.length >= remainingSlots || depth > 12) {
+            return;
+          }
           for await (const entry of handle.values()) {
+            if (syncCancelledRef.current || gatheredFiles.length >= remainingSlots) {
+              break;
+            }
+            scannedEntries += 1;
+            if (scannedEntries % 40 === 0) {
+              await new Promise((r) => setTimeout(r, 0));
+            }
+            const nameLower = String(entry.name || '').toLowerCase();
             if (entry.kind === 'file') {
-              const file = await entry.getFile();
-              const lower = file.name.toLowerCase();
-              if (lower.endsWith('.pdf') || lower.endsWith('.epub') || lower.endsWith('.txt') || lower.endsWith('.md')) {
-                gatheredFiles.push(file);
+              // Filter by extension BEFORE calling entry.getFile() so unrelated files don't stall scanning
+              if (
+                nameLower.endsWith('.pdf') ||
+                nameLower.endsWith('.epub') ||
+                nameLower.endsWith('.txt') ||
+                nameLower.endsWith('.md')
+              ) {
+                try {
+                  const file = await entry.getFile();
+                  gatheredFiles.push(file);
+                  if (gatheredFiles.length % 5 === 0 || gatheredFiles.length === 1) {
+                    setSyncState({
+                      isSyncing: true,
+                      phase: 'scanning',
+                      current: gatheredFiles.length,
+                      total: 0,
+                      currentFile: file.name
+                    });
+                    await new Promise((r) => setTimeout(r, 0));
+                  }
+                } catch {}
               }
             } else if (entry.kind === 'directory') {
+              if (nameLower.startsWith('.') || SKIP_DIRS.has(nameLower)) continue;
               try {
-                await readDirectoryRecursive(entry);
+                await readDirectoryRecursive(entry, depth + 1);
               } catch {}
             }
           }
         }
 
-        await readDirectoryRecursive(dirHandle);
+        await readDirectoryRecursive(dirHandle, 0);
+
+        if (syncCancelledRef.current) {
+          setSyncState({ isSyncing: false, phase: 'scanning', current: 0, total: 0, currentFile: '' });
+          showToast('⏹️ Escaneo de carpeta cancelado.');
+          return;
+        }
+
         if (gatheredFiles.length === 0) {
-          showToast('No se encontraron libros compatibles en la carpeta seleccionada.');
+          setSyncState({ isSyncing: false, phase: 'scanning', current: 0, total: 0, currentFile: '' });
+          showToast('No se encontraron libros (.epub, .pdf, .txt, .md) en la carpeta.');
           return;
         }
 
         await processBatchBooks(gatheredFiles);
-      } else {
-        const input = document.getElementById('folder-sync-input') as HTMLInputElement;
-        input?.click();
-      }
-    } catch (err: any) {
-      if (err.name !== 'AbortError') {
-        const input = document.getElementById('folder-sync-input') as HTMLInputElement;
-        input?.click();
+        return;
+      } catch (err: any) {
+        setSyncState({ isSyncing: false, phase: 'scanning', current: 0, total: 0, currentFile: '' });
+        if (err?.name === 'AbortError') {
+          return;
+        }
+        // Chrome/Edge blocks system folders (Downloads/Documents root) with SecurityError AFTER user gesture expires
+        setFolderFallbackPrompt(
+          'Tu navegador bloqueó el acceso directo a esa carpeta del sistema (como Descargas o Documentos). Usa una de estas dos opciones:'
+        );
+        return;
       }
     }
+
+    if (isAndroidDevice) {
+      // Android WebViews / Chrome often ignore <input webkitdirectory>; offer direct multi-file & folder options
+      setFolderFallbackPrompt(
+        'En Android muchos navegadores no permiten elegir carpetas enteras directamente. Puedes seleccionar varios libros de golpe o probar el selector de carpeta:'
+      );
+      return;
+    }
+
+    const input = document.getElementById('folder-sync-input') as HTMLInputElement;
+    input?.click();
   };
 
   const handleFolderSyncChange = (fileList: FileList) => {
     const filesArray = Array.from(fileList);
-    processBatchBooks(filesArray);
+    void processBatchBooks(filesArray);
   };
 
   const handleReorderBooks = (newBooks: Book[]) => {
@@ -895,28 +1041,108 @@ export default function App() {
 
             <div>
               <h3 className="dark-reborn-font font-bold text-lg text-white">
-                Sincronizando Almacenamiento Interno
+                {syncState.phase === 'scanning'
+                  ? 'Escaneando Carpeta de Libros'
+                  : 'Importando Libros a la Estantería'}
               </h3>
               <p className="text-xs text-purple-200/80 mt-1">
-                Colocando libros automáticamente en tu estantería (hasta 2000 libros).
+                {syncState.phase === 'scanning'
+                  ? 'Buscando archivos .epub, .pdf, .txt y .md...'
+                  : 'Guardando libros de forma rápida en tu biblioteca.'}
               </p>
             </div>
 
             {/* Progress Bar */}
             <div className="space-y-1.5 text-left">
               <div className="flex justify-between text-xs font-mono text-[var(--accent-pink)]">
-                <span>Libro {syncState.current} de {syncState.total}</span>
-                <span>{Math.round((syncState.current / Math.max(1, syncState.total)) * 100)}%</span>
+                <span>
+                  {syncState.phase === 'scanning'
+                    ? `${syncState.current} libro(s) encontrados`
+                    : `Libro ${syncState.current} de ${syncState.total}`}
+                </span>
+                {syncState.phase === 'importing' && (
+                  <span>{Math.round((syncState.current / Math.max(1, syncState.total)) * 100)}%</span>
+                )}
               </div>
               <div className="w-full bg-black/60 h-2.5 rounded-full overflow-hidden border border-white/10">
-                <div 
-                  className="h-full bg-gradient-to-r from-purple-500 to-pink-500 transition-all duration-200"
-                  style={{ width: `${Math.round((syncState.current / Math.max(1, syncState.total)) * 100)}%` }}
-                />
+                {syncState.phase === 'scanning' ? (
+                  <div className="h-full w-1/2 bg-gradient-to-r from-purple-500 to-pink-500 animate-pulse rounded-full" />
+                ) : (
+                  <div
+                    className="h-full bg-gradient-to-r from-purple-500 to-pink-500 transition-all duration-150"
+                    style={{ width: `${Math.round((syncState.current / Math.max(1, syncState.total)) * 100)}%` }}
+                  />
+                )}
               </div>
               <p className="text-[11px] text-[var(--text-muted)] truncate mt-1 font-mono">
                 {syncState.currentFile}
               </p>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => {
+                syncCancelledRef.current = true;
+              }}
+              className="px-4 py-2 rounded-xl text-xs font-semibold bg-white/10 hover:bg-red-500/30 border border-white/15 text-white transition cursor-pointer"
+            >
+              Cancelar
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Protected Folder / Android Multi-File Fallback Modal */}
+      {folderFallbackPrompt && (
+        <div className="fixed inset-0 bg-black/85 backdrop-blur-md z-50 flex items-center justify-center p-4">
+          <div className="bg-[#1a1726] border-2 border-purple-500/50 rounded-3xl p-6 max-w-md w-full shadow-2xl space-y-4 relative">
+            <button
+              type="button"
+              onClick={() => setFolderFallbackPrompt(null)}
+              className="absolute top-3.5 right-3.5 p-1.5 rounded-xl text-[var(--text-muted)] hover:text-white hover:bg-white/10 transition"
+              aria-label="Cerrar"
+            >
+              <X className="w-4 h-4" />
+            </button>
+
+            <div className="flex items-center gap-3">
+              <div className="w-11 h-11 rounded-2xl bg-purple-500/20 text-purple-300 flex items-center justify-center shrink-0">
+                <FolderSync className="w-6 h-6" />
+              </div>
+              <div>
+                <h3 className="font-bold text-base text-white">Subir Carpeta o Varios Libros</h3>
+                <p className="text-[11px] text-[var(--text-muted)] leading-snug mt-0.5">
+                  {folderFallbackPrompt}
+                </p>
+              </div>
+            </div>
+
+            <div className="space-y-2.5 pt-1">
+              <button
+                type="button"
+                onClick={() => {
+                  setFolderFallbackPrompt(null);
+                  const input = document.getElementById('global-file-input') as HTMLInputElement;
+                  input?.click();
+                }}
+                className="w-full py-3 px-4 rounded-xl bg-gradient-to-r from-pink-500 to-purple-600 hover:from-pink-400 hover:to-purple-500 text-white font-bold text-xs flex items-center justify-center gap-2 shadow-lg transition cursor-pointer"
+              >
+                <UploadCloud className="w-4 h-4" />
+                <span>Seleccionar Varios Libros (.epub, .pdf, .txt)</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setFolderFallbackPrompt(null);
+                  const input = document.getElementById('folder-sync-input') as HTMLInputElement;
+                  input?.click();
+                }}
+                className="w-full py-2.5 px-4 rounded-xl bg-black/50 border border-purple-400/40 hover:border-purple-400 text-purple-200 font-bold text-xs flex items-center justify-center gap-2 transition cursor-pointer"
+              >
+                <FolderSync className="w-4 h-4" />
+                <span>Elegir Carpeta (Selector Clásico)</span>
+              </button>
             </div>
           </div>
         </div>
