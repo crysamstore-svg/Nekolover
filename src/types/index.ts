@@ -207,3 +207,4 @@ export interface MusicTrack {
   type?: 'soundscape-rain' | 'soundscape-purr' | 'file';
   addedAt: number;
 }
+

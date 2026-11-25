@@ -49,7 +49,7 @@ export const CookieConsentBanner: React.FC<CookieConsentBannerProps> = ({
               </span>
             </h4>
             <p className="text-xs sm:text-[13px] text-white/90 leading-relaxed">
-              Utilizamos almacenamiento local (<code className="text-pink-300 bg-black/40 px-1 py-0.5 rounded">localStorage</code>) para recordar tus preferencias de lectura (tipografías, notas y stickers) y procesamos suscripciones de forma segura mediante <strong>PayPal</strong>. No recopilamos datos personales ni alojamos tus libros. Al continuar, aceptas nuestros{' '}
+              Utilizamos almacenamiento local (<code className="text-pink-300 bg-black/40 px-1 py-0.5 rounded">localStorage</code> e <code className="text-pink-300 bg-black/40 px-1 py-0.5 rounded">IndexedDB</code>) para guardar tus libros y personalización sin conexión, y procesamos pagos VIP mediante <strong>PayPal</strong> o <strong>Pago Móvil</strong>. No alojamos ni subimos tus archivos. Al continuar, aceptas nuestros{' '}
               <button
                 type="button"
                 onClick={() => onOpenLegalModal('terms')}

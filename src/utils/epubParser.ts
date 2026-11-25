@@ -236,8 +236,8 @@ export async function parseEpubFile(data: ArrayBuffer | Blob): Promise<ParsedEpu
   const zip = new JSZip();
   const loadedZip = await zip.loadAsync(data);
 
-  // 1. Find container.xml to locate the OPF package file
-  const containerFile = loadedZip.file('META-INF/container.xml');
+  // 1. Find container.xml to locate the OPF package file (case-insensitive)
+  const containerFile = findZipFileCaseInsensitive(loadedZip, 'META-INF/container.xml');
   if (!containerFile) {
     throw new Error('Archivo EPUB no válido: falta META-INF/container.xml');
   }
@@ -248,10 +248,10 @@ export async function parseEpubFile(data: ArrayBuffer | Blob): Promise<ParsedEpu
   const rootfileEl = containerDoc.querySelector('rootfile');
   const opfPath = rootfileEl?.getAttribute('full-path') || 'OEBPS/content.opf';
 
-  // 2. Read OPF file
-  const opfFile = loadedZip.file(opfPath);
+  // 2. Read OPF file (case-insensitive fallback)
+  const opfFile = findZipFileCaseInsensitive(loadedZip, opfPath);
   if (!opfFile) {
-    throw new Error(`Archivo EPUB no válido: no se encontró el paquete en ${opfPath}`);
+    throw new Error(`Archivo EPUB no válido: no se encontró ${opfPath}`);
   }
 
   const opfDir = opfPath.includes('/') ? opfPath.substring(0, opfPath.lastIndexOf('/') + 1) : '';
@@ -299,9 +299,14 @@ export async function parseEpubFile(data: ArrayBuffer | Blob): Promise<ParsedEpu
     if (idref) spineIds.push(idref);
   });
 
-  // Helper to resolve relative path inside the zip
+  // Helper to resolve relative path inside the zip safely
   const resolveZipPath = (relativeHref: string): string => {
-    const decoded = decodeURIComponent(relativeHref.split('#')[0]);
+    let decoded = relativeHref.split('#')[0];
+    try {
+      decoded = decodeURIComponent(decoded);
+    } catch {
+      // Keep raw path if URI decoding fails
+    }
     if (decoded.startsWith('/')) return decoded.slice(1);
     const combined = opfDir + decoded;
     const parts = combined.split('/');

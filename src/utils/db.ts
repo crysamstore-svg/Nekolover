@@ -1,9 +1,14 @@
 import { Book, BookType } from '../types';
 
 const DB_NAME = 'NekoLoverReadDB';
-const DB_VERSION = 2;
+const DB_VERSION = 5;
 const FILES_STORE = 'files';
 const BOOKS_STORE = 'books';
+const AUDIOBOOKS_STORE = 'audiobooks';
+const AUDIO_HANDLES_STORE = 'audio_handles';
+const AUDIO_CHUNKS_STORE = 'audio_chunks';
+const SETTINGS_STORE = 'settings';
+const LINKED_FOLDER_KEY = 'linked_folder_handle';
 
 let dbPromise: Promise<IDBDatabase> | null = null;
 
@@ -24,6 +29,18 @@ export function getDB(): Promise<IDBDatabase> {
       }
       if (!db.objectStoreNames.contains(BOOKS_STORE)) {
         db.createObjectStore(BOOKS_STORE, { keyPath: 'id' });
+      }
+      if (!db.objectStoreNames.contains(AUDIOBOOKS_STORE)) {
+        db.createObjectStore(AUDIOBOOKS_STORE, { keyPath: 'id' });
+      }
+      if (!db.objectStoreNames.contains(AUDIO_HANDLES_STORE)) {
+        db.createObjectStore(AUDIO_HANDLES_STORE);
+      }
+      if (!db.objectStoreNames.contains(AUDIO_CHUNKS_STORE)) {
+        db.createObjectStore(AUDIO_CHUNKS_STORE);
+      }
+      if (!db.objectStoreNames.contains(SETTINGS_STORE)) {
+        db.createObjectStore(SETTINGS_STORE);
       }
     };
 
@@ -159,6 +176,49 @@ export async function deleteBookFromDB(id: string): Promise<void> {
   } catch (err) {
     console.warn('Error deleting book from IndexedDB:', err);
   }
+}
+// Persistent Linked Directory Handle (File System Access API on supported desktop browsers)
+export async function saveLinkedFolderHandle(handle: any): Promise<void> {
+  try {
+    const db = await getDB();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(SETTINGS_STORE, 'readwrite');
+      const store = tx.objectStore(SETTINGS_STORE);
+      const req = store.put(handle, LINKED_FOLDER_KEY);
+      req.onsuccess = () => resolve();
+      req.onerror = () => reject(req.error);
+    });
+  } catch (err) {
+    console.warn('Could not save linked folder handle:', err);
+  }
+}
+
+export async function getLinkedFolderHandle(): Promise<any | null> {
+  try {
+    const db = await getDB();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(SETTINGS_STORE, 'readonly');
+      const store = tx.objectStore(SETTINGS_STORE);
+      const req = store.get(LINKED_FOLDER_KEY);
+      req.onsuccess = () => resolve(req.result || null);
+      req.onerror = () => reject(req.error);
+    });
+  } catch {
+    return null;
+  }
+}
+
+export async function clearLinkedFolderHandle(): Promise<void> {
+  try {
+    const db = await getDB();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(SETTINGS_STORE, 'readwrite');
+      const store = tx.objectStore(SETTINGS_STORE);
+      const req = store.delete(LINKED_FOLDER_KEY);
+      req.onsuccess = () => resolve();
+      req.onerror = () => reject(req.error);
+    });
+  } catch {}
 }
 
 // Helper to assign cute gothic / kawaii emojis based on title keywords

@@ -62,6 +62,7 @@ interface BookshelfProps {
   onRestoreDefaults: () => void;
   onTriggerUpload: () => void;
   onSyncFolder?: () => void;
+  linkedFolderName?: string | null;
   onReorderBooks?: (newBooks: Book[]) => void;
   onNavigateToStats?: () => void;
   onOpenSettings?: () => void;
@@ -98,6 +99,7 @@ export const Bookshelf: React.FC<BookshelfProps> = ({
   onRestoreDefaults,
   onTriggerUpload,
   onSyncFolder,
+  linkedFolderName,
   onReorderBooks,
   onNavigateToStats,
   onOpenSettings,
@@ -1417,11 +1419,20 @@ export const Bookshelf: React.FC<BookshelfProps> = ({
               <button
                 onClick={onSyncFolder}
                 className="min-h-[38px] px-3 py-1.5 rounded-xl text-xs font-bold bg-gradient-to-r from-purple-600/30 to-pink-600/30 text-purple-200 border border-purple-400/50 hover:bg-purple-600 hover:text-white transition flex items-center gap-1.5 shadow-sm active:scale-95 shrink-0"
-                title="Sincronizar carpeta con tu almacenamiento interno para colocar hasta 2000 libros automáticamente"
+                title={
+                  linkedFolderName
+                    ? `Carpeta vinculada: ${linkedFolderName} — clic para sincronizar libros nuevos`
+                    : 'Sincronizar carpeta con tu almacenamiento interno para colocar hasta 2000 libros automáticamente'
+                }
               >
                 <FolderSync className="w-3.5 h-3.5 text-purple-300" />
-                <span className="sm:hidden">Carpeta</span>
-                <span className="hidden sm:inline">Sincronizar Carpeta</span>
+                <span className="sm:hidden">{linkedFolderName ? 'Sincr.' : 'Carpeta'}</span>
+                <span className="hidden sm:inline">
+                  {linkedFolderName ? `Sync: ${linkedFolderName}` : 'Sincronizar Carpeta'}
+                </span>
+                {linkedFolderName && (
+                  <span className="w-2 h-2 rounded-full bg-emerald-400 shrink-0" aria-hidden="true" />
+                )}
               </button>
             )}
 

@@ -32,6 +32,12 @@ export const LegalModal: React.FC<LegalModalProps> = ({
   const consentLogs = vipManager.getConsentLogs();
   const latestConsent = vipManager.getLatestConsent();
 
+  React.useEffect(() => {
+    if (isOpen) {
+      setActiveTab(initialTab);
+    }
+  }, [isOpen, initialTab]);
+
   if (!isOpen) return null;
 
   return (
@@ -142,10 +148,10 @@ export const LegalModal: React.FC<LegalModalProps> = ({
             <div className="space-y-4">
               <div className="bg-black/40 border border-white/10 p-3.5 rounded-2xl">
                 <h4 className="font-bold text-sm text-[var(--accent-pink)] mb-1 flex items-center gap-1.5">
-                  <span>1.</span> Naturaleza del Servicio
+                  <span>1.</span> Naturaleza del Servicio (Software Lector)
                 </h4>
                 <p className="text-[11px] text-white/80">
-                  <strong>NekoLover Read</strong> es exclusivamente una herramienta técnica de software diseñada para la visualización, organización y personalización de lectura de archivos digitales locales (como PDF, EPUB o texto plano). La aplicación se ejecuta de manera local en el dispositivo del usuario.
+                  <strong>NekoLover Read</strong> es exclusivamente una herramienta técnica de software (visor digital) diseñada para que el usuario abra, lea, organice y personalice sus propios archivos locales (<strong>EPUB, PDF, TXT</strong>). La aplicación se ejecuta de manera local en el navegador del dispositivo.
                 </p>
               </div>
 
@@ -154,19 +160,19 @@ export const LegalModal: React.FC<LegalModalProps> = ({
                   <span>2.</span> Responsabilidad del Contenido y Derechos de Autor
                 </h4>
                 <p className="text-[11px] text-white/80 mb-2">
-                  El Desarrollador <strong>no almacena, no aloja, no distribuye ni provee ningún tipo de libro, texto o material de lectura</strong>. Es responsabilidad única y exclusiva del usuario final garantizar que posee los derechos de autor, licencias legítimas o que los archivos cargados desde su almacenamiento son de dominio público. El desarrollador se deslinda de cualquier uso ilegal o infracción de propiedad intelectual cometida por los usuarios.
+                  El Desarrollador <strong>no almacena, no aloja, no distribuye ni provee ningún tipo de libro o material de lectura comercial</strong>. Es responsabilidad exclusiva del usuario garantizar que cuenta con los derechos o licencias legítimas sobre los archivos que decida cargar en su estantería. El desarrollador se deslinda de cualquier uso ilícito o infracción de propiedad intelectual por parte de terceros.
                 </p>
                 <div className="bg-pink-950/40 border border-pink-500/30 p-2.5 rounded-xl text-[10px] text-pink-200">
-                  <strong>🖼️ Verificación de Derechos de Imágenes:</strong> Todas las ilustraciones, emojis y stickers del sistema son de diseño propio o estándar Unicode libre. Los fondos predeterminados provienen de Unsplash bajo licencia libre. Para las fotos de fondo que el usuario suba a su estantería, el usuario garantiza tener la titularidad o autorización correspondiente.
+                  <strong>🖼️ Verificación de Derechos de Imágenes:</strong> Todas las ilustraciones de estantería y stickers del sistema son de diseño propio o estándar Unicode libre. Los fondos predeterminados provienen de Unsplash bajo licencia libre.
                 </div>
               </div>
 
               <div className="bg-black/40 border border-white/10 p-3.5 rounded-2xl">
                 <h4 className="font-bold text-sm text-[var(--accent-pink)] mb-1 flex items-center gap-1.5">
-                  <span>3.</span> Privacidad y Datos Locales
+                  <span>3.</span> Privacidad y Almacenamiento Local
                 </h4>
                 <p className="text-[11px] text-white/80">
-                  Para tu total tranquilidad, la aplicación no recopila ni envía tus libros a servidores externos. Todos tus archivos, notas, subrayados, imágenes de estantería y configuraciones se procesan y guardan únicamente dentro del almacenamiento interno de tu dispositivo. Los datos de contacto proporcionados a través de PayPal o reportados voluntariamente en el formulario de <strong>Pago Móvil (Venezuela)</strong> se utilizan única y exclusivamente para verificar tu pago, entregar tu código de activación VIP y atender soporte.
+                  Tus archivos de libros, notas, subrayados y configuraciones se guardan únicamente en el almacenamiento local de tu dispositivo (<code className="text-pink-300">IndexedDB</code>). No subimos tus documentos a ningún servidor externo. Los datos enviados por PayPal o Pago Móvil (Venezuela) se usan únicamente para validar tu suscripción VIP y brindar soporte.
                 </p>
               </div>
 
@@ -175,7 +181,7 @@ export const LegalModal: React.FC<LegalModalProps> = ({
                   <span>4.</span> Suscripción Premium ($2.00 USD/mes — PayPal o Pago Móvil)
                 </h4>
                 <p className="text-[11px] text-white/80 mb-2">
-                  El acceso a las funciones avanzadas (uso de más de 4 tipografías, colección completa de stickers no felinos, personalización de estantería desde tus archivos, notas ilimitadas, más de 3 colores de subrayado y reproductor de música con subida de archivos) requiere una membresía mensual activa procesada mediante <strong>PayPal</strong> (recurrente) o <strong>Pago Móvil en Venezuela</strong> (pago único mensual en Bs. a tasa BCV).
+                  El acceso a las funciones avanzadas (uso de más de 4 tipografías, colección completa de stickers no felinos, fondos y decoraciones avanzadas de estantería, notas ilimitadas, todos los colores de subrayado y reproductor de música de fondo) requiere una membresía mensual activa procesada mediante <strong>PayPal</strong> (recurrente) o <strong>Pago Móvil en Venezuela</strong> (pago único mensual en Bs. a tasa BCV).
                 </p>
                 <ul className="list-disc list-inside space-y-1 text-[11px] text-white/80 pl-1">
                   <li>En suscripciones por PayPal, puedes cancelar el cobro recurrente en cualquier momento desde tu cuenta de PayPal.</li>
@@ -207,7 +213,7 @@ export const LegalModal: React.FC<LegalModalProps> = ({
                   <div className="p-2.5 rounded-xl bg-black/60 border border-red-500/30">
                     <span className="text-red-300 font-bold block text-[11px]">❌ Lo que NUNCA recopilamos:</span>
                     <span className="text-[10px] text-white/70 block mt-1">
-                      No leemos tus libros, ni tus notas privadas, ni tu ubicación geográfica, ni contraseñas o claves bancarias. Tampoco vendemos ni cedemos información de contacto a terceros.
+                      No leemos tus libros, no recopilamos ubicación geográfica, historial externo de navegación, teléfonos personales ni datos bancarios. Tampoco vendemos ni cedemos datos a terceros.
                     </span>
                   </div>
                 </div>
@@ -215,10 +221,10 @@ export const LegalModal: React.FC<LegalModalProps> = ({
 
               <div className="bg-black/40 border border-white/10 p-3.5 rounded-2xl">
                 <h4 className="font-bold text-sm text-[var(--accent-pink)] mb-1">
-                  Almacenamiento Local (Sin Nube)
+                  Almacenamiento Local de tus Lecturas
                 </h4>
                 <p className="text-[11px] text-white/80 leading-relaxed">
-                  Todos tus libros en PDF/EPUB, tus notas en el Baúl, tus stickers pegados y tus pistas musicales se almacenan dentro del motor interno del navegador (IndexedDB) y almacenamiento local (LocalStorage) de tu dispositivo. Jamás salen hacia servidores externos ni pueden ser vistos por el desarrollador.
+                  Todos tus libros (PDF/EPUB/TXT), pistas musicales, notas, subrayados y stickers permanecen dentro de <code className="text-pink-300">IndexedDB</code> y <code className="text-pink-300">LocalStorage</code> en tu dispositivo. Al estar conectado, las búsquedas automáticas de portada/sinopsis solo consultan título o autor en APIs públicas bibliográficas.
                 </p>
               </div>
 
@@ -227,7 +233,7 @@ export const LegalModal: React.FC<LegalModalProps> = ({
                   Tus Derechos de Control y Supresión
                 </h4>
                 <p className="text-[11px] text-white/80">
-                  Puedes borrar todos tus datos locales en cualquier instante desde el menú de Ajustes mediante el botón «Reiniciar estadísticas y datos». Si deseas cancelar tu suscripción y solicitar la desvinculación de tu correo, puedes gestionarlo desde tu panel de PayPal o contactando con el soporte.
+                  Puedes borrar todos tus datos locales en cualquier instante desde el menú de Ajustes mediante el botón «Reiniciar estadísticas y datos» o desvinculando tu carpeta local. Si deseas cancelar tu suscripción o solicitar la desvinculación de tu correo de contacto, puedes hacerlo desde PayPal o contactando con soporte.
                 </p>
               </div>
             </div>
@@ -238,19 +244,19 @@ export const LegalModal: React.FC<LegalModalProps> = ({
             <div className="space-y-4">
               <div className="bg-black/40 border border-white/10 p-3.5 rounded-2xl">
                 <h4 className="font-bold text-sm text-[var(--accent-pink)] mb-1 flex items-center gap-1.5">
-                  <span>1.</span> Uso de Almacenamiento Local (Local Storage & IndexedDB)
+                  <span>1.</span> Uso de Almacenamiento Local, IndexedDB y Caché Offline (PWA)
                 </h4>
                 <p className="text-[11px] text-white/80 mb-2 leading-relaxed">
-                  Esta aplicación no utiliza "cookies" publicitarias o de rastreo invasivo debido a su naturaleza de ejecución local en dispositivos móviles y navegadores web. En su lugar, utiliza la tecnología de almacenamiento nativa del dispositivo (<code className="text-pink-300 bg-black/60 px-1 py-0.5 rounded">localStorage</code> e <code className="text-pink-300 bg-black/60 px-1 py-0.5 rounded">IndexedDB</code>) con el único propósito técnico de:
+                  Esta aplicación no utiliza cookies publicitarias ni rastreadores de terceros. Utiliza tecnologías locales del navegador (<code className="text-pink-300 bg-black/60 px-1 py-0.5 rounded">localStorage</code>, <code className="text-pink-300 bg-black/60 px-1 py-0.5 rounded">IndexedDB</code> y caché PWA de Service Worker) con el único fin técnico de:
                 </p>
                 <ul className="list-disc list-inside space-y-1 text-[11px] text-white/80 pl-1">
-                  <li>Registrar si el usuario cuenta con una suscripción activa (<code className="text-amber-300">usuario_premium</code> / <code className="text-amber-300">nl_vip_subscription</code>).</li>
-                  <li>Almacenar las preferencias de personalización del lector (conteo de stickers utilizados, tipografías preferidas y configuraciones de lectura).</li>
-                  <li>Guardar las canciones de la Estantería de Música en la base de datos interna local.</li>
-                  <li>Guardar el registro de consentimiento explícito legal (<code className="text-emerald-300">consentimiento_privacidad</code>).</li>
+                  <li>Recordar tu membresía VIP (<code className="text-amber-300">nl_vip_subscription</code>) y tu consentimiento legal (<code className="text-emerald-300">consentimiento_privacidad</code>).</li>
+                  <li>Guardar localmente tus libros, pistas de música y progreso de lectura.</li>
+                  <li>Conservar las preferencias de diseño de estanterías (temas, decoraciones, fondos y tipografías).</li>
+                  <li>Mantener la app operativa sin conexión.</li>
                 </ul>
                 <p className="text-[10px] text-[var(--text-muted)] mt-2">
-                  Estos datos se quedan exclusivamente dentro del almacenamiento interno del teléfono del usuario y el desarrollador no tiene acceso a ellos.
+                  Estos datos permanecen exclusivamente en tu dispositivo y el desarrollador no tiene acceso remoto a tus archivos locales.
                 </p>
               </div>
 

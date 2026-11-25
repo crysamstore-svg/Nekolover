@@ -19,7 +19,17 @@ import { DEFAULT_SHELF_BG } from './components/ShelfBackgroundModal';
 import { DEFAULT_SHELF_DECOR, isValidShelfBookend, isValidShelfDecorProp } from './data/shelfDecorCatalog';
 import type { LegalTab } from './components/LegalModal';
 import { CookieConsentBanner } from './components/CookieConsentBanner';
-import { saveFileToDB, deleteFileFromDB, saveBooksToDB, getBooksFromDB, getSmartEmojiForTitle, getRandomGothicGradient } from './utils/db';
+import {
+  saveFileToDB,
+  deleteFileFromDB,
+  saveBooksToDB,
+  getBooksFromDB,
+  saveLinkedFolderHandle,
+  getLinkedFolderHandle,
+  clearLinkedFolderHandle,
+  getSmartEmojiForTitle,
+  getRandomGothicGradient
+} from './utils/db';
 import { soundscape } from './utils/audio';
 import { loadReadingStats, logReadingSession, resetReadingStatsToZero } from './utils/stats';
 import { compressCoverImage, autoEnrichBookFromNetwork } from './utils/bookMetadata';
@@ -207,7 +217,8 @@ export default function App() {
   const [currentView, setCurrentView] = useState<'library' | 'quotes' | 'bookmarks' | 'stats' | 'reader' | 'settings' | 'vip'>(() => {
     try {
       const params = new URLSearchParams(window.location.search);
-      return params.get('view') === 'vip' ? 'vip' : 'library';
+      if (params.get('view') === 'vip') return 'vip';
+      return 'library';
     } catch {
       return 'library';
     }
@@ -393,6 +404,8 @@ export default function App() {
   });
   const syncCancelledRef = useRef(false);
   const [folderFallbackPrompt, setFolderFallbackPrompt] = useState<string | null>(null);
+  const [linkedFolderHandle, setLinkedFolderHandle] = useState<any | null>(null);
+  const [isLinkedFolderModalOpen, setIsLinkedFolderModalOpen] = useState(false);
 
   const formatBookFileSize = (bytes: number): string => {
     if (bytes >= 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
@@ -695,122 +708,263 @@ export default function App() {
     });
   }, []);
 
+  const syncFromDirectoryHandle = async (
+    dirHandle: any,
+    options: { silent?: boolean } = {}
+  ) => {
+    const { silent = false } = options;
+    const MAX_BOOKS = 2000;
+    const remainingSlots = Math.max(0, MAX_BOOKS - latestBooksRef.current.length);
+    if (remainingSlots === 0) {
+      if (!silent) showToast('⚠️ Capacidad máxima alcanzada (2000 libros).');
+      return;
+    }
+
+    if (!silent) {
+      syncCancelledRef.current = false;
+      setSyncState({
+        isSyncing: true,
+        phase: 'scanning',
+        current: 0,
+        total: 0,
+        currentFile: dirHandle.name || 'Escaneando carpeta...'
+      });
+    }
+
+    const gatheredFiles: File[] = [];
+    const SKIP_DIRS = new Set([
+      'node_modules',
+      'android',
+      '$recycle.bin',
+      'system volume information',
+      '__macosx'
+    ]);
+    const SCAN_ENTRY_YIELD_INTERVAL = 50;
+    const FILE_HANDLE_BATCH_SIZE = 8;
+    const UI_PROGRESS_BATCH_SIZE = 10;
+    const yieldToMain = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
+
+    const isSupportedBookName = (nameLower: string) =>
+      nameLower.endsWith('.pdf') ||
+      nameLower.endsWith('.epub') ||
+      nameLower.endsWith('.txt') ||
+      nameLower.endsWith('.md');
+
+    let scannedEntries = 0;
+
+    async function* flushFileHandleBatch(handles: any[]): AsyncGenerator<File> {
+      if (handles.length === 0 || (!silent && syncCancelledRef.current)) return;
+      const settled = await Promise.allSettled(
+        handles.map((fileHandle) => fileHandle.getFile() as Promise<File>)
+      );
+      for (const res of settled) {
+        if (!silent && syncCancelledRef.current) return;
+        if (res.status === 'fulfilled' && res.value) {
+          yield res.value;
+        }
+      }
+    }
+
+    async function* readDirectoryRecursive(handle: any, depth = 0): AsyncGenerator<File> {
+      if ((!silent && syncCancelledRef.current) || depth > 12) {
+        return;
+      }
+
+      let pendingFileHandles: any[] = [];
+      const childDirectories: any[] = [];
+
+      for await (const entry of handle.values()) {
+        if (!silent && syncCancelledRef.current) {
+          return;
+        }
+        scannedEntries += 1;
+        if (scannedEntries % SCAN_ENTRY_YIELD_INTERVAL === 0) {
+          await yieldToMain();
+        }
+
+        const nameLower = String(entry.name || '').toLowerCase();
+        if (entry.kind === 'file') {
+          // Filter by extension BEFORE calling entry.getFile() so unrelated files don't stall scanning
+          if (isSupportedBookName(nameLower)) {
+            pendingFileHandles.push(entry);
+            if (pendingFileHandles.length >= FILE_HANDLE_BATCH_SIZE) {
+              const batch = pendingFileHandles;
+              pendingFileHandles = [];
+              yield* flushFileHandleBatch(batch);
+              await yieldToMain();
+            }
+          }
+        } else if (entry.kind === 'directory') {
+          if (!nameLower.startsWith('.') && !SKIP_DIRS.has(nameLower)) {
+            childDirectories.push(entry);
+          }
+        }
+      }
+
+      if (pendingFileHandles.length > 0 && (silent || !syncCancelledRef.current)) {
+        yield* flushFileHandleBatch(pendingFileHandles);
+      }
+
+      for (const subDir of childDirectories) {
+        if (!silent && syncCancelledRef.current) {
+          return;
+        }
+        try {
+          yield* readDirectoryRecursive(subDir, depth + 1);
+        } catch {
+          // Skip unreadable subdirectories without aborting the batch scan
+        }
+      }
+    }
+
+    for await (const file of readDirectoryRecursive(dirHandle, 0)) {
+      if (!silent && syncCancelledRef.current) {
+        break;
+      }
+      gatheredFiles.push(file);
+
+      if (
+        !silent &&
+        (gatheredFiles.length === 1 ||
+          gatheredFiles.length % UI_PROGRESS_BATCH_SIZE === 0 ||
+          gatheredFiles.length >= remainingSlots)
+      ) {
+        setSyncState({
+          isSyncing: true,
+          phase: 'scanning',
+          current: gatheredFiles.length,
+          total: 0,
+          currentFile: file.name
+        });
+        await yieldToMain();
+      }
+
+      if (gatheredFiles.length >= remainingSlots) {
+        break;
+      }
+    }
+
+    if (!silent && syncCancelledRef.current) {
+      setSyncState({ isSyncing: false, phase: 'scanning', current: 0, total: 0, currentFile: '' });
+      showToast('⏹️ Escaneo de carpeta cancelado.');
+      return;
+    }
+
+    if (gatheredFiles.length === 0) {
+      if (!silent) {
+        setSyncState({ isSyncing: false, phase: 'scanning', current: 0, total: 0, currentFile: '' });
+        showToast('No se encontraron libros (.epub, .pdf, .txt, .md) en la carpeta.');
+      }
+      return;
+    }
+
+    if (silent) {
+      // Check if any file is actually new before disturbing the user with a modal
+      const existingKeys = new Set(
+        latestBooksRef.current
+          .filter((b) => b.fileName)
+          .map((b) => `${b.fileName!.toLowerCase()}|${b.fileSize || ''}`)
+      );
+      const hasNewBooks = gatheredFiles.some(
+        (f) => !existingKeys.has(`${f.name.toLowerCase()}|${formatBookFileSize(f.size)}`)
+      );
+      if (!hasNewBooks) return;
+    }
+
+    await processBatchBooks(gatheredFiles);
+  };
+
+  const syncFromDirectoryHandleRef = useRef(syncFromDirectoryHandle);
+  syncFromDirectoryHandleRef.current = syncFromDirectoryHandle;
+
+  // Restore saved linked folder handle and auto-sync new books if browser permission persists
+  useEffect(() => {
+    if (typeof window === 'undefined' || !('showDirectoryPicker' in window)) return;
+    let active = true;
+
+    void (async () => {
+      const savedHandle = await getLinkedFolderHandle();
+      if (!active || !savedHandle) return;
+      setLinkedFolderHandle(savedHandle);
+      try {
+        if (typeof savedHandle.queryPermission === 'function') {
+          const perm = await savedHandle.queryPermission({ mode: 'read' });
+          if (perm === 'granted' && active) {
+            // Wait briefly until IndexedDB book list finishes hydrating
+            window.setTimeout(() => {
+              if (active) {
+                void syncFromDirectoryHandleRef.current(savedHandle, { silent: true });
+              }
+            }, 900);
+          }
+        }
+      } catch {}
+    })();
+
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  const handlePickAndLinkFolder = async () => {
+    try {
+      const dirHandle = await (window as any).showDirectoryPicker({
+        id: 'neko-reader-storage-sync',
+        mode: 'read'
+      });
+      setLinkedFolderHandle(dirHandle);
+      await saveLinkedFolderHandle(dirHandle);
+      await syncFromDirectoryHandle(dirHandle, { silent: false });
+    } catch (err: any) {
+      setSyncState({ isSyncing: false, phase: 'scanning', current: 0, total: 0, currentFile: '' });
+      if (err?.name === 'AbortError') {
+        return;
+      }
+      // Chrome/Edge blocks system folders (Downloads/Documents root) with SecurityError AFTER user gesture expires
+      setFolderFallbackPrompt(
+        'Tu navegador bloqueó el acceso directo a esa carpeta del sistema (como Descargas o Documentos). Usa una de estas dos opciones:'
+      );
+    }
+  };
+
+  const handleSyncLinkedFolderNow = async () => {
+    if (!linkedFolderHandle) return;
+    setIsLinkedFolderModalOpen(false);
+    try {
+      if (typeof linkedFolderHandle.queryPermission === 'function') {
+        let perm = await linkedFolderHandle.queryPermission({ mode: 'read' });
+        if (perm !== 'granted' && typeof linkedFolderHandle.requestPermission === 'function') {
+          perm = await linkedFolderHandle.requestPermission({ mode: 'read' });
+        }
+        if (perm !== 'granted') {
+          showToast('⚠️ Se necesita permiso de lectura para sincronizar esa carpeta.');
+          return;
+        }
+      }
+      await syncFromDirectoryHandle(linkedFolderHandle, { silent: false });
+    } catch {
+      showToast('⚠️ No se pudo acceder a la carpeta vinculada. Selecciónala de nuevo.');
+    }
+  };
+
   // Internal Storage Directory Sync (Supports 2000 books automatic scanning)
   const handleSyncInternalStorage = async () => {
     const isAndroidDevice =
       typeof navigator !== 'undefined' && /android/i.test(navigator.userAgent);
 
     if ('showDirectoryPicker' in window) {
-      try {
-        const dirHandle = await (window as any).showDirectoryPicker({
-          id: 'neko-reader-storage-sync',
-          mode: 'read'
-        });
-
-        const MAX_BOOKS = 2000;
-        const remainingSlots = Math.max(0, MAX_BOOKS - latestBooksRef.current.length);
-        if (remainingSlots === 0) {
-          showToast('⚠️ Capacidad máxima alcanzada (2000 libros).');
-          return;
-        }
-
-        syncCancelledRef.current = false;
-        setSyncState({
-          isSyncing: true,
-          phase: 'scanning',
-          current: 0,
-          total: 0,
-          currentFile: dirHandle.name || 'Escaneando carpeta...'
-        });
-
-        const gatheredFiles: File[] = [];
-        const SKIP_DIRS = new Set([
-          'node_modules',
-          'android',
-          '$recycle.bin',
-          'system volume information',
-          '__macosx'
-        ]);
-
-        let scannedEntries = 0;
-        async function readDirectoryRecursive(handle: any, depth = 0) {
-          if (syncCancelledRef.current || gatheredFiles.length >= remainingSlots || depth > 12) {
-            return;
-          }
-          for await (const entry of handle.values()) {
-            if (syncCancelledRef.current || gatheredFiles.length >= remainingSlots) {
-              break;
-            }
-            scannedEntries += 1;
-            if (scannedEntries % 40 === 0) {
-              await new Promise((r) => setTimeout(r, 0));
-            }
-            const nameLower = String(entry.name || '').toLowerCase();
-            if (entry.kind === 'file') {
-              // Filter by extension BEFORE calling entry.getFile() so unrelated files don't stall scanning
-              if (
-                nameLower.endsWith('.pdf') ||
-                nameLower.endsWith('.epub') ||
-                nameLower.endsWith('.txt') ||
-                nameLower.endsWith('.md')
-              ) {
-                try {
-                  const file = await entry.getFile();
-                  gatheredFiles.push(file);
-                  if (gatheredFiles.length % 5 === 0 || gatheredFiles.length === 1) {
-                    setSyncState({
-                      isSyncing: true,
-                      phase: 'scanning',
-                      current: gatheredFiles.length,
-                      total: 0,
-                      currentFile: file.name
-                    });
-                    await new Promise((r) => setTimeout(r, 0));
-                  }
-                } catch {}
-              }
-            } else if (entry.kind === 'directory') {
-              if (nameLower.startsWith('.') || SKIP_DIRS.has(nameLower)) continue;
-              try {
-                await readDirectoryRecursive(entry, depth + 1);
-              } catch {}
-            }
-          }
-        }
-
-        await readDirectoryRecursive(dirHandle, 0);
-
-        if (syncCancelledRef.current) {
-          setSyncState({ isSyncing: false, phase: 'scanning', current: 0, total: 0, currentFile: '' });
-          showToast('⏹️ Escaneo de carpeta cancelado.');
-          return;
-        }
-
-        if (gatheredFiles.length === 0) {
-          setSyncState({ isSyncing: false, phase: 'scanning', current: 0, total: 0, currentFile: '' });
-          showToast('No se encontraron libros (.epub, .pdf, .txt, .md) en la carpeta.');
-          return;
-        }
-
-        await processBatchBooks(gatheredFiles);
-        return;
-      } catch (err: any) {
-        setSyncState({ isSyncing: false, phase: 'scanning', current: 0, total: 0, currentFile: '' });
-        if (err?.name === 'AbortError') {
-          return;
-        }
-        // Chrome/Edge blocks system folders (Downloads/Documents root) with SecurityError AFTER user gesture expires
-        setFolderFallbackPrompt(
-          'Tu navegador bloqueó el acceso directo a esa carpeta del sistema (como Descargas o Documentos). Usa una de estas dos opciones:'
-        );
+      if (linkedFolderHandle) {
+        setIsLinkedFolderModalOpen(true);
         return;
       }
+      await handlePickAndLinkFolder();
+      return;
     }
 
     if (isAndroidDevice) {
       // Android 11+ disables "USAR ESTA CARPETA" in Download/Documents root; guide user clearly
       setFolderFallbackPrompt(
-        'Android bloquea el botón "Usar esta carpeta" en la raíz de Descargas/Documentos. Elige "Seleccionar Varios Libros" para marcar varios PDF/EPUB ahí mismo, o entra a una subcarpeta (ej. Descargas → Libros) con "Elegir Carpeta".'
+        'En Android los navegadores bloquean la sincronización automática en segundo plano. Para no subir uno por uno: elige tu subcarpeta (ej. Descargas → Libros) con "Elegir Carpeta" — solo importará los libros nuevos — o selecciona varios libros de golpe.'
       );
       return;
     }
@@ -1155,8 +1309,76 @@ export default function App() {
                 className="w-full py-2.5 px-4 rounded-xl bg-black/50 border border-purple-400/40 hover:border-purple-400 text-purple-200 font-bold text-xs flex items-center justify-center gap-2 transition cursor-pointer"
               >
                 <FolderSync className="w-4 h-4" />
-                <span>Elegir Carpeta (Selector Clásico)</span>
+                <span>Elegir Carpeta (Solo importa los nuevos)</span>
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Linked Folder Sync Modal (Desktop persistent directory handle) */}
+      {isLinkedFolderModalOpen && linkedFolderHandle && (
+        <div className="fixed inset-0 bg-black/85 backdrop-blur-md z-50 flex items-center justify-center p-4">
+          <div className="bg-[#1a1726] border-2 border-purple-500/50 rounded-3xl p-6 max-w-md w-full shadow-2xl space-y-4 relative">
+            <button
+              type="button"
+              onClick={() => setIsLinkedFolderModalOpen(false)}
+              className="absolute top-3.5 right-3.5 p-1.5 rounded-xl text-[var(--text-muted)] hover:text-white hover:bg-white/10 transition"
+              aria-label="Cerrar"
+            >
+              <X className="w-4 h-4" />
+            </button>
+
+            <div className="flex items-center gap-3">
+              <div className="w-11 h-11 rounded-2xl bg-purple-500/20 text-purple-300 flex items-center justify-center shrink-0">
+                <FolderSync className="w-6 h-6" />
+              </div>
+              <div className="min-w-0">
+                <h3 className="font-bold text-base text-white">Carpeta Vinculada</h3>
+                <p className="text-xs text-[var(--accent-pink)] font-mono truncate mt-0.5">
+                  📁 {linkedFolderHandle.name || 'Biblioteca Local'}
+                </p>
+              </div>
+            </div>
+
+            <p className="text-xs text-[var(--text-muted)] leading-relaxed">
+              Escanea esta carpeta automáticamente y guarda solo los libros nuevos que hayas agregado sin duplicar los existentes.
+            </p>
+
+            <div className="space-y-2.5 pt-1">
+              <button
+                type="button"
+                onClick={() => void handleSyncLinkedFolderNow()}
+                className="w-full py-3 px-4 rounded-xl bg-gradient-to-r from-pink-500 to-purple-600 hover:from-pink-400 hover:to-purple-500 text-white font-bold text-xs flex items-center justify-center gap-2 shadow-lg transition cursor-pointer"
+              >
+                <FolderSync className="w-4 h-4" />
+                <span>Sincronizar Libros Nuevos Ahora</span>
+              </button>
+
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsLinkedFolderModalOpen(false);
+                    void handlePickAndLinkFolder();
+                  }}
+                  className="py-2.5 px-3 rounded-xl bg-black/50 border border-purple-400/40 hover:border-purple-400 text-purple-200 font-bold text-xs transition cursor-pointer"
+                >
+                  Cambiar Carpeta
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsLinkedFolderModalOpen(false);
+                    setLinkedFolderHandle(null);
+                    void clearLinkedFolderHandle();
+                    showToast('Carpeta desvinculada.');
+                  }}
+                  className="py-2.5 px-3 rounded-xl bg-black/50 border border-rose-500/35 hover:border-rose-400 text-rose-300 font-bold text-xs transition cursor-pointer"
+                >
+                  Desvincular
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -1188,6 +1410,7 @@ export default function App() {
             onRestoreDefaults={handleRestoreDefaults}
             onTriggerUpload={handleTriggerUpload}
             onSyncFolder={handleSyncInternalStorage}
+            linkedFolderName={linkedFolderHandle?.name || null}
             onReorderBooks={handleReorderBooks}
             onNavigateToStats={() => setCurrentView('stats')}
             onOpenSettings={() => setCurrentView('settings')}
