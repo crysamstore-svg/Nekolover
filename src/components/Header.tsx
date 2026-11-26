@@ -38,11 +38,11 @@ export const Header: React.FC<HeaderProps> = ({
           alt="NekoLover Read"
           className="w-8 h-8 sm:w-10 sm:h-10 rounded-xl object-cover border border-[var(--accent-pink)]/50 shadow-lg group-hover:scale-105 transition-transform shrink-0"
         />
-        <div className="min-w-0 hidden min-[410px]:block">
-          <span className="dark-reborn-title block text-xs sm:text-lg font-bold text-[var(--accent-pink)] leading-tight truncate whitespace-nowrap">
+        <div className="min-w-0">
+          <span className="dark-reborn-title block text-sm sm:text-lg font-bold text-[var(--accent-pink)] leading-tight truncate whitespace-nowrap">
             NekoLover Read
           </span>
-          <span className="hidden lg:block text-[11px] text-[var(--accent-purple)] font-medium truncate whitespace-nowrap">
+          <span className="block text-[10px] sm:text-[11px] text-[var(--accent-purple)] font-medium truncate whitespace-nowrap">
             Dark Reborn &amp; EPUB Engine
           </span>
         </div>

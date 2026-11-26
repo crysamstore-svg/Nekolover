@@ -1,4 +1,4 @@
-import { HighlightColor, TextHighlight } from '../types';
+import { HighlightColor, PageNote, TextHighlight } from '../types';
 
 const ALLOWED_TAGS = new Set([
   'p', 'div', 'span', 'br', 'hr',
@@ -197,9 +197,15 @@ const HIGHLIGHT_INLINE_STYLES: Record<HighlightColor, string> = {
  * Sanitizes EPUB HTML and safely injects <mark> highlights only within text nodes,
  * never mutating HTML tag names or attributes.
  */
-export function highlightHtmlSafely(rawHtml: string, pageHighlights: TextHighlight[]): string {
+export function highlightHtmlSafely(
+  rawHtml: string,
+  pageHighlights: TextHighlight[],
+  pageNotes?: PageNote[]
+): string {
   const safeHtml = sanitizeEpubHtml(rawHtml);
-  if (!pageHighlights || pageHighlights.length === 0 || !safeHtml || typeof DOMParser === 'undefined') {
+  const hasHighlights = Boolean(pageHighlights && pageHighlights.length > 0);
+  const hasNotes = Boolean(pageNotes && pageNotes.length > 0);
+  if ((!hasHighlights && !hasNotes) || !safeHtml || typeof DOMParser === 'undefined') {
     return safeHtml;
   }
 
@@ -208,45 +214,119 @@ export function highlightHtmlSafely(rawHtml: string, pageHighlights: TextHighlig
   const body = doc.body;
   if (!body) return safeHtml;
 
-  for (const hl of pageHighlights) {
-    const query = hl.text?.trim();
-    if (!query || query.length < 2) continue;
-    const lowerQuery = query.toLowerCase();
+  if (hasHighlights) {
+    for (const hl of pageHighlights) {
+      const query = hl.text?.trim();
+      if (!query || query.length < 2) continue;
+      const lowerQuery = query.toLowerCase();
 
-    const walker = doc.createTreeWalker(body, NodeFilter.SHOW_TEXT);
-    const textNodes: Text[] = [];
-    let current = walker.nextNode();
-    while (current) {
-      if (current.nodeType === Node.TEXT_NODE && current.parentElement?.tagName.toLowerCase() !== 'mark') {
-        textNodes.push(current as Text);
-      }
-      current = walker.nextNode();
-    }
-
-    for (const textNode of textNodes) {
-      const value = textNode.nodeValue || '';
-      const lowerVal = value.toLowerCase();
-      let idx = lowerVal.indexOf(lowerQuery);
-      if (idx === -1) continue;
-
-      const frag = doc.createDocumentFragment();
-      let lastIdx = 0;
-      while (idx !== -1) {
-        if (idx > lastIdx) {
-          frag.appendChild(doc.createTextNode(value.slice(lastIdx, idx)));
+      const walker = doc.createTreeWalker(body, NodeFilter.SHOW_TEXT);
+      const textNodes: Text[] = [];
+      let current = walker.nextNode();
+      while (current) {
+        if (current.nodeType === Node.TEXT_NODE && current.parentElement?.tagName.toLowerCase() !== 'mark') {
+          textNodes.push(current as Text);
         }
-        const mark = doc.createElement('mark');
-        mark.setAttribute('style', HIGHLIGHT_INLINE_STYLES[hl.color] || HIGHLIGHT_INLINE_STYLES.pink);
-        mark.setAttribute('data-hl-id', String(hl.id).replace(/[^a-zA-Z0-9_-]/g, ''));
-        mark.textContent = value.slice(idx, idx + query.length);
-        frag.appendChild(mark);
-        lastIdx = idx + query.length;
-        idx = lowerVal.indexOf(lowerQuery, lastIdx);
+        current = walker.nextNode();
       }
-      if (lastIdx < value.length) {
-        frag.appendChild(doc.createTextNode(value.slice(lastIdx)));
+
+      for (const textNode of textNodes) {
+        const value = textNode.nodeValue || '';
+        const lowerVal = value.toLowerCase();
+        let idx = lowerVal.indexOf(lowerQuery);
+        if (idx === -1) continue;
+
+        const frag = doc.createDocumentFragment();
+        let lastIdx = 0;
+        while (idx !== -1) {
+          if (idx > lastIdx) {
+            frag.appendChild(doc.createTextNode(value.slice(lastIdx, idx)));
+          }
+          const mark = doc.createElement('mark');
+          mark.setAttribute('style', HIGHLIGHT_INLINE_STYLES[hl.color] || HIGHLIGHT_INLINE_STYLES.pink);
+          mark.setAttribute('data-hl-id', String(hl.id).replace(/[^a-zA-Z0-9_-]/g, ''));
+          mark.textContent = value.slice(idx, idx + query.length);
+          frag.appendChild(mark);
+          lastIdx = idx + query.length;
+          idx = lowerVal.indexOf(lowerQuery, lastIdx);
+        }
+        if (lastIdx < value.length) {
+          frag.appendChild(doc.createTextNode(value.slice(lastIdx)));
+        }
+        textNode.parentNode?.replaceChild(frag, textNode);
       }
-      textNode.parentNode?.replaceChild(frag, textNode);
+    }
+  }
+
+  if (hasNotes && pageNotes) {
+    for (const note of pageNotes) {
+      const rawLine = note.lineText?.trim();
+      if (!rawLine || rawLine.length < 2) continue;
+      const firstSnippet = rawLine.split(/\r?\n/)[0]?.trim() || rawLine;
+      const candidates = [
+        rawLine.toLowerCase(),
+        firstSnippet.toLowerCase(),
+        firstSnippet.slice(0, 32).trim().toLowerCase(),
+      ].filter((c) => c.length >= 2);
+
+      const walker = doc.createTreeWalker(body, NodeFilter.SHOW_TEXT);
+      const textNodes: Text[] = [];
+      let current = walker.nextNode();
+      while (current) {
+        if (
+          current.nodeType === Node.TEXT_NODE &&
+          !current.parentElement?.closest('[data-note-id]')
+        ) {
+          textNodes.push(current as Text);
+        }
+        current = walker.nextNode();
+      }
+
+      let injected = false;
+      for (const candidate of candidates) {
+        if (injected) break;
+        for (const textNode of textNodes) {
+          const value = textNode.nodeValue || '';
+          const lowerVal = value.toLowerCase();
+          const idx = lowerVal.indexOf(candidate);
+          if (idx === -1) continue;
+
+          const matchEnd = idx + candidate.length;
+          const frag = doc.createDocumentFragment();
+          if (idx > 0) {
+            frag.appendChild(doc.createTextNode(value.slice(0, idx)));
+          }
+
+          const anchor = doc.createElement('span');
+          anchor.setAttribute(
+            'style',
+            'border-bottom: 1.5px dotted rgba(255, 121, 198, 0.85); padding-bottom: 1px;'
+          );
+          anchor.textContent = value.slice(idx, matchEnd);
+          frag.appendChild(anchor);
+
+          const safeNoteId = String(note.id).replace(/[^a-zA-Z0-9_-]/g, '');
+          const badge = doc.createElement('span');
+          badge.setAttribute('data-note-id', safeNoteId);
+          badge.setAttribute('role', 'button');
+          badge.setAttribute('tabindex', '0');
+          badge.setAttribute('title', `Nota: ${note.note.slice(0, 120)}`);
+          badge.setAttribute('class', 'nl-inline-note-icon');
+          badge.setAttribute(
+            'style',
+            'display: inline-flex; align-items: center; justify-content: center; margin-left: 4px; padding: 1px 5px; border-radius: 9999px; background-color: rgba(255, 121, 198, 0.25); border: 1px solid rgba(255, 121, 198, 0.75); font-size: 0.72em; line-height: 1.2; cursor: pointer; vertical-align: middle; user-select: none;'
+          );
+          badge.textContent = '💬';
+          frag.appendChild(badge);
+
+          if (matchEnd < value.length) {
+            frag.appendChild(doc.createTextNode(value.slice(matchEnd)));
+          }
+          textNode.parentNode?.replaceChild(frag, textNode);
+          injected = true;
+          break;
+        }
+      }
     }
   }
 

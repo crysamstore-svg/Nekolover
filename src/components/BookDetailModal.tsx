@@ -3,7 +3,6 @@ import {
   ArrowLeft,
   BookOpen,
   Heart,
-  Search,
   Edit3,
   Check,
   X,
@@ -11,25 +10,22 @@ import {
   Loader2,
   Bookmark as BookmarkIcon,
   Quote as QuoteIcon,
-  Globe,
-  Upload,
-  RotateCcw
+  FolderHeart,
+  Plus
 } from 'lucide-react';
-import { Book } from '../types';
+import { Book, BookCollection } from '../types';
 import { resolveCoverGradient, normalizeBookEmoji } from '../utils/db';
 import { sanitizeImageUrl } from '../utils/sanitizeHtml';
 import {
-  PublicBookCandidate,
-  searchPublicBookCatalogWithStatus,
-  applyCandidateToBook,
-  autoEnrichBookFromNetwork,
-  cleanBookSearchParts,
-  compressCoverImage,
+  extractMetadataFromBookFile,
   isGenericAuthor
 } from '../utils/bookMetadata';
 
 interface BookDetailModalProps {
   book: Book;
+  collections?: BookCollection[];
+  onToggleBookCollection?: (bookId: string, collectionId: string) => void;
+  onCreateCollection?: (name: string, emoji: string) => BookCollection | void;
   quotesCountForBook: number;
   bookmarksCountForBook: number;
   onClose: () => void;
@@ -41,6 +37,9 @@ interface BookDetailModalProps {
 
 export const BookDetailModal: React.FC<BookDetailModalProps> = ({
   book,
+  collections = [],
+  onToggleBookCollection,
+  onCreateCollection,
   quotesCountForBook,
   bookmarksCountForBook,
   onClose,
@@ -50,15 +49,8 @@ export const BookDetailModal: React.FC<BookDetailModalProps> = ({
   onChangeCategory
 }) => {
   const [imgError, setImgError] = useState(false);
-  const [isSearching, setIsSearching] = useState(false);
-  const [searchError, setSearchError] = useState<string | null>(null);
-  const [autoLookupNote, setAutoLookupNote] = useState<'none' | 'not_found' | 'network_error'>('none');
-  const [showCatalogSearch, setShowCatalogSearch] = useState(false);
-  const [candidates, setCandidates] = useState<PublicBookCandidate[]>([]);
-  const [customQuery, setCustomQuery] = useState(() => {
-    const cleaned = cleanBookSearchParts(book.title, book.author);
-    return [cleaned.title, cleaned.author].filter(Boolean).join(' ');
-  });
+  const [isExtracting, setIsExtracting] = useState(false);
+  const [extractAttemptedEmpty, setExtractAttemptedEmpty] = useState(false);
 
   // Manual edit state
   const [isEditing, setIsEditing] = useState(false);
@@ -69,9 +61,10 @@ export const BookDetailModal: React.FC<BookDetailModalProps> = ({
   const [editPublisher, setEditPublisher] = useState(book.publisher || '');
   const [editDescription, setEditDescription] = useState(book.description || '');
   const [expandBio, setExpandBio] = useState(false);
+  const [newCollectionName, setNewCollectionName] = useState('');
+  const [showNewCollectionInput, setShowNewCollectionInput] = useState(false);
 
-  const autoFetchedIdRef = useRef<string | null>(null);
-  const coverUploadRef = useRef<HTMLInputElement | null>(null);
+  const autoExtractedIdRef = useRef<string | null>(null);
 
   useEffect(() => {
     setImgError(false);
@@ -81,8 +74,6 @@ export const BookDetailModal: React.FC<BookDetailModalProps> = ({
     setEditYear(book.publishedYear || '');
     setEditPublisher(book.publishedYear ? book.publisher || '' : book.publisher || '');
     setEditDescription(book.description || '');
-    const cleaned = cleanBookSearchParts(book.title, book.author);
-    setCustomQuery([cleaned.title, cleaned.author].filter(Boolean).join(' '));
   }, [book]);
 
   // Escape key closes modal
@@ -94,99 +85,63 @@ export const BookDetailModal: React.FC<BookDetailModalProps> = ({
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [onClose]);
 
-  // Automatic enrichment on open when book lacks real title/bio/cover/genres
+  // Extract cover, synopsis and metadata directly from the book file when missing or previously non-local
   useEffect(() => {
     if (book.type === 'demo') return;
     if (book.metadataSource === 'manual') return;
-    if (autoFetchedIdRef.current === book.id) return;
+    if (autoExtractedIdRef.current === book.id) return;
 
-    const missingImportant =
+    const needsLocalExtraction =
       !book.description ||
       !book.coverImage ||
-      !book.genres ||
-      book.genres.length === 0 ||
-      isGenericAuthor(book.author);
+      isGenericAuthor(book.author) ||
+      book.metadataSource === 'public_api';
 
-    if (!missingImportant) return;
-    // If we already got rich public metadata with description & cover, skip automatic re-fetch
-    if (book.metadataFetchedAt && book.metadataSource === 'public_api' && book.description && book.coverImage) {
-      return;
-    }
+    if (!needsLocalExtraction) return;
 
-    autoFetchedIdRef.current = book.id;
+    autoExtractedIdRef.current = book.id;
     let cancelled = false;
 
-    const runAutoEnrich = async () => {
-      setIsSearching(true);
-      setSearchError(null);
-      setAutoLookupNote('none');
+    const runLocalExtract = async () => {
+      setIsExtracting(true);
+      setExtractAttemptedEmpty(false);
 
-      const result = await autoEnrichBookFromNetwork(book);
+      const { updated } = await extractMetadataFromBookFile(book, {
+        force: book.metadataSource === 'public_api'
+      });
       if (cancelled) return;
 
-      if (result.candidates.length > 0) {
-        setCandidates(result.candidates);
+      if (!updated.description) {
+        setExtractAttemptedEmpty(true);
       }
 
-      if (result.networkError && !result.matched) {
-        setAutoLookupNote('network_error');
-      } else if (!result.matched && !result.updated.description) {
-        setAutoLookupNote('not_found');
-      }
-
-      if (!result.matched) {
-        const cleaned = cleanBookSearchParts(result.updated.title, result.updated.author);
-        setCustomQuery(cleaned.title);
-      }
-
-      onUpdateBook(result.updated);
-      setIsSearching(false);
+      onUpdateBook(updated);
+      setIsExtracting(false);
     };
 
-    void runAutoEnrich();
+    void runLocalExtract();
 
     return () => {
       cancelled = true;
     };
   }, [book, onUpdateBook]);
 
-  const handleManualPublicSearch = async (e?: React.FormEvent) => {
-    if (e) e.preventDefault();
-    setIsSearching(true);
-    setSearchError(null);
-    setShowCatalogSearch(true);
-
-    const { candidates: results, networkError } = await searchPublicBookCatalogWithStatus(
-      book.title,
-      book.author,
-      customQuery.trim() || undefined
-    );
-
-    setIsSearching(false);
-    if (results.length === 0) {
-      setCandidates([]);
-      if (networkError) {
-        setSearchError(
-          'Error de conexión al consultar los catálogos públicos. Puedes reintentar o completar la ficha manualmente en «Editar ficha».'
-        );
-      } else {
-        setSearchError(
-          'No encontramos coincidencias exactas. Prueba escribir solo el título principal o edítalo manualmente en «Editar ficha».'
-        );
-      }
-    } else {
-      setAutoLookupNote('none');
-      setCandidates(results);
-    }
-  };
-
-  const handleSelectCandidate = (candidate: PublicBookCandidate) => {
-    const updated = applyCandidateToBook(book, candidate, true);
+  const handleReextractFromBook = async () => {
+    if (book.type === 'demo') return;
+    setIsExtracting(true);
+    setExtractAttemptedEmpty(false);
+    const { updated, extracted } = await extractMetadataFromBookFile(book, { force: true });
     setImgError(false);
-    setAutoLookupNote('none');
-    setSearchError(null);
-    onUpdateBook(updated, '📚 Título, sinopsis y portada aplicados al libro.');
-    setShowCatalogSearch(false);
+    if (!updated.description) {
+      setExtractAttemptedEmpty(true);
+    }
+    onUpdateBook(
+      updated,
+      extracted
+        ? '📚 Portada y sinopsis actualizadas desde el libro.'
+        : 'Este archivo no contiene más datos incrustados.'
+    );
+    setIsExtracting(false);
   };
 
   const handleSaveManualEdit = (e: React.FormEvent) => {
@@ -212,40 +167,6 @@ export const BookDetailModal: React.FC<BookDetailModalProps> = ({
       '✨ Biografía y ficha del libro guardadas.'
     );
     setIsEditing(false);
-  };
-
-  const handleUploadCustomCover = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    e.target.value = '';
-    if (!file || !file.type.startsWith('image/')) return;
-
-    const reader = new FileReader();
-    reader.onload = async () => {
-      if (typeof reader.result !== 'string') return;
-      const compressed = await compressCoverImage(reader.result, 360);
-      if (!compressed) return;
-      setImgError(false);
-      onUpdateBook(
-        {
-          ...book,
-          coverImage: compressed,
-          metadataSource: book.metadataSource || 'manual'
-        },
-        '🖼️ Portada personalizada guardada.'
-      );
-    };
-    reader.readAsDataURL(file);
-  };
-
-  const handleClearCover = () => {
-    setImgError(false);
-    onUpdateBook(
-      {
-        ...book,
-        coverImage: undefined
-      },
-      'Portada restaurada al estilo predeterminado.'
-    );
   };
 
   const safeCover = !imgError ? sanitizeImageUrl(book.coverImage) : null;
@@ -311,7 +232,6 @@ export const BookDetailModal: React.FC<BookDetailModalProps> = ({
               type="button"
               onClick={() => {
                 setIsEditing((prev) => !prev);
-                setShowCatalogSearch(false);
               }}
               className={`min-h-[44px] min-w-[44px] px-3 rounded-xl border text-xs font-medium flex items-center justify-center gap-1.5 transition cursor-pointer ${
                 isEditing
@@ -368,37 +288,6 @@ export const BookDetailModal: React.FC<BookDetailModalProps> = ({
               {/* Subtle Book Spine Shading */}
               <div className="absolute inset-y-0 left-0 w-2 bg-gradient-to-r from-black/55 to-transparent pointer-events-none" />
               <div className="absolute inset-y-0 left-2 w-px bg-white/15 pointer-events-none" />
-            </div>
-
-            <input
-              ref={coverUploadRef}
-              type="file"
-              accept="image/*"
-              onChange={handleUploadCustomCover}
-              className="hidden"
-            />
-
-            <div className="flex items-center gap-2 w-full">
-              <button
-                type="button"
-                onClick={() => coverUploadRef.current?.click()}
-                className="flex-1 min-h-[44px] px-3 py-2 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-xs font-medium text-white flex items-center justify-center gap-1.5 transition cursor-pointer"
-                title="Cargar portada desde tu dispositivo"
-              >
-                <Upload className="w-3.5 h-3.5 text-[var(--accent-pink)]" />
-                <span>Portada</span>
-              </button>
-              {book.coverImage && (
-                <button
-                  type="button"
-                  onClick={handleClearCover}
-                  className="min-h-[44px] min-w-[44px] px-2.5 py-2 rounded-xl bg-white/5 hover:bg-rose-500/20 border border-white/10 hover:border-rose-400/40 text-xs text-[var(--text-muted)] hover:text-rose-200 flex items-center justify-center transition cursor-pointer"
-                  title="Quitar portada actual"
-                  aria-label="Quitar portada actual"
-                >
-                  <RotateCcw className="w-3.5 h-3.5" />
-                </button>
-              )}
             </div>
 
             {/* Reading Progress Summary */}
@@ -564,43 +453,122 @@ export const BookDetailModal: React.FC<BookDetailModalProps> = ({
                   })}
                 </div>
 
-                {/* Synopsis / Book Biography Section */}
+                {/* Collections / Sagas assignment */}
+                {(collections.length > 0 || onCreateCollection) && (
+                  <div className="space-y-2 border-t border-white/10 pt-3">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-xs font-semibold text-[var(--text-muted)] flex items-center gap-1.5">
+                        <FolderHeart className="w-3.5 h-3.5 text-[var(--accent-pink)]" />
+                        <span>Colección / Saga</span>
+                      </span>
+                      {onCreateCollection && (
+                        <button
+                          type="button"
+                          onClick={() => setShowNewCollectionInput((p) => !p)}
+                          className="text-[11px] font-semibold text-[var(--accent-purple)] hover:text-white flex items-center gap-1 cursor-pointer"
+                        >
+                          <Plus className="w-3 h-3" />
+                          <span>Nueva saga</span>
+                        </button>
+                      )}
+                    </div>
+
+                    {showNewCollectionInput && onCreateCollection && (
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="text"
+                          value={newCollectionName}
+                          onChange={(e) => setNewCollectionName(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              e.preventDefault();
+                              const clean = newCollectionName.trim();
+                              if (!clean) return;
+                              const created = onCreateCollection(clean, '📚');
+                              if (created && onToggleBookCollection) {
+                                onToggleBookCollection(book.id, created.id);
+                              }
+                              setNewCollectionName('');
+                              setShowNewCollectionInput(false);
+                            }
+                          }}
+                          placeholder="Ej: Trilogía Oscura..."
+                          className="flex-1 h-9 px-3 rounded-xl bg-black/50 border border-[var(--border-color)] text-xs text-white focus:outline-none focus:border-[var(--accent-pink)]"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const clean = newCollectionName.trim();
+                            if (!clean) return;
+                            const created = onCreateCollection(clean, '📚');
+                            if (created && onToggleBookCollection) {
+                              onToggleBookCollection(book.id, created.id);
+                            }
+                            setNewCollectionName('');
+                            setShowNewCollectionInput(false);
+                          }}
+                          className="h-9 px-3 rounded-xl bg-[var(--accent-pink)] text-black text-xs font-bold cursor-pointer"
+                        >
+                          Añadir
+                        </button>
+                      </div>
+                    )}
+
+                    {collections.length > 0 ? (
+                      <div className="flex flex-wrap gap-1.5">
+                        {collections.map((col) => {
+                          const assigned = (book.collectionIds || []).includes(col.id);
+                          return (
+                            <button
+                              key={col.id}
+                              type="button"
+                              onClick={() => onToggleBookCollection?.(book.id, col.id)}
+                              className={`px-2.5 py-1 rounded-full text-[11px] font-semibold border transition flex items-center gap-1 cursor-pointer ${
+                                assigned
+                                  ? 'bg-[var(--accent-purple)] text-black border-[var(--accent-purple)] font-bold shadow-sm'
+                                  : 'bg-black/40 text-[var(--text-muted)] border-white/10 hover:text-white hover:border-white/25'
+                              }`}
+                            >
+                              <span>{col.emoji}</span>
+                              <span>{col.name}</span>
+                              {assigned && <Check className="w-3 h-3" />}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    ) : (
+                      <p className="text-[11px] text-[var(--text-muted)]">
+                        Agrupa tus sagas o series literarias creando una nueva colección.
+                      </p>
+                    )}
+                  </div>
+                )}
+
+                {/* Synopsis / Book Biography Section (Extracted from book file) */}
                 <div className="space-y-2.5 border-t border-white/10 pt-4">
                   <div className="flex items-center justify-between gap-2">
                     <h3 className="text-xs font-semibold tracking-wide text-[var(--text-muted)]">
-                      Biografía y sinopsis del libro
+                      Sinopsis del libro
                     </h3>
 
-                    <button
-                      type="button"
-                      onClick={() => {
-                        if (!showCatalogSearch && candidates.length === 0) {
-                          void handleManualPublicSearch();
-                        } else {
-                          setShowCatalogSearch((prev) => !prev);
-                        }
-                      }}
-                      className="min-h-[36px] px-2.5 py-1 rounded-lg text-xs font-medium text-[var(--accent-purple)] hover:text-white hover:bg-white/5 flex items-center gap-1.5 transition whitespace-nowrap cursor-pointer"
-                    >
-                      {isSearching ? (
-                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                      ) : (
-                        <Globe className="w-3.5 h-3.5" />
-                      )}
-                      <span>
-                        {isSearching
-                          ? 'Buscando...'
-                          : showCatalogSearch
-                          ? 'Ocultar catálogo'
-                          : 'Buscar info pública'}
-                      </span>
-                    </button>
+                    {book.type !== 'demo' && (
+                      <button
+                        type="button"
+                        onClick={() => void handleReextractFromBook()}
+                        disabled={isExtracting}
+                        className="min-h-[34px] px-2.5 py-1 rounded-lg text-xs font-medium text-[var(--accent-purple)] hover:text-white hover:bg-white/5 flex items-center gap-1.5 transition whitespace-nowrap cursor-pointer disabled:opacity-50"
+                        title="Volver a leer portada y sinopsis desde el archivo del libro"
+                      >
+                        <RefreshCw className={`w-3.5 h-3.5 ${isExtracting ? 'animate-spin' : ''}`} />
+                        <span>{isExtracting ? 'Leyendo libro...' : 'Extraer del libro'}</span>
+                      </button>
+                    )}
                   </div>
 
-                  {isSearching && !bioText ? (
+                  {isExtracting && !bioText ? (
                     <div className="py-4 text-xs sm:text-sm text-[var(--text-muted)] flex items-center gap-2.5">
                       <Loader2 className="w-4 h-4 animate-spin text-[var(--accent-pink)] shrink-0" />
-                      <span>Buscando título real, autor, géneros y sinopsis...</span>
+                      <span>Extrayendo portada y sinopsis directamente del libro...</span>
                     </div>
                   ) : bioText ? (
                     <div className="space-y-2">
@@ -620,139 +588,33 @@ export const BookDetailModal: React.FC<BookDetailModalProps> = ({
                   ) : (
                     <div className="py-3 space-y-3">
                       <p className="text-xs sm:text-sm text-[var(--text-muted)] leading-relaxed">
-                        {autoLookupNote === 'network_error'
-                          ? 'No se pudo conectar con el catálogo automático para traer la sinopsis.'
-                          : autoLookupNote === 'not_found'
-                          ? 'No encontramos una sinopsis automática exacta para este archivo.'
-                          : 'Este tomo todavía no tiene sinopsis guardada.'}{' '}
-                        Puedes buscar otro título manualmente o escribirlo tú mismo.
+                        {extractAttemptedEmpty
+                          ? 'Este archivo no contiene sinopsis ni texto legible incrustado (por ejemplo, un PDF escaneado como imagen).'
+                          : 'Este tomo todavía no tiene sinopsis extraída.'}
                       </p>
                       <div className="flex flex-wrap items-center gap-2">
+                        {book.type !== 'demo' && (
+                          <button
+                            type="button"
+                            onClick={() => void handleReextractFromBook()}
+                            className="min-h-[40px] px-3.5 py-2 rounded-xl bg-white/10 hover:bg-white/15 border border-white/10 text-xs font-semibold text-white flex items-center gap-1.5 transition cursor-pointer"
+                          >
+                            <RefreshCw className="w-3.5 h-3.5 text-[var(--accent-purple)]" />
+                            <span>Reintentar lectura del libro</span>
+                          </button>
+                        )}
                         <button
                           type="button"
-                          onClick={() => {
-                            setShowCatalogSearch(true);
-                            if (candidates.length === 0) {
-                              void handleManualPublicSearch();
-                            }
-                          }}
-                          className="min-h-[40px] px-3.5 py-2 rounded-xl bg-white/10 hover:bg-white/15 border border-white/10 text-xs font-semibold text-white flex items-center gap-1.5 transition cursor-pointer"
-                        >
-                          <Search className="w-3.5 h-3.5 text-[var(--accent-purple)]" />
-                          <span>Buscar otro título</span>
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setIsEditing(true);
-                            setShowCatalogSearch(false);
-                          }}
+                          onClick={() => setIsEditing(true)}
                           className="min-h-[40px] px-3.5 py-2 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-xs font-semibold text-[var(--accent-pink)] flex items-center gap-1.5 transition cursor-pointer"
                         >
                           <Edit3 className="w-3.5 h-3.5" />
-                          <span>Editar título y sinopsis manual</span>
+                          <span>Escribir sinopsis manual</span>
                         </button>
                       </div>
                     </div>
                   )}
                 </div>
-
-                {/* Public Catalog Search & Edition Picker */}
-                {showCatalogSearch && (
-                  <div className="border-t border-white/10 pt-4 space-y-3">
-                    <form onSubmit={handleManualPublicSearch} className="flex flex-col sm:flex-row gap-2">
-                      <div className="relative flex-1">
-                        <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-[var(--text-muted)] pointer-events-none" />
-                        <input
-                          type="text"
-                          value={customQuery}
-                          onChange={(e) => setCustomQuery(e.target.value)}
-                          placeholder="Escribe el título real del libro o autor..."
-                          className="w-full h-11 pl-9 pr-3 rounded-xl bg-black/50 border border-[var(--border-color)] text-xs sm:text-sm text-white focus:outline-none focus:border-[var(--accent-pink)]"
-                        />
-                      </div>
-                      <button
-                        type="submit"
-                        disabled={isSearching}
-                        className="min-h-[44px] px-4 py-2 rounded-xl bg-white/10 hover:bg-white/20 text-xs font-semibold text-white flex items-center justify-center gap-1.5 transition shrink-0 whitespace-nowrap cursor-pointer disabled:opacity-50"
-                      >
-                        <RefreshCw className={`w-3.5 h-3.5 ${isSearching ? 'animate-spin' : ''}`} />
-                        <span>Buscar edición</span>
-                      </button>
-                    </form>
-
-                    {searchError && (
-                      <div className="p-3 rounded-xl bg-rose-950/30 border border-rose-500/30 space-y-2">
-                        <p className="text-xs text-rose-200 leading-relaxed">{searchError}</p>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setIsEditing(true);
-                            setShowCatalogSearch(false);
-                          }}
-                          className="min-h-[36px] px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-xs font-semibold text-white inline-flex items-center gap-1.5 transition cursor-pointer"
-                        >
-                          <Edit3 className="w-3.5 h-3.5 text-[var(--accent-pink)]" />
-                          <span>Editar manualmente ahora</span>
-                        </button>
-                      </div>
-                    )}
-
-                    {candidates.length > 0 && (
-                      <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
-                        {candidates.slice(0, 6).map((cand) => (
-                          <button
-                            key={cand.id}
-                            type="button"
-                            onClick={() => handleSelectCandidate(cand)}
-                            className="w-full text-left p-2.5 rounded-xl bg-black/40 hover:bg-white/10 border border-white/10 hover:border-[var(--accent-pink)]/60 transition flex items-start gap-3 cursor-pointer"
-                          >
-                            {cand.coverImage ? (
-                              <img
-                                src={cand.coverImage}
-                                alt={cand.title}
-                                referrerPolicy="no-referrer"
-                                className="w-11 h-16 object-cover rounded shrink-0 bg-black/50"
-                              />
-                            ) : (
-                              <div className="w-11 h-16 rounded bg-white/5 flex items-center justify-center text-base shrink-0">
-                                📖
-                              </div>
-                            )}
-                            <div className="min-w-0 flex-1 space-y-0.5">
-                              <p className="text-xs sm:text-sm font-semibold text-white truncate">
-                                {cand.title}
-                              </p>
-                              <p className="text-xs text-[var(--accent-pink)] truncate">
-                                {cand.author}
-                                {cand.publishedYear ? ` · ${cand.publishedYear}` : ''}
-                                {` · ${
-                                  cand.source === 'apple_books'
-                                    ? 'Apple Books'
-                                    : cand.source === 'openlibrary'
-                                    ? 'Open Library'
-                                    : 'Google Books'
-                                }`}
-                              </p>
-                              {cand.description ? (
-                                <p className="text-[11px] text-[var(--text-muted)] line-clamp-2 leading-snug">
-                                  {cand.description}
-                                </p>
-                              ) : cand.genres.length > 0 ? (
-                                <p className="text-[11px] text-[var(--text-muted)] truncate">
-                                  {cand.genres.slice(0, 3).join(' · ')}
-                                </p>
-                              ) : null}
-                            </div>
-                            <span className="text-[11px] font-semibold text-[var(--accent-purple)] shrink-0 self-center">
-                              Usar
-                            </span>
-                          </button>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                )}
 
                 {/* User's Saved Notes & Bookmarks Summary */}
                 {(quotesCountForBook > 0 || bookmarksCountForBook > 0) && (

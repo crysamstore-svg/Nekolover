@@ -10,6 +10,7 @@ export interface ParsedEpubChapter {
   title: string;
   html: string;
   text: string;
+  pageStart: number;
 }
 
 export interface ParsedEpub {
@@ -99,10 +100,77 @@ const findZipFileCaseInsensitive = (loadedZip: JSZip, targetPath: string) => {
   return matchKey ? loadedZip.file(matchKey) : null;
 };
 
+const trimExcerptText = (raw: string, maxLen = 620): string | undefined => {
+  const clean = raw
+    .replace(/\r/g, '')
+    .replace(/[ \t]+/g, ' ')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+  if (clean.length < 40) return undefined;
+  if (clean.length <= maxLen) return clean;
+  const slice = clean.slice(0, maxLen);
+  const lastPeriod = Math.max(slice.lastIndexOf('. '), slice.lastIndexOf('! '), slice.lastIndexOf('? '));
+  if (lastPeriod > maxLen * 0.45) {
+    return slice.slice(0, lastPeriod + 1).trim();
+  }
+  const lastSpace = slice.lastIndexOf(' ');
+  return `${(lastSpace > 0 ? slice.slice(0, lastSpace) : slice).trim()}…`;
+};
+
+const isCopyrightOrTocText = (text: string): boolean => {
+  const lower = text.toLowerCase();
+  const sample = lower.slice(0, 450);
+  if (
+    /\b(copyright|todos los derechos reservados|all rights reserved|isbn|dep[oó]sito legal|impreso en|printed in|primera edici[oó]n|[ií]ndice|tabla de contenido|table of contents)\b/i.test(
+      sample
+    ) &&
+    text.length < 900
+  ) {
+    return true;
+  }
+  const lines = text.split('\n').filter((l) => l.trim().length > 0);
+  if (lines.length >= 6) {
+    const shortLines = lines.filter((l) => l.trim().length < 42).length;
+    if (shortLines / lines.length > 0.78 && text.length < 700) {
+      return true;
+    }
+  }
+  return false;
+};
+
+const extractSynopsisFromXhtml = (rawHtml: string): string | undefined => {
+  if (!rawHtml) return undefined;
+  try {
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(rawHtml, 'text/html');
+    doc.querySelectorAll('script, style, nav').forEach((el) => el.remove());
+
+    const body = doc.body || doc.documentElement;
+    if (!body) return undefined;
+
+    const blocks = Array.from(body.querySelectorAll('h1, h2, h3, h4, p, blockquote, div'))
+      .filter((el) => {
+        // Avoid duplicating parent <div> text when it wraps <p> tags
+        if (el.tagName.toLowerCase() === 'div' && el.querySelector('p, h1, h2, h3, blockquote')) {
+          return false;
+        }
+        return true;
+      })
+      .map((el) => (el.textContent || '').replace(/\s+/g, ' ').trim())
+      .filter((t) => t.length > 0);
+
+    const joined = blocks.length > 0 ? blocks.join('\n\n') : stripHtmlTagsToText(rawHtml);
+    const trimmed = trimExcerptText(joined, 720);
+    return trimmed;
+  } catch {
+    return trimExcerptText(stripHtmlTagsToText(rawHtml), 720);
+  }
+};
+
 /**
  * Fast metadata-only EPUB reader for batch/folder imports.
- * Reads only container.xml, OPF metadata, spine count, and cover image
- * (skips parsing all chapters so 100+ EPUBs import in seconds instead of minutes).
+ * Reads container.xml, OPF metadata, spine count, cover image (including cover-page XHTML fallback),
+ * and synopsis (OPF dc:description or synopsis/opening chapter fallback directly from the EPUB).
  */
 export async function parseEpubMetadataOnly(data: ArrayBuffer | Blob): Promise<ParsedEpubMetadata> {
   const byteSize = data instanceof Blob ? data.size : data.byteLength;
@@ -133,7 +201,7 @@ export async function parseEpubMetadataOnly(data: ArrayBuffer | Blob): Promise<P
   const title = getOpfTagTexts(opfDoc, 'title')[0] || 'Libro EPUB';
   const author = getOpfTagTexts(opfDoc, 'creator')[0] || 'Autor Desconocido';
   const rawDescription = getOpfTagTexts(opfDoc, 'description')[0] || '';
-  const description = rawDescription ? stripHtmlTagsToText(rawDescription) : undefined;
+  let description = rawDescription ? stripHtmlTagsToText(rawDescription) : undefined;
   const publisher = getOpfTagTexts(opfDoc, 'publisher')[0] || undefined;
   const language = getOpfTagTexts(opfDoc, 'language')[0] || undefined;
   const rawDate = getOpfTagTexts(opfDoc, 'date')[0] || '';
@@ -162,7 +230,30 @@ export async function parseEpubMetadataOnly(data: ArrayBuffer | Blob): Promise<P
     }
   });
 
-  const spineCount = Math.max(1, opfDoc.querySelectorAll('spine > itemref').length);
+  const spineIds: string[] = [];
+  opfDoc.querySelectorAll('spine > itemref').forEach((item) => {
+    const idref = item.getAttribute('idref');
+    if (idref) spineIds.push(idref);
+  });
+  const spineCount = Math.max(1, spineIds.length);
+
+  const loadRasterImageByZipPath = async (fullCoverPath: string): Promise<string | undefined> => {
+    const ext = fullCoverPath.split('.').pop()?.toLowerCase() || 'png';
+    if (ext === 'svg' || ext === 'svgz') return undefined;
+    const coverFile = findZipFileCaseInsensitive(loadedZip, fullCoverPath);
+    if (!coverFile) return undefined;
+    const base64 = await coverFile.async('base64');
+    if (base64.length > MAX_IMAGE_BASE64_LEN) return undefined;
+    const mime =
+      ext === 'jpg' || ext === 'jpeg'
+        ? 'image/jpeg'
+        : ext === 'webp'
+          ? 'image/webp'
+          : ext === 'gif'
+            ? 'image/gif'
+            : 'image/png';
+    return `data:${mime};base64,${base64}`;
+  };
 
   let coverImage: string | undefined;
   try {
@@ -181,34 +272,102 @@ export async function parseEpubMetadataOnly(data: ArrayBuffer | Blob): Promise<P
       const heuristicCover = Object.entries(manifestItems).find(
         ([id, m]) =>
           m.mediaType.startsWith('image/') &&
-          (id.toLowerCase().includes('cover') || m.href.toLowerCase().includes('cover'))
+          /(cover|portada|cubierta)/i.test(`${id} ${m.href}`)
       );
       if (heuristicCover) coverHref = heuristicCover[1].href;
     }
 
     if (coverHref) {
       const fullCoverPath = resolveZipRelativePath(opfDir, coverHref);
-      const ext = fullCoverPath.split('.').pop()?.toLowerCase() || 'png';
-      if (ext !== 'svg' && ext !== 'svgz') {
-        const coverFile = findZipFileCaseInsensitive(loadedZip, fullCoverPath);
-        if (coverFile) {
-          const base64 = await coverFile.async('base64');
-          if (base64.length <= MAX_IMAGE_BASE64_LEN) {
-            const mime =
-              ext === 'jpg' || ext === 'jpeg'
-                ? 'image/jpeg'
-                : ext === 'webp'
-                  ? 'image/webp'
-                  : ext === 'gif'
-                    ? 'image/gif'
-                    : 'image/png';
-            coverImage = `data:${mime};base64,${base64}`;
+      coverImage = await loadRasterImageByZipPath(fullCoverPath);
+    }
+
+    // Fallback 1: Inspect first 3 spine XHTML pages for embedded cover image (<img src> or <image xlink:href>)
+    if (!coverImage) {
+      for (const sId of spineIds.slice(0, 3)) {
+        const mItem = manifestItems[sId];
+        if (!mItem) continue;
+        const pagePath = resolveZipRelativePath(opfDir, mItem.href);
+        const pageFile = findZipFileCaseInsensitive(loadedZip, pagePath);
+        if (!pageFile) continue;
+        const pageHtml = await pageFile.async('text');
+        const pageDoc = parser.parseFromString(pageHtml, 'text/html');
+        const imgEl = pageDoc.querySelector('img, image');
+        const srcAttr = imgEl?.getAttribute('src') || imgEl?.getAttribute('xlink:href') || '';
+        if (srcAttr && !/^https?:|^data:|^javascript:/i.test(srcAttr)) {
+          const pageDir = pagePath.includes('/') ? pagePath.substring(0, pagePath.lastIndexOf('/') + 1) : '';
+          const fullImgPath = resolveZipRelativePath(pageDir, srcAttr);
+          const candidateImg = await loadRasterImageByZipPath(fullImgPath);
+          if (candidateImg) {
+            coverImage = candidateImg;
+            break;
           }
         }
       }
     }
+
+    // Fallback 2: First raster image in manifest that isn't an icon/ornament
+    if (!coverImage) {
+      const firstImg = Object.entries(manifestItems).find(
+        ([id, m]) =>
+          (m.mediaType === 'image/jpeg' || m.mediaType === 'image/png' || m.mediaType === 'image/webp') &&
+          !/(logo|icon|ornament|divider|bullet|arrow|sep|star)/i.test(`${id} ${m.href}`)
+      );
+      if (firstImg) {
+        const fullImgPath = resolveZipRelativePath(opfDir, firstImg[1].href);
+        coverImage = await loadRasterImageByZipPath(fullImgPath);
+      }
+    }
   } catch {
     // Cover extraction is optional
+  }
+
+  // Fallback for synopsis when OPF <dc:description> is absent: inspect dedicated synopsis page or opening prose
+  if (!description) {
+    try {
+      const candidateSpineIds: string[] = [];
+      // Prioritize manifest/spine items explicitly named sinopsis / resumen / contraportada / prologo
+      for (const sId of spineIds.slice(0, 10)) {
+        const m = manifestItems[sId];
+        if (m && /(sinopsis|synopsis|resumen|summary|blurb|contraportada|descripcion|description|prolog|pr[oó]log)/i.test(`${sId} ${m.href}`)) {
+          candidateSpineIds.push(sId);
+        }
+      }
+      for (const sId of spineIds.slice(0, 6)) {
+        if (!candidateSpineIds.includes(sId)) candidateSpineIds.push(sId);
+      }
+
+      let openingFallback: string | undefined;
+      for (const sId of candidateSpineIds) {
+        const mItem = manifestItems[sId];
+        if (!mItem) continue;
+        const pagePath = resolveZipRelativePath(opfDir, mItem.href);
+        const pageFile = findZipFileCaseInsensitive(loadedZip, pagePath);
+        if (!pageFile) continue;
+        const rawHtml = await pageFile.async('text');
+        const extracted = extractSynopsisFromXhtml(rawHtml);
+        if (!extracted || extracted.length < 90 || isCopyrightOrTocText(extracted)) continue;
+
+        const isExplicitSynopsis =
+          /(sinopsis|synopsis|resumen|summary|contraportada|sobre (?:este|el) libro|argumento)/i.test(
+            `${sId} ${mItem.href} ${extracted.slice(0, 140)}`
+          );
+
+        if (isExplicitSynopsis) {
+          description = extracted;
+          break;
+        }
+        if (!openingFallback && extracted.length >= 140) {
+          openingFallback = extracted;
+        }
+      }
+
+      if (!description && openingFallback) {
+        description = openingFallback;
+      }
+    } catch {
+      // Optional synopsis fallback
+    }
   }
 
   return {
@@ -456,11 +615,13 @@ export async function parseEpubFile(data: ArrayBuffer | Blob): Promise<ParsedEpu
       const textContent = body.textContent?.trim() || '';
 
       if (textContent.length > 0 || bodyHtml.includes('<img')) {
+        const chapterPageStart = pages.length + 1;
         chapters.push({
           id,
           title: chapterTitle,
           html: bodyHtml,
-          text: textContent
+          text: textContent,
+          pageStart: chapterPageStart
         });
 
         // Paginate chapter if it's too long (> 2500 chars), so reading feels like turning real book pages

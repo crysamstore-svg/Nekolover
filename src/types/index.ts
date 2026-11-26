@@ -23,15 +23,23 @@ export interface Book {
   publishedYear?: string;
   language?: string;
   isbn?: string;
-  metadataSource?: 'epub' | 'pdf' | 'public_api' | 'manual' | 'default';
+  metadataSource?: 'epub' | 'pdf' | 'text' | 'public_api' | 'manual' | 'default';
   metadataFetchedAt?: number;
   fileName?: string;
   fileSize?: string;
   currentPage: number;
   totalPages: number;
   progressPercent: number;
+  collectionIds?: string[];
   addedAt: number;
   lastReadAt?: number;
+}
+
+export interface BookCollection {
+  id: string;
+  name: string;
+  emoji: string;
+  createdAt: number;
 }
 
 export interface Quote {
@@ -39,10 +47,21 @@ export interface Quote {
   bookId: string;
   bookTitle: string;
   chapter: string;
+  page?: number;
   emotion: string;
   text: string;
   comment?: string;
   createdAt: number;
+}
+
+export interface PageNote {
+  id: string;
+  bookId: string;
+  page: number;
+  lineText: string;
+  note: string;
+  createdAt: number;
+  updatedAt?: number;
 }
 
 export interface PageSticker {

@@ -1,5 +1,6 @@
 import { Book } from '../types';
 import { getFileFromDB } from './db';
+import { parseEpubMetadataOnly } from './epubParser';
 import { sanitizeImageUrl } from './sanitizeHtml';
 
 export interface PublicBookCandidate {
@@ -190,25 +191,117 @@ export async function compressCoverImage(dataUrl: string, maxWidth = 360): Promi
   });
 }
 
+const trimLocalExcerpt = (raw: string, maxLen = 620): string | undefined => {
+  const clean = raw
+    .replace(/\r/g, '')
+    .replace(/[ \t]+/g, ' ')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+  if (clean.length < 40) return undefined;
+  if (clean.length <= maxLen) return clean;
+  const slice = clean.slice(0, maxLen);
+  const lastPeriod = Math.max(slice.lastIndexOf('. '), slice.lastIndexOf('! '), slice.lastIndexOf('? '));
+  if (lastPeriod > maxLen * 0.45) {
+    return slice.slice(0, lastPeriod + 1).trim();
+  }
+  const lastSpace = slice.lastIndexOf(' ');
+  return `${(lastSpace > 0 ? slice.slice(0, lastSpace) : slice).trim()}…`;
+};
+
+const isNonNarrativeFrontMatter = (text: string): boolean => {
+  const sample = text.slice(0, 480);
+  if (
+    /\b(copyright|todos los derechos reservados|all rights reserved|isbn|dep[oó]sito legal|impreso en|printed in|primera edici[oó]n|[ií]ndice|tabla de contenido|table of contents)\b/i.test(
+      sample
+    ) &&
+    text.length < 950
+  ) {
+    return true;
+  }
+  // Table of contents lines with dotted page numbers (e.g. "Capítulo 1 .... 12")
+  const dotLeaders = (text.match(/\.{3,}\s*\d+/g) || []).length;
+  if (dotLeaders >= 3) return true;
+  const lines = text.split('\n').filter((l) => l.trim().length > 0);
+  if (lines.length >= 6) {
+    const shortLines = lines.filter((l) => l.trim().length < 40).length;
+    if (shortLines / lines.length > 0.8 && text.length < 750) {
+      return true;
+    }
+  }
+  return false;
+};
+
+const extractPdfPagePlainText = async (page: any): Promise<string> => {
+  try {
+    const tc = await page.getTextContent();
+    const items = Array.isArray(tc?.items) ? tc.items : [];
+    let out = '';
+    for (const item of items) {
+      const str = typeof item?.str === 'string' ? item.str : '';
+      if (!str) continue;
+      out += str;
+      out += item?.hasEOL ? '\n' : ' ';
+    }
+    return out
+      .replace(/[ \t]+\n/g, '\n')
+      .replace(/[ \t]{2,}/g, ' ')
+      .replace(/\n{3,}/g, '\n\n')
+      .trim();
+  } catch {
+    return '';
+  }
+};
+
 /**
- * Extracts PDF metadata (Title, Author, Subject/Keywords) and renders a cover thumbnail
+ * Extracts synopsis directly from TXT/MD book content chunks.
+ */
+export function extractTxtDescription(content?: string[]): string | undefined {
+  if (!Array.isArray(content) || content.length === 0) return undefined;
+  const sample = content.slice(0, 3).join('\n\n').trim();
+  if (!sample) return undefined;
+
+  const synopsisMatch = sample.match(
+    /(?:^|\n)\s*(?:sinopsis|resumen|contraportada|argumento|synopsis)\s*:?\s*\n+([\s\S]{80,1400})/i
+  );
+  if (synopsisMatch?.[1]) {
+    return trimLocalExcerpt(synopsisMatch[1], 680);
+  }
+  return trimLocalExcerpt(sample, 600);
+}
+
+/**
+ * Extracts PDF metadata (Title, Author, Subject/Keywords, Synopsis) and renders a cover thumbnail
  * from page 1 if available in IndexedDB.
  */
 export async function extractPdfMetadataFromDB(bookId: string): Promise<LocalPdfMetadata | null> {
   try {
-    const pdfjsLib = (window as any)?.pdfjsLib;
+    let pdfjsLib = (window as any)?.pdfjsLib;
+    if (!pdfjsLib) {
+      for (let i = 0; i < 15; i++) {
+        await new Promise((r) => setTimeout(r, 100));
+        pdfjsLib = (window as any)?.pdfjsLib;
+        if (pdfjsLib) break;
+      }
+    }
     if (!pdfjsLib) return null;
+
+    if (pdfjsLib.GlobalWorkerOptions && !pdfjsLib.GlobalWorkerOptions.workerSrc) {
+      pdfjsLib.GlobalWorkerOptions.workerSrc =
+        'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+    }
 
     const stored = await getFileFromDB(bookId);
     if (!stored) return null;
 
     const buffer =
       stored instanceof Blob ? await stored.arrayBuffer() : (stored as ArrayBuffer).slice(0);
-    const loadingTask = pdfjsLib.getDocument({ data: buffer });
+    const loadingTask = pdfjsLib.getDocument({ data: buffer, isEvalSupported: false });
     const pdf = await loadingTask.promise;
 
     const metaResult = await pdf.getMetadata().catch(() => null);
     const info = metaResult?.info || {};
+    const xmpDescRaw = metaResult?.metadata?.get?.('dc:description');
+    const xmpDesc = typeof xmpDescRaw === 'string' ? xmpDescRaw.trim() : '';
 
     const rawPdfTitle = typeof info.Title === 'string' && info.Title.trim() ? info.Title.trim() : undefined;
     // Ignore garbage PDF tool titles like "Microsoft Word - ..." or "Untitled"
@@ -230,7 +323,14 @@ export async function extractPdfMetadataFromDB(bookId: string): Promise<LocalPdf
         }
       });
     };
-    addTags(info.Subject);
+
+    const subjectStr = typeof info.Subject === 'string' ? info.Subject.trim() : '';
+    let description: string | undefined = xmpDesc.length >= 45 ? trimLocalExcerpt(xmpDesc, 720) : undefined;
+    if (!description && subjectStr.length >= 55 && !subjectStr.includes(',')) {
+      description = trimLocalExcerpt(subjectStr, 720);
+    } else {
+      addTags(info.Subject);
+    }
     addTags(info.Keywords);
 
     let coverImage: string | undefined;
@@ -251,12 +351,50 @@ export async function extractPdfMetadataFromDB(bookId: string): Promise<LocalPdf
       // Ignore PDF cover render errors
     }
 
+    // Extract synopsis or opening narrative excerpt directly from PDF pages 1..8 when metadata lacks description
+    if (!description) {
+      const maxScanPages = Math.min(8, typeof pdf.numPages === 'number' ? pdf.numPages : 1);
+      let openingFallback: string | undefined;
+
+      for (let p = 1; p <= maxScanPages; p++) {
+        try {
+          const page = await pdf.getPage(p);
+          const text = await extractPdfPagePlainText(page);
+          if (!text || text.length < 100 || isNonNarrativeFrontMatter(text)) continue;
+
+          const synopsisHeaderMatch = text.match(
+            /\b(?:sinopsis|resumen|contraportada|sobre (?:este|el) libro|argumento|synopsis)\b\s*:?\s*([\s\S]{80,})/i
+          );
+          if (synopsisHeaderMatch?.[1]) {
+            const candidate = trimLocalExcerpt(synopsisHeaderMatch[1], 720);
+            if (candidate) {
+              description = candidate;
+              break;
+            }
+          }
+
+          if (!openingFallback && p >= 2 && text.length >= 180) {
+            openingFallback = trimLocalExcerpt(text, 620);
+          } else if (!openingFallback && maxScanPages === 1 && text.length >= 180) {
+            openingFallback = trimLocalExcerpt(text, 620);
+          }
+        } catch {
+          // Ignore single page text error
+        }
+      }
+
+      if (!description && openingFallback) {
+        description = openingFallback;
+      }
+    }
+
     await pdf.destroy().catch(() => {});
 
     return {
       title,
       author,
       genres: genreCandidates.size > 0 ? Array.from(genreCandidates).slice(0, 5) : undefined,
+      description,
       totalPages: typeof pdf.numPages === 'number' ? pdf.numPages : undefined,
       coverImage,
     };
@@ -743,6 +881,133 @@ export function applyCandidateToBook(
 }
 
 /**
+ * Extracts cover, synopsis, title, author, and metadata directly from the book file itself
+ * (EPUB or PDF stored in IndexedDB, or TXT/MD content), 100% offline with zero external API calls.
+ */
+export async function extractMetadataFromBookFile(
+  book: Book,
+  options: { force?: boolean } = {}
+): Promise<{
+  updated: Book;
+  extracted: boolean;
+}> {
+  const { force = false } = options;
+  if (book.type === 'demo') {
+    return { updated: book, extracted: false };
+  }
+
+  let workingBook: Book = { ...book };
+  let extracted = false;
+
+  if (workingBook.type === 'epub') {
+    try {
+      const stored = await getFileFromDB(workingBook.id);
+      if (stored) {
+        const parsed = await parseEpubMetadataOnly(stored);
+        let compressedCover = parsed.coverImage;
+        if (compressedCover) {
+          compressedCover = (await compressCoverImage(compressedCover, 340)) || compressedCover;
+        }
+
+        const shouldUpdateTitle =
+          Boolean(parsed.title) &&
+          (force ||
+            looksLikeRawFilename(workingBook.title, workingBook.fileName) ||
+            workingBook.title === workingBook.fileName?.replace(/\.[^/.]+$/, ''));
+
+        const shouldUpdateAuthor =
+          Boolean(parsed.author) && !isGenericAuthor(parsed.author) && (force || isGenericAuthor(workingBook.author));
+
+        const nextCover =
+          force || !workingBook.coverImage ? compressedCover || workingBook.coverImage : workingBook.coverImage;
+        const nextDesc =
+          force || !workingBook.description ? parsed.description || workingBook.description : workingBook.description;
+        const nextGenres =
+          force || !workingBook.genres || workingBook.genres.length === 0
+            ? parsed.genres || workingBook.genres
+            : workingBook.genres;
+
+        extracted = Boolean(compressedCover || parsed.description);
+
+        workingBook = {
+          ...workingBook,
+          title: shouldUpdateTitle ? parsed.title : workingBook.title,
+          author: shouldUpdateAuthor ? parsed.author : workingBook.author,
+          coverImage: nextCover,
+          description: nextDesc,
+          genres: nextGenres,
+          publisher: parsed.publisher || workingBook.publisher,
+          publishedYear: parsed.publishedYear || workingBook.publishedYear,
+          language: parsed.language || workingBook.language,
+          totalPages: workingBook.totalPages <= 1 && parsed.spineCount ? parsed.spineCount : workingBook.totalPages,
+          metadataSource: 'epub',
+          metadataFetchedAt: Date.now(),
+        };
+      }
+    } catch {
+      // Ignore unreadable EPUB file errors
+    }
+    return { updated: workingBook, extracted };
+  }
+
+  if (workingBook.type === 'pdf') {
+    const pdfMeta = await extractPdfMetadataFromDB(workingBook.id);
+    if (pdfMeta) {
+      let compressedCover = pdfMeta.coverImage;
+      if (compressedCover) {
+        compressedCover = (await compressCoverImage(compressedCover, 340)) || compressedCover;
+      }
+
+      const shouldUpdateTitle =
+        Boolean(pdfMeta.title) &&
+        (force ||
+          looksLikeRawFilename(workingBook.title, workingBook.fileName) ||
+          workingBook.title === workingBook.fileName?.replace(/\.[^/.]+$/, ''));
+
+      const shouldUpdateAuthor =
+        Boolean(pdfMeta.author) && !isGenericAuthor(pdfMeta.author) && (force || isGenericAuthor(workingBook.author));
+
+      extracted = Boolean(compressedCover || pdfMeta.description);
+
+      workingBook = {
+        ...workingBook,
+        title: shouldUpdateTitle && pdfMeta.title ? pdfMeta.title : workingBook.title,
+        author: shouldUpdateAuthor && pdfMeta.author ? pdfMeta.author : workingBook.author,
+        coverImage:
+          force || !workingBook.coverImage ? compressedCover || workingBook.coverImage : workingBook.coverImage,
+        description:
+          force || !workingBook.description ? pdfMeta.description || workingBook.description : workingBook.description,
+        genres:
+          force || !workingBook.genres || workingBook.genres.length === 0
+            ? pdfMeta.genres || workingBook.genres
+            : workingBook.genres,
+        totalPages:
+          workingBook.totalPages <= 1 && pdfMeta.totalPages ? pdfMeta.totalPages : workingBook.totalPages,
+        metadataSource: 'pdf',
+        metadataFetchedAt: Date.now(),
+      };
+    }
+    return { updated: workingBook, extracted };
+  }
+
+  if (workingBook.type === 'text') {
+    const txtDesc = extractTxtDescription(workingBook.content);
+    if (txtDesc && (force || !workingBook.description)) {
+      extracted = true;
+      workingBook = {
+        ...workingBook,
+        description: txtDesc,
+        metadataSource: 'text',
+        metadataFetchedAt: Date.now(),
+      };
+    }
+    return { updated: workingBook, extracted };
+  }
+
+  return { updated: workingBook, extracted: false };
+}
+
+/**
  * Automatically extracts local PDF metadata + public web catalog metadata
  * (real title, author, genres, synopsis/bio, and public cover) for any uploaded book.
  */
@@ -757,7 +1022,7 @@ export async function autoEnrichBookFromNetwork(
   let workingBook: Book = { ...book };
 
   // Step 1: Extract embedded PDF metadata & page-1 fallback thumbnail
-  if (workingBook.type === 'pdf' && (!workingBook.coverImage || isGenericAuthor(workingBook.author))) {
+  if (workingBook.type === 'pdf' && (!workingBook.coverImage || !workingBook.description || isGenericAuthor(workingBook.author))) {
     const pdfMeta = await extractPdfMetadataFromDB(workingBook.id);
     if (pdfMeta) {
       workingBook = {
@@ -776,6 +1041,7 @@ export async function autoEnrichBookFromNetwork(
           (!workingBook.genres || workingBook.genres.length === 0) && pdfMeta.genres
             ? pdfMeta.genres
             : workingBook.genres,
+        description: workingBook.description || pdfMeta.description,
         totalPages:
           workingBook.totalPages <= 1 && pdfMeta.totalPages
             ? pdfMeta.totalPages

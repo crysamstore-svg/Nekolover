@@ -952,5 +952,30 @@ body {
   );
 }
 
+/* Inline Message-Bubble Note Icon inside Reader */
+.nl-inline-note-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  margin-left: 5px;
+  padding: 1px 5px;
+  border-radius: 9999px;
+  background-color: rgba(255, 121, 198, 0.22);
+  border: 1px solid rgba(255, 121, 198, 0.72);
+  color: inherit;
+  font-size: 0.72em;
+  line-height: 1.25;
+  vertical-align: middle;
+  cursor: pointer;
+  user-select: none;
+  transition: transform 0.14s ease, background-color 0.14s ease, box-shadow 0.14s ease;
+}
 
-
+.nl-inline-note-icon:hover,
+.nl-inline-note-icon:focus-visible {
+  transform: scale(1.14);
+  background-color: rgba(255, 121, 198, 0.42);
+  box-shadow: 0 0 10px rgba(255, 121, 198, 0.45);
+  outline: none;
+}

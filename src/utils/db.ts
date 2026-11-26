@@ -44,11 +44,24 @@ export function getDB(): Promise<IDBDatabase> {
       }
     };
 
+    request.onblocked = () => {
+      dbPromise = null;
+    };
+
     request.onsuccess = () => {
-      resolve(request.result);
+      const db = request.result;
+      db.onclose = () => {
+        dbPromise = null;
+      };
+      db.onversionchange = () => {
+        db.close();
+        dbPromise = null;
+      };
+      resolve(db);
     };
 
     request.onerror = () => {
+      dbPromise = null;
       reject(request.error);
     };
   });
@@ -64,8 +77,10 @@ export async function saveFileToDB(id: string, fileData: Blob | ArrayBuffer): Pr
     const store = tx.objectStore(FILES_STORE);
     const request = store.put(fileData, id);
 
-    request.onsuccess = () => resolve();
     request.onerror = () => reject(request.error);
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error || new Error('Error al guardar el archivo en IndexedDB.'));
+    tx.onabort = () => reject(tx.error || new Error('Transacción abortada al guardar archivo.'));
   });
 }
 

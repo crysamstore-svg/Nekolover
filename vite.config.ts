@@ -20,7 +20,7 @@ export default defineConfig(() => {
         manifest: {
           id: '/',
           name: 'NekoLover Read',
-          short_name: 'NekoLover',
+          short_name: 'NekoLover Read',
           description:
             'Lector Kawaii Dark & EPUB/PDF con estanterías 3D, stickers movibles, citas literarias y ficha automática de libros.',
           theme_color: '#121019',

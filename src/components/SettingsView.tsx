@@ -27,7 +27,9 @@ import {
   Cookie,
   Clock,
   Shuffle,
-  X
+  X,
+  Download,
+  Upload
 } from 'lucide-react';
 import { ReaderModeId, ThemeId, ShelfStyle, ShelfViewMode, ShelfBackgroundConfig, ShelfDecorConfig, ShelfDecorPropId, ShelfDecorTheme } from '../types';
 import { READER_MODES, FONT_OPTIONS, THEME_OPTIONS } from '../data/defaultBooks';
@@ -92,6 +94,10 @@ interface SettingsViewProps {
   onOpenQuotes?: () => void;
   quotesCount?: number;
   highlightsCount?: number;
+  pageNotesCount?: number;
+  collectionsCount?: number;
+  onExportBackup?: () => void;
+  onImportBackup?: (file: File) => void;
   isVip?: boolean;
   onOpenVipModal?: (reason?: 'music' | 'fonts' | 'shelf_bg' | 'stickers' | 'highlights' | 'notes' | 'shelf_decor') => void;
 }
@@ -128,6 +134,10 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   onOpenQuotes,
   quotesCount = 0,
   highlightsCount = 0,
+  pageNotesCount = 0,
+  collectionsCount = 0,
+  onExportBackup,
+  onImportBackup,
   isVip = false,
   onOpenVipModal,
 }) => {
@@ -136,6 +146,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const [isDecorModalOpen, setIsDecorModalOpen] = useState<boolean>(false);
   const [showResetConfirmModal, setShowResetConfirmModal] = useState<boolean>(false);
   const [statsResetSuccess, setStatsResetSuccess] = useState<boolean>(false);
+  const backupInputRef = React.useRef<HTMLInputElement | null>(null);
 
   const effectiveDecorConfig = shelfDecorConfig ?? DEFAULT_SHELF_DECOR;
 
@@ -1032,6 +1043,56 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                   </button>
                 </div>
               </div>
+
+              {/* Copia de Seguridad (Exportar / Importar Respaldo JSON) */}
+              {(onExportBackup || onImportBackup) && (
+                <div className="p-4 rounded-xl bg-black/45 border border-[var(--accent-purple)]/35 space-y-3">
+                  <div>
+                    <h4 className="font-bold text-xs text-white flex items-center gap-1.5">
+                      <Download className="w-3.5 h-3.5 text-[var(--accent-pink)]" />
+                      <span>Copia de Seguridad de tus Datos (Exportar / Importar)</span>
+                    </h4>
+                    <p className="text-[11px] text-[var(--text-muted)] mt-1 leading-relaxed">
+                      Guarda un respaldo con tu progreso de lectura, {quotesCount} citas, {pageNotesCount} notas en líneas, {highlightsCount} subrayados, stickers, marcadores, {collectionsCount} sagas y personalización para restaurarlos en otro dispositivo.
+                    </p>
+                  </div>
+
+                  <input
+                    ref={backupInputRef}
+                    type="file"
+                    accept=".json,application/json"
+                    className="hidden"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      e.target.value = '';
+                      if (file) onImportBackup?.(file);
+                    }}
+                  />
+
+                  <div className="flex flex-wrap items-center gap-2.5">
+                    {onExportBackup && (
+                      <button
+                        type="button"
+                        onClick={onExportBackup}
+                        className="px-4 py-2 rounded-xl text-xs font-cute font-bold bg-gradient-to-r from-[var(--accent-pink)] to-[var(--accent-purple)] text-black shadow-md hover:opacity-90 active:scale-95 transition flex items-center gap-1.5 cursor-pointer"
+                      >
+                        <Download className="w-3.5 h-3.5" />
+                        <span>Descargar Respaldo (.json)</span>
+                      </button>
+                    )}
+                    {onImportBackup && (
+                      <button
+                        type="button"
+                        onClick={() => backupInputRef.current?.click()}
+                        className="px-4 py-2 rounded-xl text-xs font-cute font-bold bg-black/60 border border-[var(--accent-purple)]/50 text-[var(--accent-purple)] hover:bg-[var(--accent-purple)] hover:text-black transition flex items-center gap-1.5 active:scale-95 cursor-pointer"
+                      >
+                        <Upload className="w-3.5 h-3.5" />
+                        <span>Restaurar Respaldo</span>
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )}
 
               <div className="p-4 rounded-xl bg-red-950/20 border border-red-500/30 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
                 <div>

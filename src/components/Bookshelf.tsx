@@ -32,9 +32,12 @@ import {
   ArrowUpDown,
   Shuffle,
   GripVertical,
-  X
+  X,
+  FolderHeart,
+  Plus,
+  MoreHorizontal
 } from 'lucide-react';
-import { Book, BookCategory, ShelfStyle, ShelfViewMode, ShelfBackgroundConfig, ShelfDecorConfig, ShelfDecorPropId, ShelfBookendId } from '../types';
+import { Book, BookCategory, BookCollection, ShelfStyle, ShelfViewMode, ShelfBackgroundConfig, ShelfDecorConfig, ShelfDecorPropId, ShelfBookendId } from '../types';
 import {
   ShelfDecoration,
   ShelfBookend,
@@ -55,6 +58,9 @@ import { sanitizeImageUrl } from '../utils/sanitizeHtml';
 
 interface BookshelfProps {
   books: Book[];
+  collections?: BookCollection[];
+  onCreateCollection?: (name: string, emoji: string) => BookCollection | void;
+  onDeleteCollection?: (collectionId: string) => void;
   onOpenBook: (book: Book) => void;
   onToggleFavorite: (id: string, e: React.MouseEvent) => void;
   onDeleteBook: (id: string, e?: React.MouseEvent) => void;
@@ -92,6 +98,9 @@ interface BookshelfProps {
 
 export const Bookshelf: React.FC<BookshelfProps> = ({
   books,
+  collections = [],
+  onCreateCollection,
+  onDeleteCollection,
   onOpenBook,
   onToggleFavorite,
   onDeleteBook,
@@ -123,6 +132,12 @@ export const Bookshelf: React.FC<BookshelfProps> = ({
   onOpenVipPage
 }) => {
   const [activeCategory, setActiveCategory] = useState<BookCategory>('all');
+  const [activeCollectionId, setActiveCollectionId] = useState<string>('all');
+  const [isCreatingCollection, setIsCreatingCollection] = useState(false);
+  const [newCollectionName, setNewCollectionName] = useState('');
+  const [newCollectionEmoji, setNewCollectionEmoji] = useState('📚');
+  const [isFiltersOpen, setIsFiltersOpen] = useState(false);
+  const [isMoreMenuOpen, setIsMoreMenuOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   
   // Sorting options: 'custom' preserves the exact user-defined arrangement
@@ -427,6 +442,12 @@ export const Bookshelf: React.FC<BookshelfProps> = ({
   const filteredBooks = useMemo(() => {
     const query = searchQuery.toLowerCase().trim();
     return books.filter((book) => {
+      if (activeCollectionId !== 'all') {
+        if (!(book.collectionIds || []).includes(activeCollectionId)) {
+          return false;
+        }
+      }
+
       const matchesSearch =
         query === '' ||
         book.title.toLowerCase().includes(query) ||
@@ -439,7 +460,7 @@ export const Bookshelf: React.FC<BookshelfProps> = ({
       if (activeCategory === 'favorites') return book.favorite;
       return book.category === activeCategory;
     });
-  }, [books, searchQuery, activeCategory]);
+  }, [books, searchQuery, activeCategory, activeCollectionId]);
 
   // Sort books: 'custom' preserves the user's manual arrangement perfectly
   const sortedBooks = useMemo(() => {
@@ -1178,17 +1199,297 @@ export const Bookshelf: React.FC<BookshelfProps> = ({
         </div>
       )}
 
-      {/* Main Controls Box */}
-      <div className="flex flex-col gap-3 mb-4 sm:mb-6 bg-[var(--card-bg)] p-3 sm:p-5 rounded-2xl sm:rounded-3xl border border-[var(--border-color)] shadow-xl transition-colors">
+      {/* Main Controls Box (Espacioso y organizado en 2 filas limpias) */}
+      <div className="flex flex-col gap-2.5 mb-4 sm:mb-5 bg-[var(--card-bg)] p-2.5 sm:p-4 rounded-2xl sm:rounded-3xl border border-[var(--border-color)] shadow-xl transition-colors relative">
         
-        {/* Top Controls Row: Category Filter Pills + Capacity Counter */}
-        <div className="flex items-center justify-between gap-2 overflow-x-auto pb-1 scrollbar-none">
+        {/* Row 1: Search Bar + Clean Primary Actions + Overflow Menu */}
+        <div className="flex items-center gap-1.5 sm:gap-2">
+          {/* Buscador del Libro */}
+          <div className="relative flex-1 min-w-0">
+            <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-[var(--accent-pink)]/75 pointer-events-none" />
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => {
+                setSearchQuery(e.target.value);
+                setCurrentPage(1);
+              }}
+              placeholder="Buscar título, autor o género..."
+              className="w-full h-9 bg-black/50 border border-[var(--border-color)] rounded-xl pl-8 pr-7 py-1.5 text-xs leading-normal text-white placeholder-[var(--text-muted)] focus:outline-none focus:border-[var(--accent-pink)] transition shadow-inner font-sans"
+            />
+            {searchQuery && (
+              <button
+                type="button"
+                onClick={() => setSearchQuery('')}
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-[var(--text-muted)] hover:text-white p-1"
+                aria-label="Limpiar búsqueda"
+              >
+                ✕
+              </button>
+            )}
+          </div>
+
+          {/* Subir Archivo Individual */}
+          <button
+            type="button"
+            onClick={onTriggerUpload}
+            className="h-9 px-2.5 sm:px-3 rounded-xl text-xs font-bold bg-[var(--accent-pink)]/20 text-[var(--accent-pink)] border border-[var(--accent-pink)]/50 hover:bg-[var(--accent-pink)] hover:text-black transition flex items-center gap-1.5 shadow-sm active:scale-95 shrink-0 cursor-pointer"
+            title="Subir libro individual (EPUB, PDF, TXT)"
+          >
+            <UploadCloud className="w-4 h-4" />
+            <span className="hidden sm:inline">Subir</span>
+          </button>
+
+          {/* Toggle Filtros, Sagas, Vista y Orden */}
+          <button
+            type="button"
+            onClick={() => {
+              setIsMoreMenuOpen(false);
+              setIsFiltersOpen((prev) => !prev);
+            }}
+            className={`h-9 px-2.5 sm:px-3 rounded-xl text-xs font-semibold border transition flex items-center gap-1.5 shrink-0 cursor-pointer ${
+              isFiltersOpen || activeCollectionId !== 'all' || sortBy !== 'custom'
+                ? 'bg-[var(--accent-purple)]/20 border-[var(--accent-purple)] text-white shadow-sm'
+                : 'bg-black/40 border-[var(--border-color)] text-[var(--text-muted)] hover:text-white hover:border-[var(--accent-pink)]'
+            }`}
+            title="Filtrar por Sagas, cambiar vista (portadas/lomos/acostados) u ordenar"
+          >
+            <SlidersHorizontal className="w-3.5 h-3.5 text-[var(--accent-pink)]" />
+            <span className="hidden md:inline">Filtros</span>
+            {(activeCollectionId !== 'all' || sortBy !== 'custom') && (
+              <span className="w-1.5 h-1.5 rounded-full bg-[var(--accent-pink)]" />
+            )}
+          </button>
+
+          {/* Configuración (Engranaje) */}
+          {onOpenSettings && (
+            <button
+              type="button"
+              onClick={onOpenSettings}
+              className="h-9 w-9 rounded-xl bg-black/40 border border-[var(--border-color)] hover:border-[var(--accent-pink)] text-[var(--accent-pink)] flex items-center justify-center transition shrink-0 hover:bg-[var(--accent-pink)]/10 cursor-pointer"
+              title="Configuración de lectura, decoraciones, respaldos y temas"
+              aria-label="Abrir panel de configuraciones"
+            >
+              <Settings className="w-4 h-4" />
+            </button>
+          )}
+
+          {/* Más Herramientas (Sincronizar Carpeta, VIP, Baúl de Citas, Marcadores, Estadísticas, Música, Noche, Temas) */}
+          <div className="relative shrink-0">
+            <button
+              type="button"
+              onClick={() => {
+                setIsFiltersOpen(false);
+                setIsMoreMenuOpen((prev) => !prev);
+              }}
+              className={`h-9 px-2.5 rounded-xl text-xs font-semibold border transition flex items-center gap-1 cursor-pointer ${
+                isMoreMenuOpen || isAudioPlaying || Boolean(linkedFolderName)
+                  ? 'bg-purple-500/20 border-[var(--accent-purple)] text-white shadow-sm'
+                  : 'bg-black/40 border-[var(--border-color)] text-[var(--text-muted)] hover:text-white hover:border-[var(--accent-pink)]'
+              }`}
+              title="Más opciones: Sincronizar carpeta, VIP, Citas, Marcadores, Estadísticas, Música y Temas"
+              aria-label="Abrir menú principal de opciones"
+            >
+              <MoreHorizontal className="w-4 h-4" />
+              {isAudioPlaying && (
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping" />
+              )}
+              {!isAudioPlaying && linkedFolderName && (
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+              )}
+            </button>
+
+            {isMoreMenuOpen && (
+              <>
+                <div
+                  className="fixed inset-0 z-40"
+                  onClick={() => setIsMoreMenuOpen(false)}
+                />
+                <div className="absolute right-0 top-11 z-50 w-64 bg-[var(--card-bg)] border border-[var(--border-color)] rounded-2xl p-2 shadow-2xl modal-animate space-y-1">
+                  {/* Sincronizar Carpeta */}
+                  {onSyncFolder && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsMoreMenuOpen(false);
+                        onSyncFolder();
+                      }}
+                      className="w-full px-3 py-2 rounded-xl text-xs font-semibold hover:bg-white/10 text-[var(--text-main)] flex items-center justify-between transition cursor-pointer"
+                    >
+                      <span className="flex items-center gap-2 min-w-0">
+                        <FolderSync className="w-3.5 h-3.5 text-purple-300 shrink-0" />
+                        <span className="truncate">
+                          {linkedFolderName ? `Sync: ${linkedFolderName}` : 'Sincronizar Carpeta'}
+                        </span>
+                      </span>
+                      {linkedFolderName && (
+                        <span className="w-2 h-2 rounded-full bg-emerald-400 shrink-0" />
+                      )}
+                    </button>
+                  )}
+
+                  {/* Membresía VIP */}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsMoreMenuOpen(false);
+                      onOpenVipModal?.();
+                    }}
+                    className={`w-full px-3 py-2 rounded-xl text-xs font-bold flex items-center justify-between transition cursor-pointer ${
+                      isVip
+                        ? 'bg-amber-400/15 text-amber-300 border border-amber-400/30'
+                        : 'hover:bg-amber-400/10 text-amber-300'
+                    }`}
+                  >
+                    <span className="flex items-center gap-2">
+                      <Crown className={`w-3.5 h-3.5 ${isVip ? 'fill-amber-400 text-amber-400' : 'text-amber-400'}`} />
+                      <span>{isVip ? 'Membresía VIP Activa' : 'Club VIP ($2/mes)'}</span>
+                    </span>
+                    <span>👑</span>
+                  </button>
+
+                  <div className="my-1 border-t border-white/10" />
+
+                  {/* Baúl de Citas */}
+                  {onSwitchView && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsMoreMenuOpen(false);
+                        onSwitchView('quotes');
+                      }}
+                      className="w-full px-3 py-2 rounded-xl text-xs font-semibold hover:bg-white/10 text-[var(--text-main)] flex items-center justify-between transition cursor-pointer"
+                    >
+                      <span className="flex items-center gap-2">
+                        <QuoteIcon className="w-3.5 h-3.5 text-[var(--accent-pink)]" />
+                        <span>Baúl de Citas y Notas</span>
+                      </span>
+                      {quotesCount > 0 && (
+                        <span className="text-[10px] px-1.5 py-0.5 rounded-full font-bold bg-[var(--accent-pink)]/20 text-[var(--accent-pink)]">
+                          {quotesCount}
+                        </span>
+                      )}
+                    </button>
+                  )}
+
+                  {/* Marcadores */}
+                  {onSwitchView && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsMoreMenuOpen(false);
+                        onSwitchView('bookmarks');
+                      }}
+                      className="w-full px-3 py-2 rounded-xl text-xs font-semibold hover:bg-white/10 text-[var(--text-main)] flex items-center justify-between transition cursor-pointer"
+                    >
+                      <span className="flex items-center gap-2">
+                        <BookmarkIcon className="w-3.5 h-3.5 text-amber-300" />
+                        <span>Marcadores guardados</span>
+                      </span>
+                      {bookmarksCount > 0 && (
+                        <span className="text-[10px] px-1.5 py-0.5 rounded-full font-bold bg-amber-400/20 text-amber-300">
+                          {bookmarksCount}
+                        </span>
+                      )}
+                    </button>
+                  )}
+
+                  {/* Estadísticas */}
+                  {onSwitchView && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsMoreMenuOpen(false);
+                        onSwitchView('stats');
+                      }}
+                      className="w-full px-3 py-2 rounded-xl text-xs font-semibold hover:bg-white/10 text-[var(--text-main)] flex items-center justify-between transition cursor-pointer"
+                    >
+                      <span className="flex items-center gap-2">
+                        <BarChart3 className="w-3.5 h-3.5 text-[var(--accent-purple)]" />
+                        <span>Estadísticas de lectura</span>
+                      </span>
+                    </button>
+                  )}
+
+                  <div className="my-1 border-t border-white/10" />
+
+                  {/* Modo Noche Rápido */}
+                  {onToggleNightMode && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsMoreMenuOpen(false);
+                        onToggleNightMode();
+                      }}
+                      className="w-full px-3 py-2 rounded-xl text-xs font-semibold hover:bg-white/10 text-[var(--text-main)] flex items-center justify-between transition cursor-pointer"
+                    >
+                      <span className="flex items-center gap-2">
+                        {isNightMode ? (
+                          <Sun className="w-3.5 h-3.5 text-amber-300" />
+                        ) : (
+                          <Moon className="w-3.5 h-3.5 text-indigo-300" />
+                        )}
+                        <span>{isNightMode ? 'Desactivar Modo Noche' : 'Activar Modo Noche OLED'}</span>
+                      </span>
+                    </button>
+                  )}
+
+                  {/* Música Ambiental */}
+                  {onOpenAudioModal && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsMoreMenuOpen(false);
+                        if (!isVip && onOpenVipModal) {
+                          onOpenVipModal();
+                        } else {
+                          onOpenAudioModal();
+                        }
+                      }}
+                      className="w-full px-3 py-2 rounded-xl text-xs font-semibold hover:bg-white/10 text-[var(--text-main)] flex items-center justify-between transition cursor-pointer"
+                    >
+                      <span className="flex items-center gap-2">
+                        {isAudioPlaying ? (
+                          <Volume2 className="w-3.5 h-3.5 text-[var(--accent-purple)]" />
+                        ) : (
+                          <Music className="w-3.5 h-3.5 text-[var(--accent-purple)]" />
+                        )}
+                        <span>Música ambiental</span>
+                      </span>
+                      {!isVip && <span className="text-[10px] text-amber-300 font-bold">👑</span>}
+                    </button>
+                  )}
+
+                  {/* Temas Visuales */}
+                  {onOpenThemeModal && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsMoreMenuOpen(false);
+                        onOpenThemeModal();
+                      }}
+                      className="w-full px-3 py-2 rounded-xl text-xs font-semibold hover:bg-white/10 text-[var(--text-main)] flex items-center justify-between transition cursor-pointer"
+                    >
+                      <span className="flex items-center gap-2">
+                        <Palette className="w-3.5 h-3.5 text-[var(--accent-pink)]" />
+                        <span>Cambiar tema visual</span>
+                      </span>
+                    </button>
+                  )}
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+
+        {/* Row 2: Slim Scrollable Category Filter Strip */}
+        <div className="flex items-center justify-between gap-2 overflow-x-auto scrollbar-none pt-0.5">
           <div className="flex items-center space-x-1.5 shrink-0">
             <button
               onClick={() => { setActiveCategory('all'); setCurrentPage(1); }}
-              className={`px-3 py-1.5 rounded-full text-xs font-bold transition flex items-center gap-1 shrink-0 ${
+              className={`px-2.5 py-1 rounded-full text-[11px] font-bold transition flex items-center gap-1 shrink-0 cursor-pointer ${
                 activeCategory === 'all'
-                  ? 'bg-[var(--accent-pink)] text-black shadow-md'
+                  ? 'bg-[var(--accent-pink)] text-black shadow-sm'
                   : 'bg-black/40 text-[var(--text-muted)] hover:text-white hover:bg-black/60'
               }`}
             >
@@ -1198,9 +1499,9 @@ export const Bookshelf: React.FC<BookshelfProps> = ({
 
             <button
               onClick={() => { setActiveCategory('reading'); setCurrentPage(1); }}
-              className={`px-3 py-1.5 rounded-full text-xs font-bold transition flex items-center gap-1 shrink-0 ${
+              className={`px-2.5 py-1 rounded-full text-[11px] font-bold transition flex items-center gap-1 shrink-0 cursor-pointer ${
                 activeCategory === 'reading'
-                  ? 'bg-[var(--accent-pink)] text-black shadow-md'
+                  ? 'bg-[var(--accent-pink)] text-black shadow-sm'
                   : 'bg-black/40 text-[var(--text-muted)] hover:text-white hover:bg-black/60'
               }`}
             >
@@ -1210,9 +1511,9 @@ export const Bookshelf: React.FC<BookshelfProps> = ({
 
             <button
               onClick={() => { setActiveCategory('unread'); setCurrentPage(1); }}
-              className={`px-3 py-1.5 rounded-full text-xs font-bold transition flex items-center gap-1 shrink-0 ${
+              className={`px-2.5 py-1 rounded-full text-[11px] font-bold transition flex items-center gap-1 shrink-0 cursor-pointer ${
                 activeCategory === 'unread'
-                  ? 'bg-[var(--accent-pink)] text-black shadow-md'
+                  ? 'bg-[var(--accent-pink)] text-black shadow-sm'
                   : 'bg-black/40 text-[var(--text-muted)] hover:text-white hover:bg-black/60'
               }`}
             >
@@ -1222,9 +1523,9 @@ export const Bookshelf: React.FC<BookshelfProps> = ({
 
             <button
               onClick={() => { setActiveCategory('completed'); setCurrentPage(1); }}
-              className={`px-3 py-1.5 rounded-full text-xs font-bold transition flex items-center gap-1 shrink-0 ${
+              className={`px-2.5 py-1 rounded-full text-[11px] font-bold transition flex items-center gap-1 shrink-0 cursor-pointer ${
                 activeCategory === 'completed'
-                  ? 'bg-emerald-500 text-black shadow-md'
+                  ? 'bg-emerald-500 text-black shadow-sm'
                   : 'bg-black/40 text-[var(--text-muted)] hover:text-white hover:bg-black/60'
               }`}
             >
@@ -1234,9 +1535,9 @@ export const Bookshelf: React.FC<BookshelfProps> = ({
 
             <button
               onClick={() => { setActiveCategory('abandoned'); setCurrentPage(1); }}
-              className={`px-3 py-1.5 rounded-full text-xs font-bold transition flex items-center gap-1 shrink-0 ${
+              className={`px-2.5 py-1 rounded-full text-[11px] font-bold transition flex items-center gap-1 shrink-0 cursor-pointer ${
                 activeCategory === 'abandoned'
-                  ? 'bg-rose-500 text-white shadow-md'
+                  ? 'bg-rose-500 text-white shadow-sm'
                   : 'bg-black/40 text-[var(--text-muted)] hover:text-white hover:bg-black/60'
               }`}
             >
@@ -1246,9 +1547,9 @@ export const Bookshelf: React.FC<BookshelfProps> = ({
 
             <button
               onClick={() => { setActiveCategory('favorites'); setCurrentPage(1); }}
-              className={`px-3 py-1.5 rounded-full text-xs font-bold transition flex items-center gap-1 shrink-0 ${
+              className={`px-2.5 py-1 rounded-full text-[11px] font-bold transition flex items-center gap-1 shrink-0 cursor-pointer ${
                 activeCategory === 'favorites'
-                  ? 'bg-[var(--accent-pink)] text-black shadow-md'
+                  ? 'bg-[var(--accent-pink)] text-black shadow-sm'
                   : 'bg-black/40 text-[var(--text-muted)] hover:text-white hover:bg-black/60'
               }`}
             >
@@ -1257,281 +1558,236 @@ export const Bookshelf: React.FC<BookshelfProps> = ({
             </button>
           </div>
 
-          {/* Capacity for 2000 Books Badge */}
-          <div className="flex items-center gap-1.5 text-[11px] font-mono px-3 py-1 rounded-full bg-purple-950/40 border border-purple-500/30 text-purple-200 shrink-0 shadow-sm" title="Capacidad de almacenamiento interno para hasta 2000 libros">
-            <HardDrive className="w-3.5 h-3.5 text-purple-400" />
-            <span>{totalBooks} / 2000 Libros</span>
-          </div>
+          {markedForDeleteIds.length > 0 && (
+            <button
+              type="button"
+              onClick={handleClearMarked}
+              className="px-2.5 py-1 rounded-full border text-[11px] font-cute flex items-center gap-1 transition shrink-0 bg-rose-600/30 text-rose-300 border-rose-500/60 hover:bg-rose-600 hover:text-white cursor-pointer"
+              title="Desmarcar todos los libros seleccionados"
+            >
+              <Trash2 className="w-3 h-3" />
+              <span className="font-bold">{markedForDeleteIds.length} (✕)</span>
+            </button>
+          )}
         </div>
 
-        {/* INTEGRATED ACTION ROW: Search Bar + Header Operational Buttons */}
-        <div className="flex flex-col sm:flex-row sm:flex-wrap sm:items-center sm:justify-between gap-2.5 pt-2.5 border-t border-white/10">
-          
-          {/* 1. Buscador del Libro */}
-          <div className="relative w-full sm:flex-1 sm:min-w-[210px] sm:max-w-xs">
-            <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-[var(--accent-pink)]/75 pointer-events-none" />
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={(e) => {
-                setSearchQuery(e.target.value);
-                setCurrentPage(1);
-              }}
-              placeholder="Buscador: título, autor o género..."
-              className="w-full h-10 sm:h-9 bg-black/50 border border-[var(--border-color)] rounded-xl pl-8 pr-8 py-1.5 text-xs leading-normal text-white placeholder-[var(--text-muted)] focus:outline-none focus:border-[var(--accent-pink)] transition shadow-inner font-sans"
-            />
-            {searchQuery && (
-              <button
-                onClick={() => setSearchQuery('')}
-                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs text-[var(--text-muted)] hover:text-white p-1"
-              >
-                ✕
-              </button>
-            )}
-          </div>
-
-          {/* 2. Botones del Header en la pantalla principal (solo visibles cuando están activados en Configuración) */}
-          <div className="flex flex-wrap items-center justify-between sm:justify-end gap-2">
-            
-            {/* Notas y Citas */}
-            {Boolean(headerConfig?.showQuotes) && onSwitchView && (
-              <button
-                onClick={() => onSwitchView('quotes')}
-                className="px-2.5 py-1.5 rounded-xl bg-black/40 border border-[var(--border-color)] hover:border-[var(--accent-pink)] text-xs text-[var(--text-main)] hover:text-white flex items-center gap-1.5 transition active:scale-95 shrink-0 shadow-sm"
-                title="Ver Baúl de Citas y Notas"
-              >
-                <QuoteIcon className="w-3.5 h-3.5 text-[var(--accent-pink)]" />
-                <span className="hidden md:inline font-cute">Notas</span>
-                {quotesCount > 0 && (
-                  <span className="text-[10px] px-1.5 py-0.2 rounded-full font-bold bg-[var(--accent-pink)] text-black">
-                    {quotesCount}
+        {/* Collapsible Panel: Sagas / Colecciones + Vista de Estantería + Ordenar + Capacidad */}
+        {isFiltersOpen && (
+          <div className="flex flex-col gap-2.5 pt-2.5 border-t border-white/10 modal-animate">
+            {/* Colecciones y Sagas */}
+            {(collections.length > 0 || onCreateCollection) && (
+              <div className="flex flex-col gap-2">
+                <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-none pb-0.5">
+                  <span className="text-[11px] font-semibold text-[var(--accent-purple)] flex items-center gap-1 shrink-0 mr-1">
+                    <FolderHeart className="w-3.5 h-3.5" />
+                    <span>Sagas:</span>
                   </span>
+
+                  <button
+                    type="button"
+                    onClick={() => { setActiveCollectionId('all'); setCurrentPage(1); }}
+                    className={`px-2.5 py-1 rounded-full text-[11px] font-semibold transition shrink-0 cursor-pointer ${
+                      activeCollectionId === 'all'
+                        ? 'bg-[var(--accent-purple)] text-black font-bold shadow-sm'
+                        : 'bg-black/35 text-[var(--text-muted)] hover:text-white'
+                    }`}
+                  >
+                    Todas
+                  </button>
+
+                  {collections.map((col) => {
+                    const count = books.filter((b) => (b.collectionIds || []).includes(col.id)).length;
+                    const isSelected = activeCollectionId === col.id;
+                    return (
+                      <div
+                        key={col.id}
+                        className={`inline-flex items-center rounded-full border transition shrink-0 ${
+                          isSelected
+                            ? 'bg-[var(--accent-purple)] text-black border-[var(--accent-purple)] font-bold shadow-sm'
+                            : 'bg-black/35 text-[var(--text-muted)] border-white/10 hover:text-white'
+                        }`}
+                      >
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setActiveCollectionId(isSelected ? 'all' : col.id);
+                            setCurrentPage(1);
+                          }}
+                          className="px-2.5 py-1 text-[11px] flex items-center gap-1 cursor-pointer"
+                        >
+                          <span>{col.emoji}</span>
+                          <span>{col.name}</span>
+                          <span className="text-[10px] opacity-75">({count})</span>
+                        </button>
+                        {onDeleteCollection && (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              if (activeCollectionId === col.id) setActiveCollectionId('all');
+                              onDeleteCollection(col.id);
+                            }}
+                            className={`pr-2 pl-0.5 py-1 text-[10px] hover:text-red-400 cursor-pointer ${
+                              isSelected ? 'text-black/70' : 'text-white/40'
+                            }`}
+                            title={`Eliminar colección "${col.name}"`}
+                            aria-label={`Eliminar colección ${col.name}`}
+                          >
+                            ✕
+                          </button>
+                        )}
+                      </div>
+                    );
+                  })}
+
+                  {onCreateCollection && (
+                    <button
+                      type="button"
+                      onClick={() => setIsCreatingCollection((p) => !p)}
+                      className="px-2.5 py-1 rounded-full text-[11px] font-semibold bg-black/40 border border-dashed border-[var(--accent-purple)]/50 text-[var(--accent-purple)] hover:bg-[var(--accent-purple)]/15 transition flex items-center gap-1 shrink-0 cursor-pointer"
+                    >
+                      <Plus className="w-3 h-3" />
+                      <span>Nueva Saga</span>
+                    </button>
+                  )}
+                </div>
+
+                {isCreatingCollection && onCreateCollection && (
+                  <div className="flex flex-wrap items-center gap-2 bg-black/45 border border-[var(--accent-purple)]/35 rounded-xl p-2">
+                    <div className="flex items-center gap-1">
+                      {['📚', '🖤', '🦇', '🔮', '🥀', '⚔️', '🌙'].map((em) => (
+                        <button
+                          key={em}
+                          type="button"
+                          onClick={() => setNewCollectionEmoji(em)}
+                          className={`w-7 h-7 rounded-lg text-sm flex items-center justify-center cursor-pointer transition ${
+                            newCollectionEmoji === em
+                              ? 'bg-[var(--accent-purple)]/30 border border-[var(--accent-purple)]'
+                              : 'hover:bg-white/10'
+                          }`}
+                        >
+                          {em}
+                        </button>
+                      ))}
+                    </div>
+                    <input
+                      type="text"
+                      value={newCollectionName}
+                      onChange={(e) => setNewCollectionName(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          const clean = newCollectionName.trim();
+                          if (!clean) return;
+                          onCreateCollection(clean, newCollectionEmoji);
+                          setNewCollectionName('');
+                          setIsCreatingCollection(false);
+                        }
+                      }}
+                      placeholder="Nombre de la colección o saga..."
+                      className="flex-1 min-w-[160px] h-8 px-2.5 rounded-lg bg-black/60 border border-[var(--border-color)] text-xs text-white focus:outline-none focus:border-[var(--accent-pink)]"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const clean = newCollectionName.trim();
+                        if (!clean) return;
+                        onCreateCollection(clean, newCollectionEmoji);
+                        setNewCollectionName('');
+                        setIsCreatingCollection(false);
+                      }}
+                      className="h-8 px-3 rounded-lg bg-[var(--accent-pink)] text-black text-xs font-bold cursor-pointer"
+                    >
+                      Crear
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setIsCreatingCollection(false)}
+                      className="h-8 px-2 text-xs text-[var(--text-muted)] hover:text-white cursor-pointer"
+                    >
+                      Cancelar
+                    </button>
+                  </div>
                 )}
-              </button>
+              </div>
             )}
 
-            {/* Estadísticas */}
-            {Boolean(headerConfig?.showStats) && onSwitchView && (
-              <button
-                onClick={() => onSwitchView('stats')}
-                className="px-2.5 py-1.5 rounded-xl bg-black/40 border border-[var(--border-color)] hover:border-[var(--accent-purple)] text-xs text-[var(--text-main)] hover:text-white flex items-center gap-1.5 transition active:scale-95 shrink-0 shadow-sm"
-                title="Ver Gráficos y Estadísticas de Lectura"
-              >
-                <BarChart3 className="w-3.5 h-3.5 text-[var(--accent-purple)]" />
-                <span className="hidden md:inline font-cute">Gráficos</span>
-              </button>
-            )}
+            {/* Vista, Ordenar y Capacidad */}
+            <div className="flex flex-wrap items-center justify-between gap-2 text-xs pt-1">
+              <div className="flex items-center gap-2 shrink-0">
+                <div className="flex items-center gap-0.5 bg-black/40 border border-[var(--border-color)] rounded-xl p-0.5">
+                  <button
+                    type="button"
+                    onClick={() => handleSetViewMode('covers')}
+                    className={`min-h-[34px] min-w-[36px] px-2 py-1 rounded-lg flex items-center justify-center transition ${
+                      viewMode === 'covers'
+                        ? 'bg-[var(--accent-pink)] text-black shadow-sm'
+                        : 'text-[var(--text-muted)] hover:text-white'
+                    }`}
+                    title="Portadas"
+                    aria-label="Vista de portadas frontales"
+                  >
+                    <LayoutGrid className="w-4 h-4" />
+                  </button>
 
-            {/* Marcadores */}
-            {Boolean(headerConfig?.showBookmarks) && onSwitchView && (
-              <button
-                onClick={() => onSwitchView('bookmarks')}
-                className="px-2.5 py-1.5 rounded-xl bg-black/40 border border-[var(--border-color)] hover:border-amber-400 text-xs text-[var(--text-main)] hover:text-white flex items-center gap-1.5 transition active:scale-95 shrink-0 shadow-sm"
-                title="Ver Marcadores Guardados"
-              >
-                <BookmarkIcon className="w-3.5 h-3.5 text-amber-300" />
-                <span className="hidden lg:inline font-cute">Marcadores</span>
-                {bookmarksCount > 0 && (
-                  <span className="text-[10px] px-1.5 py-0.2 rounded-full font-bold bg-amber-400 text-black">
-                    {bookmarksCount}
-                  </span>
-                )}
-              </button>
-            )}
+                  <button
+                    type="button"
+                    onClick={() => handleSetViewMode('spines')}
+                    className={`min-h-[34px] min-w-[36px] px-2 py-1 rounded-lg flex items-center justify-center transition ${
+                      viewMode === 'spines'
+                        ? 'bg-[var(--accent-pink)] text-black shadow-sm'
+                        : 'text-[var(--text-muted)] hover:text-white'
+                    }`}
+                    title="Lomos"
+                    aria-label="Vista de lomos verticales"
+                  >
+                    <Library className="w-4 h-4" />
+                  </button>
 
-            {/* Modo Noche Rápido (OLED) */}
-            {Boolean(headerConfig?.showNightMode) && onToggleNightMode && (
-              <button
-                onClick={onToggleNightMode}
-                className={`px-2.5 py-1.5 rounded-xl text-xs flex items-center gap-1 border transition active:scale-95 shrink-0 shadow-sm ${
-                  isNightMode
-                    ? 'bg-white text-black border-white font-bold shadow-[0_0_12px_rgba(255,255,255,0.4)]'
-                    : 'bg-black/40 text-[var(--text-muted)] border-[var(--border-color)] hover:text-white hover:border-white'
-                }`}
-                title={isNightMode ? 'Modo Noche Activado' : 'Activar Modo Noche OLED'}
-              >
-                {isNightMode ? <Sun className="w-3.5 h-3.5 text-black" /> : <Moon className="w-3.5 h-3.5 text-gray-300" />}
-                <span className="hidden sm:inline font-cute">{isNightMode ? 'Día' : 'Noche'}</span>
-              </button>
-            )}
+                  <button
+                    type="button"
+                    onClick={() => handleSetViewMode('stacks')}
+                    className={`min-h-[34px] min-w-[36px] px-2 py-1 rounded-lg flex items-center justify-center transition ${
+                      viewMode === 'stacks'
+                        ? 'bg-[var(--accent-pink)] text-black shadow-sm'
+                        : 'text-[var(--text-muted)] hover:text-white'
+                    }`}
+                    title="Acostados"
+                    aria-label="Vista de libros acostados"
+                  >
+                    <Layers className="w-4 h-4" />
+                  </button>
+                </div>
 
-            {/* Música MP3 / VIP (Solo si el usuario activa el botón en Configuración) */}
-            {Boolean(headerConfig?.showMusic) && onOpenAudioModal && (
-              <button
-                onClick={() => {
-                  if (!isVip && onOpenVipModal) {
-                    onOpenVipModal();
-                  } else {
-                    onOpenAudioModal();
-                  }
-                }}
-                className={`px-2.5 py-1.5 rounded-xl text-xs flex items-center gap-1 border transition active:scale-95 shrink-0 shadow-sm ${
-                  isAudioPlaying
-                    ? 'bg-[var(--accent-purple)]/25 text-[var(--accent-purple)] border-[var(--accent-purple)] animate-pulse'
-                    : 'bg-black/40 text-[var(--text-muted)] border-[var(--border-color)] hover:text-white hover:border-[var(--accent-purple)]'
-                }`}
-                title={isVip ? 'Reproductor de Música: Escuchar de fondo' : 'Música VIP ($2/mes)'}
-              >
-                {isAudioPlaying ? <Volume2 className="w-3.5 h-3.5 text-[var(--accent-purple)]" /> : <Music className="w-3.5 h-3.5" />}
-                <span className="hidden sm:inline font-cute">Música</span>
-                {!isVip && <span className="text-[10px] text-amber-300">👑</span>}
-              </button>
-            )}
+                <div className="flex items-center gap-1.5 text-[11px] font-mono px-2.5 py-1 rounded-full bg-purple-950/40 border border-purple-500/30 text-purple-200 shrink-0">
+                  <HardDrive className="w-3 h-3 text-purple-400" />
+                  <span>{totalBooks} / 2000</span>
+                </div>
+              </div>
 
-            {/* Temas Visuales */}
-            {Boolean(headerConfig?.showTheme) && onOpenThemeModal && (
-              <button
-                onClick={onOpenThemeModal}
-                className="p-1.5 sm:px-2.5 sm:py-1.5 bg-black/40 border border-[var(--border-color)] hover:border-[var(--accent-pink)] rounded-xl text-xs text-[var(--accent-pink)] font-cute flex items-center gap-1 transition shrink-0 shadow-sm"
-                title="Cambiar Paleta de Temas"
-              >
-                <Palette className="w-3.5 h-3.5" />
-                <span className="hidden md:inline">Temas</span>
-              </button>
-            )}
-
-            {/* Coronita VIP ($2 USD/mes) */}
-            <button
-              onClick={() => onOpenVipModal?.()}
-              className={`min-h-[38px] px-3 py-1.5 rounded-xl border text-xs font-cute font-bold flex items-center gap-1 transition active:scale-95 shrink-0 shadow-sm ${
-                isVip
-                  ? 'bg-amber-400 text-black border-amber-300 shadow-[0_0_12px_rgba(251,191,36,0.6)]'
-                  : 'bg-black/50 border-amber-400/60 text-amber-300 hover:bg-amber-400 hover:text-black hover:border-amber-300 shadow-[0_0_10px_rgba(251,191,36,0.2)]'
-              }`}
-              title={isVip ? 'Membresía VIP Activa 👑' : 'Acceso VIP ($2 USD/mes) • Solo PayPal 👑'}
-            >
-              <Crown className={`w-3.5 h-3.5 ${isVip ? 'fill-black' : 'text-amber-400'}`} />
-              <span>VIP</span>
-            </button>
-
-            {/* Subir Archivo Individual */}
-            <button
-              onClick={onTriggerUpload}
-              className="min-h-[38px] px-3 py-1.5 rounded-xl text-xs font-bold bg-[var(--accent-pink)]/20 text-[var(--accent-pink)] border border-[var(--accent-pink)]/50 hover:bg-[var(--accent-pink)] hover:text-black transition flex items-center gap-1.5 shadow-sm active:scale-95 shrink-0"
-              title="Subir libro individual (EPUB, PDF, TXT)"
-            >
-              <UploadCloud className="w-3.5 h-3.5" />
-              <span>Subir</span>
-            </button>
-
-            {/* Sincronizar Almacenamiento Interno (Hasta 2000 Libros) */}
-            {onSyncFolder && (
-              <button
-                onClick={onSyncFolder}
-                className="min-h-[38px] px-3 py-1.5 rounded-xl text-xs font-bold bg-gradient-to-r from-purple-600/30 to-pink-600/30 text-purple-200 border border-purple-400/50 hover:bg-purple-600 hover:text-white transition flex items-center gap-1.5 shadow-sm active:scale-95 shrink-0"
-                title={
-                  linkedFolderName
-                    ? `Carpeta vinculada: ${linkedFolderName} — clic para sincronizar libros nuevos`
-                    : 'Sincronizar carpeta con tu almacenamiento interno para colocar hasta 2000 libros automáticamente'
-                }
-              >
-                <FolderSync className="w-3.5 h-3.5 text-purple-300" />
-                <span className="sm:hidden">{linkedFolderName ? 'Sincr.' : 'Carpeta'}</span>
-                <span className="hidden sm:inline">
-                  {linkedFolderName ? `Sync: ${linkedFolderName}` : 'Sincronizar Carpeta'}
-                </span>
-                {linkedFolderName && (
-                  <span className="w-2 h-2 rounded-full bg-emerald-400 shrink-0" aria-hidden="true" />
-                )}
-              </button>
-            )}
-
-            {/* Indicador / Desmarcar si hay libros marcados para eliminar */}
-            {markedForDeleteIds.length > 0 && (
-              <button
-                onClick={handleClearMarked}
-                className="min-h-[38px] px-2.5 py-1.5 rounded-xl border text-xs font-cute flex items-center gap-1 transition shrink-0 shadow-sm bg-rose-600/30 text-rose-300 border-rose-500/60 hover:bg-rose-600 hover:text-white active:scale-95 cursor-pointer"
-                title="Desmarcar todos los libros seleccionados para eliminar (o pulsa Escape)"
-              >
-                <Trash2 className="w-3.5 h-3.5" />
-                <span className="font-bold">{markedForDeleteIds.length} Marcado{markedForDeleteIds.length === 1 ? '' : 's'} (✕)</span>
-              </button>
-            )}
-
-            {/* Configuración (Engranaje) */}
-            {onOpenSettings && (
-              <button
-                onClick={onOpenSettings}
-                className="min-h-[38px] min-w-[38px] px-2.5 py-1.5 bg-black/40 border border-[var(--border-color)] hover:border-[var(--accent-pink)] rounded-xl text-xs text-[var(--accent-pink)] flex items-center justify-center transition shrink-0 hover:bg-[var(--accent-pink)]/10"
-                title="Configuración de lectura, decoraciones, tipografía y márgenes"
-                aria-label="Abrir panel de configuraciones"
-              >
-                <Settings className="w-4 h-4" />
-              </button>
-            )}
-          </div>
-        </div>
-
-        {/* Third Row: View Modes & Sorting */}
-        <div className="flex items-center justify-between gap-2.5 pt-2.5 border-t border-white/5 text-xs">
-          <div className="flex items-center gap-2 shrink-0">
-            {/* 3 View Modes (Solo iconos) */}
-            <div className="flex items-center gap-0.5 bg-black/40 border border-[var(--border-color)] rounded-xl p-0.5">
-              <button
-                onClick={() => handleSetViewMode('covers')}
-                className={`min-h-[36px] min-w-[38px] px-2.5 py-1.5 rounded-lg flex items-center justify-center transition ${
-                  viewMode === 'covers'
-                    ? 'bg-[var(--accent-pink)] text-black shadow-sm'
-                    : 'text-[var(--text-muted)] hover:text-white'
-                }`}
-                title="Portadas"
-                aria-label="Vista de portadas frontales"
-              >
-                <LayoutGrid className="w-4 h-4" />
-              </button>
-
-              <button
-                onClick={() => handleSetViewMode('spines')}
-                className={`min-h-[36px] min-w-[38px] px-2.5 py-1.5 rounded-lg flex items-center justify-center transition ${
-                  viewMode === 'spines'
-                    ? 'bg-[var(--accent-pink)] text-black shadow-sm'
-                    : 'text-[var(--text-muted)] hover:text-white'
-                }`}
-                title="Lomos"
-                aria-label="Vista de lomos verticales"
-              >
-                <Library className="w-4 h-4" />
-              </button>
-
-              <button
-                onClick={() => handleSetViewMode('stacks')}
-                className={`min-h-[36px] min-w-[38px] px-2.5 py-1.5 rounded-lg flex items-center justify-center transition ${
-                  viewMode === 'stacks'
-                    ? 'bg-[var(--accent-pink)] text-black shadow-sm'
-                    : 'text-[var(--text-muted)] hover:text-white'
-                }`}
-                title="Acostados"
-                aria-label="Vista de libros acostados"
-              >
-                <Layers className="w-4 h-4" />
-              </button>
+              <div className="flex items-center gap-1.5 bg-black/40 border border-[var(--border-color)] rounded-xl px-2.5 h-8 text-xs text-[var(--text-main)] shadow-sm min-w-0">
+                <SlidersHorizontal className="w-3.5 h-3.5 text-[var(--accent-pink)] shrink-0" />
+                <select
+                  value={sortBy}
+                  onChange={(e) => handleSetSortBy(e.target.value as any)}
+                  aria-label="Ordenar libros por"
+                  className="w-full min-w-0 bg-transparent text-[11px] sm:text-xs leading-normal py-0.5 focus:outline-none cursor-pointer text-[var(--text-main)] font-medium truncate"
+                >
+                  <option value="custom" className="bg-[#1a1726]">✨ Mi Orden</option>
+                  <option value="recent" className="bg-[#1a1726]">🕒 Recientes</option>
+                  <option value="title-asc" className="bg-[#1a1726]">🔤 Título (A → Z)</option>
+                  <option value="title-desc" className="bg-[#1a1726]">🔤 Título (Z → A)</option>
+                  <option value="author-asc" className="bg-[#1a1726]">✍️ Autor (A → Z)</option>
+                  <option value="progress-desc" className="bg-[#1a1726]">📊 Mayor %</option>
+                  <option value="progress-asc" className="bg-[#1a1726]">📖 Menor %</option>
+                  <option value="favorites" className="bg-[#1a1726]">🖤 Favoritos</option>
+                  <option value="newest" className="bg-[#1a1726]">🆕 Nuevos</option>
+                  <option value="oldest" className="bg-[#1a1726]">⏳ Antiguos</option>
+                </select>
+              </div>
             </div>
           </div>
-
-          <div className="flex items-center gap-2 min-w-0">
-            {/* Sort Dropdown */}
-            <div className="flex items-center gap-1.5 bg-black/40 border border-[var(--border-color)] rounded-xl px-2.5 h-9 text-xs text-[var(--text-main)] shadow-sm min-w-0">
-              <SlidersHorizontal className="w-3.5 h-3.5 text-[var(--accent-pink)] shrink-0" />
-              <select
-                value={sortBy}
-                onChange={(e) => handleSetSortBy(e.target.value as any)}
-                aria-label="Ordenar libros por"
-                className="w-full min-w-0 bg-transparent text-[11px] sm:text-xs leading-normal py-0.5 focus:outline-none cursor-pointer text-[var(--text-main)] font-medium truncate"
-              >
-                <option value="custom" className="bg-[#1a1726]">✨ Mi Orden</option>
-                <option value="recent" className="bg-[#1a1726]">🕒 Recientes</option>
-                <option value="title-asc" className="bg-[#1a1726]">🔤 Título (A → Z)</option>
-                <option value="title-desc" className="bg-[#1a1726]">🔤 Título (Z → A)</option>
-                <option value="author-asc" className="bg-[#1a1726]">✍️ Autor (A → Z)</option>
-                <option value="progress-desc" className="bg-[#1a1726]">📊 Mayor %</option>
-                <option value="progress-asc" className="bg-[#1a1726]">📖 Menor %</option>
-                <option value="favorites" className="bg-[#1a1726]">🖤 Favoritos</option>
-                <option value="newest" className="bg-[#1a1726]">🆕 Nuevos</option>
-                <option value="oldest" className="bg-[#1a1726]">⏳ Antiguos</option>
-              </select>
-            </div>
-          </div>
-        </div>
+        )}
       </div>
 
       {/* Main Bookshelf Display with Conventional Shelf Wood/Digital Texture */}

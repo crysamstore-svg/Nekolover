@@ -46,6 +46,7 @@ export const AddQuoteModal: React.FC<AddQuoteModalProps> = ({
       bookId: activeBook ? activeBook.id : 'custom',
       bookTitle: bookTitle.trim() || 'Libro General',
       chapter: chapter.trim() || 'General',
+      page: currentPage,
       emotion,
       text: text.trim(),
       comment: comment.trim() || undefined

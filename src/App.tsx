@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef, lazy, Suspense } from 'react';
 import { Trash2, FolderSync, Loader2, UploadCloud, X } from 'lucide-react';
-import { Book, Quote, PageSticker, Bookmark, ThemeId, ReadingStatsData, TextHighlight, ReaderModeId, ShelfStyle, ShelfViewMode, ShelfBackgroundConfig, ShelfDecorConfig, ShelfDecorTheme } from './types';
+import { Book, Quote, PageSticker, Bookmark, ThemeId, ReadingStatsData, TextHighlight, ReaderModeId, ShelfStyle, ShelfViewMode, ShelfBackgroundConfig, ShelfDecorConfig, ShelfDecorTheme, BookCollection, PageNote } from './types';
 import { 
   DEFAULT_BOOKS, 
   DEFAULT_QUOTES, 
@@ -31,8 +31,8 @@ import {
   getRandomGothicGradient
 } from './utils/db';
 import { soundscape } from './utils/audio';
-import { loadReadingStats, logReadingSession, resetReadingStatsToZero } from './utils/stats';
-import { compressCoverImage, autoEnrichBookFromNetwork } from './utils/bookMetadata';
+import { loadReadingStats, saveReadingStats, logReadingSession, resetReadingStatsToZero } from './utils/stats';
+import { compressCoverImage, extractMetadataFromBookFile, extractTxtDescription } from './utils/bookMetadata';
 import { OfflineIndicator } from './components/PWAInstallButton';
 import { safeJsonParse, sanitizeImageUrl } from './utils/sanitizeHtml';
 
@@ -93,6 +93,16 @@ export default function App() {
   const [bookmarks, setBookmarks] = useState<Bookmark[]>(() => {
     const saved = localStorage.getItem('nl_bookmarks');
     return safeJsonParse<Bookmark[]>(saved, [], (v): v is Bookmark[] => Array.isArray(v));
+  });
+
+  const [collections, setCollections] = useState<BookCollection[]>(() => {
+    const saved = localStorage.getItem('nl_collections');
+    return safeJsonParse<BookCollection[]>(saved, [], (v): v is BookCollection[] => Array.isArray(v));
+  });
+
+  const [pageNotes, setPageNotes] = useState<Record<string, PageNote[]>>(() => {
+    const saved = localStorage.getItem('nl_page_notes');
+    return safeJsonParse<Record<string, PageNote[]>>(saved, {}, isPlainRecord);
   });
 
   const [currentTheme, setCurrentTheme] = useState<ThemeId>(() => {
@@ -331,6 +341,20 @@ export default function App() {
     localStorage.setItem('nl_bookmarks', JSON.stringify(bookmarks));
   }, [bookmarks]);
 
+  // Sync collections
+  useEffect(() => {
+    try {
+      localStorage.setItem('nl_collections', JSON.stringify(collections));
+    } catch {}
+  }, [collections]);
+
+  // Sync inline page notes
+  useEffect(() => {
+    try {
+      localStorage.setItem('nl_page_notes', JSON.stringify(pageNotes));
+    } catch {}
+  }, [pageNotes]);
+
   const isDbInitializedRef = useRef(false);
 
   // Load books from IndexedDB on startup (Supports 2000+ books without localStorage 5MB limit)
@@ -537,9 +561,11 @@ export default function App() {
         let detectedLang: string | undefined;
         let estimatedPages = 1;
 
+        let savedOk = false;
         try {
           const arrayBuffer = await file.arrayBuffer();
           await saveFileToDB(bookId, arrayBuffer);
+          savedOk = true;
           if (parseEpubMetaFn) {
             const parsed = await parseEpubMetaFn(arrayBuffer);
             if (parsed.title) detectedTitle = parsed.title;
@@ -556,7 +582,19 @@ export default function App() {
             }
           }
         } catch {
-          await saveFileToDB(bookId, file);
+          if (!savedOk) {
+            try {
+              await saveFileToDB(bookId, file);
+              savedOk = true;
+            } catch {
+              savedOk = false;
+            }
+          }
+        }
+
+        if (!savedOk) {
+          showToast(`⚠️ No se pudo guardar "${file.name}" en el almacenamiento local.`);
+          continue;
         }
 
         newBooksToAdd.push({
@@ -596,6 +634,8 @@ export default function App() {
             pageChunks.push(fullText.slice(p, p + pageSize));
           }
 
+          const txtDesc = extractTxtDescription(pageChunks);
+
           newBooksToAdd.push({
             id: bookId,
             title: rawTitle,
@@ -606,6 +646,8 @@ export default function App() {
             type: 'text',
             coverGradient: gradient,
             content: pageChunks.length > 0 ? pageChunks : ['Documento sin texto legible.'],
+            description: txtDesc,
+            metadataSource: txtDesc ? 'text' : undefined,
             fileName: file.name,
             fileSize: fileSizeStr,
             currentPage: 1,
@@ -617,8 +659,26 @@ export default function App() {
         continue;
       }
 
-      // Case 3: PDF
-      await saveFileToDB(bookId, file);
+      // Case 3: PDF (store ArrayBuffer bytes rather than volatile File handle)
+      let pdfSaved = false;
+      try {
+        const pdfBuffer = await file.arrayBuffer();
+        await saveFileToDB(bookId, pdfBuffer);
+        pdfSaved = true;
+      } catch {
+        try {
+          await saveFileToDB(bookId, file);
+          pdfSaved = true;
+        } catch {
+          pdfSaved = false;
+        }
+      }
+
+      if (!pdfSaved) {
+        showToast(`⚠️ No se pudo guardar "${file.name}" en el almacenamiento local.`);
+        continue;
+      }
+
       newBooksToAdd.push({
         id: bookId,
         title: rawTitle,
@@ -656,26 +716,24 @@ export default function App() {
       showToast(`🐾 ¡Sincronización completada! ${newBooksToAdd.length} libro(s) colocados automáticamente en tu estantería.`);
     }
 
-    // Automatically enrich newly uploaded books from the web in background (up to 10 per batch when online)
-    if (typeof navigator === 'undefined' || navigator.onLine !== false) {
-      const booksToEnrich = newBooksToAdd
-        .filter((b) => !b.coverImage || !b.description || !b.genres || b.genres.length === 0)
-        .slice(0, 10);
+    // Extract cover & synopsis locally from newly uploaded PDFs/EPUBs (100% offline from the book itself)
+    const booksToExtract = newBooksToAdd
+      .filter((b) => b.type !== 'demo' && (!b.coverImage || !b.description))
+      .slice(0, 15);
 
-      if (booksToEnrich.length > 0) {
-        void (async () => {
-          for (const item of booksToEnrich) {
-            try {
-              const { updated, matched } = await autoEnrichBookFromNetwork(item);
-              if (matched || updated.coverImage) {
-                setBooks((prev) => prev.map((b) => (b.id === updated.id ? { ...b, ...updated } : b)));
-              }
-            } catch {
-              // Ignore transient network errors during background enrichment
+    if (booksToExtract.length > 0) {
+      void (async () => {
+        for (const item of booksToExtract) {
+          try {
+            const { updated, extracted } = await extractMetadataFromBookFile(item);
+            if (extracted || updated.coverImage || updated.description) {
+              setBooks((prev) => prev.map((b) => (b.id === updated.id ? { ...b, ...updated } : b)));
             }
+          } catch {
+            // Ignore local extraction errors for single files
           }
-        })();
-      }
+        }
+      })();
     }
   };
 
@@ -1094,6 +1152,250 @@ export default function App() {
     }));
   };
 
+  // Save Inline Page Notes (💬 al lado de la línea)
+  const handleSavePageNotes = useCallback((pageKey: string, nextNotes: PageNote[]) => {
+    setPageNotes((prev) => {
+      if (nextNotes.length === 0) {
+        const copy = { ...prev };
+        delete copy[pageKey];
+        return copy;
+      }
+      return { ...prev, [pageKey]: nextNotes };
+    });
+  }, []);
+
+  // Collections / Sagas handlers
+  const handleCreateCollection = useCallback((name: string, emoji: string): BookCollection => {
+    const newCol: BookCollection = {
+      id: `col-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      name: name.trim(),
+      emoji: emoji || '📚',
+      createdAt: Date.now()
+    };
+    setCollections((prev) => [...prev, newCol]);
+    showToast(`Colección "${newCol.name}" creada.`);
+    return newCol;
+  }, [showToast]);
+
+  const handleDeleteCollection = useCallback((collectionId: string) => {
+    setCollections((prev) => prev.filter((c) => c.id !== collectionId));
+    setBooks((prev) =>
+      prev.map((b) =>
+        b.collectionIds?.includes(collectionId)
+          ? { ...b, collectionIds: b.collectionIds.filter((id) => id !== collectionId) }
+          : b
+      )
+    );
+    showToast('Colección eliminada.');
+  }, [showToast]);
+
+  const handleToggleBookCollection = useCallback((bookId: string, collectionId: string) => {
+    setBooks((prev) =>
+      prev.map((b) => {
+        if (b.id !== bookId) return b;
+        const currentIds = b.collectionIds || [];
+        const exists = currentIds.includes(collectionId);
+        const nextIds = exists
+          ? currentIds.filter((id) => id !== collectionId)
+          : [...currentIds, collectionId];
+        return { ...b, collectionIds: nextIds };
+      })
+    );
+  }, []);
+
+  // Export & Import JSON Backup (Copia de seguridad completa)
+  const handleExportBackup = useCallback(() => {
+    try {
+      const payload = {
+        app: 'NekoLover Read',
+        version: 1,
+        exportedAt: new Date().toISOString(),
+        collections,
+        quotes,
+        highlights,
+        bookmarks,
+        stickers,
+        pageNotes,
+        readingStats,
+        booksMeta: books.map((b) => ({
+          id: b.id,
+          title: b.title,
+          author: b.author,
+          type: b.type,
+          fileName: b.fileName,
+          fileSize: b.fileSize,
+          category: b.category,
+          favorite: b.favorite,
+          collectionIds: b.collectionIds || [],
+          currentPage: b.currentPage,
+          totalPages: b.totalPages,
+          progressPercent: b.progressPercent,
+          genres: b.genres,
+          description: b.description,
+          publisher: b.publisher,
+          publishedYear: b.publishedYear
+        })),
+        preferences: {
+          theme: currentTheme,
+          font: currentFont,
+          isNightMode,
+          readerMode,
+          containerWidth,
+          lineHeight,
+          fontSize,
+          shelfStyle,
+          viewMode,
+          headerConfig,
+          shelfBgConfig,
+          shelfDecorConfig
+        }
+      };
+      const json = JSON.stringify(payload, null, 2);
+      const blob = new Blob([json], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      const dateStamp = new Date().toISOString().slice(0, 10);
+      a.href = url;
+      a.download = `nekolover-read-backup-${dateStamp}.json`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+      showToast('✨ Respaldo exportado correctamente (.json).');
+    } catch {
+      showToast('⚠️ No se pudo generar el archivo de respaldo.');
+    }
+  }, [
+    collections,
+    quotes,
+    highlights,
+    bookmarks,
+    stickers,
+    pageNotes,
+    readingStats,
+    books,
+    currentTheme,
+    currentFont,
+    isNightMode,
+    readerMode,
+    containerWidth,
+    lineHeight,
+    fontSize,
+    shelfStyle,
+    viewMode,
+    headerConfig,
+    shelfBgConfig,
+    shelfDecorConfig,
+    showToast
+  ]);
+
+  const handleImportBackup = useCallback(async (file: File) => {
+    try {
+      const text = await file.text();
+      const parsed = safeJsonParse<Record<string, any> | null>(text, null, isPlainRecord);
+      if (!parsed || (!Array.isArray(parsed.quotes) && !Array.isArray(parsed.collections) && !isPlainRecord(parsed.pageNotes))) {
+        showToast('⚠️ El archivo no es un respaldo válido de NekoLover Read.');
+        return;
+      }
+
+      if (Array.isArray(parsed.collections)) setCollections(parsed.collections);
+      if (Array.isArray(parsed.quotes)) setQuotes(parsed.quotes);
+      if (isPlainRecord(parsed.highlights)) setHighlights(parsed.highlights);
+      if (Array.isArray(parsed.bookmarks)) setBookmarks(parsed.bookmarks);
+      if (isPlainRecord(parsed.stickers)) setStickers(parsed.stickers);
+      if (isPlainRecord(parsed.pageNotes)) setPageNotes(parsed.pageNotes);
+      if (isPlainRecord(parsed.readingStats) && isPlainRecord(parsed.readingStats.dailyRecords) && Array.isArray(parsed.readingStats.sessions)) {
+        const importedStats = parsed.readingStats as ReadingStatsData;
+        saveReadingStats(importedStats);
+        setReadingStats(importedStats);
+      }
+
+      if (isPlainRecord(parsed.preferences)) {
+        const p = parsed.preferences;
+        if (typeof p.theme === 'string') setCurrentTheme(p.theme as ThemeId);
+        if (typeof p.font === 'string') setCurrentFont(p.font);
+        if (typeof p.isNightMode === 'boolean') setIsNightMode(p.isNightMode);
+        if (typeof p.readerMode === 'string') {
+          setReaderMode(p.readerMode as ReaderModeId);
+          localStorage.setItem('nl_reader_mode', p.readerMode);
+        }
+        if (typeof p.containerWidth === 'string') {
+          setContainerWidth(p.containerWidth as 'normal' | 'wide' | 'narrow');
+          localStorage.setItem('nl_container_width', p.containerWidth);
+        }
+        if (typeof p.lineHeight === 'number') {
+          setLineHeight(p.lineHeight);
+          localStorage.setItem('nl_line_height', String(p.lineHeight));
+        }
+        if (typeof p.fontSize === 'number') {
+          setFontSize(p.fontSize);
+          localStorage.setItem('nl_font_size', String(p.fontSize));
+        }
+        if (typeof p.shelfStyle === 'string') {
+          setShelfStyle(p.shelfStyle as ShelfStyle);
+          localStorage.setItem('nl_shelf_style', p.shelfStyle);
+        }
+        if (typeof p.viewMode === 'string') {
+          setViewMode(p.viewMode as ShelfViewMode);
+          localStorage.setItem('nl_shelf_view_mode', p.viewMode);
+        }
+        if (isPlainRecord(p.headerConfig)) {
+          setHeaderConfig((prev) => {
+            const next = { ...prev, ...p.headerConfig };
+            localStorage.setItem('nl_header_config', JSON.stringify(next));
+            return next;
+          });
+        }
+        if (isPlainRecord(p.shelfBgConfig)) {
+          handleUpdateShelfBgConfig(p.shelfBgConfig as ShelfBackgroundConfig);
+        }
+        if (isPlainRecord(p.shelfDecorConfig)) {
+          handleUpdateShelfDecorConfig(p.shelfDecorConfig as ShelfDecorConfig);
+        }
+      }
+
+      // Merge reading progress, favorites, categories & collections onto matching books
+      if (Array.isArray(parsed.booksMeta)) {
+        const metaById = new Map<string, any>();
+        const metaByFileKey = new Map<string, any>();
+        parsed.booksMeta.forEach((m: any) => {
+          if (m?.id) metaById.set(String(m.id), m);
+          if (m?.fileName) {
+            metaByFileKey.set(`${String(m.fileName).toLowerCase()}|${m.fileSize || ''}`, m);
+          }
+        });
+
+        setBooks((prev) => {
+          const updated = prev.map((b) => {
+            const m =
+              metaById.get(b.id) ||
+              (b.fileName ? metaByFileKey.get(`${b.fileName.toLowerCase()}|${b.fileSize || ''}`) : undefined);
+            if (!m) return b;
+            return {
+              ...b,
+              category: m.category || b.category,
+              favorite: typeof m.favorite === 'boolean' ? m.favorite : b.favorite,
+              collectionIds: Array.isArray(m.collectionIds) ? m.collectionIds : b.collectionIds,
+              currentPage: typeof m.currentPage === 'number' ? m.currentPage : b.currentPage,
+              totalPages: typeof m.totalPages === 'number' ? m.totalPages : b.totalPages,
+              progressPercent: typeof m.progressPercent === 'number' ? m.progressPercent : b.progressPercent,
+              genres: Array.isArray(m.genres) ? m.genres : b.genres,
+              description: typeof m.description === 'string' ? m.description : b.description,
+              publisher: typeof m.publisher === 'string' ? m.publisher : b.publisher,
+              publishedYear: typeof m.publishedYear === 'string' ? m.publishedYear : b.publishedYear
+            };
+          });
+          saveBooksToDB(updated);
+          return updated;
+        });
+      }
+
+      showToast('✨ Respaldo restaurado con éxito (notas, citas, colecciones y progreso).');
+    } catch {
+      showToast('⚠️ Error al leer el archivo de respaldo.');
+    }
+  }, [showToast]);
+
   // Toggle Bookmark for current page
   const handleToggleBookmark = (page: number) => {
     if (!activeBook) return;
@@ -1403,6 +1705,9 @@ export default function App() {
         {currentView === 'library' && (
           <Bookshelf
             books={books}
+            collections={collections}
+            onCreateCollection={handleCreateCollection}
+            onDeleteCollection={handleDeleteCollection}
             onOpenBook={handleOpenBook}
             onToggleFavorite={handleToggleFavorite}
             onDeleteBook={handleDeleteBook}
@@ -1511,6 +1816,10 @@ export default function App() {
               isVip={isVip}
               onOpenVipModal={openVipModal}
               quotesCount={quotes.length}
+              pageNotes={pageNotes}
+              onSavePageNotes={handleSavePageNotes}
+              bookQuotes={quotes.filter((q) => q.bookId === activeBook.id)}
+              bookBookmarks={bookmarks.filter((bm) => bm.bookId === activeBook.id)}
             />
           </Suspense>
         )}
@@ -1622,6 +1931,10 @@ export default function App() {
               onOpenQuotes={() => setCurrentView('quotes')}
               quotesCount={quotes.length}
               highlightsCount={Object.values(highlights).reduce((acc, list) => acc + (list?.length || 0), 0)}
+              pageNotesCount={Object.values(pageNotes).reduce((acc, list) => acc + (list?.length || 0), 0)}
+              collectionsCount={collections.length}
+              onExportBackup={handleExportBackup}
+              onImportBackup={handleImportBackup}
               isVip={isVip}
               onOpenVipModal={openVipModal}
             />
@@ -1730,6 +2043,9 @@ export default function App() {
           <Suspense fallback={null}>
             <BookDetailModal
               book={previewBook}
+              collections={collections}
+              onToggleBookCollection={handleToggleBookCollection}
+              onCreateCollection={handleCreateCollection}
               quotesCountForBook={quotes.filter((q) => q.bookId === previewBook.id).length}
               bookmarksCountForBook={bookmarks.filter((bm) => bm.bookId === previewBook.id).length}
               onClose={() => setPreviewBookId(null)}

@@ -22,12 +22,20 @@ import {
   Unlock,
   Lightbulb,
   Plus,
-  Minus
+  Minus,
+  List,
+  Search,
+  MessageSquare,
+  Moon,
+  Edit3,
+  BookOpen,
+  MoreHorizontal,
+  Upload
 } from 'lucide-react';
-import { Book, PageSticker, TextHighlight, HighlightColor, ReaderModeId } from '../types';
+import { Book, PageSticker, TextHighlight, HighlightColor, ReaderModeId, PageNote, Quote, Bookmark } from '../types';
 import { KAWAII_STICKERS, FREE_CAT_STICKERS, READER_MODES } from '../data/defaultBooks';
-import { getFileFromDB } from '../utils/db';
-import { parseEpubFile } from '../utils/epubParser';
+import { getFileFromDB, saveFileToDB } from '../utils/db';
+import { parseEpubFile, ParsedEpubChapter } from '../utils/epubParser';
 import { ReadingSettingsModal } from './ReadingSettingsModal';
 import { MusicShelfModal } from './MusicShelfModal';
 import { musicPlayer } from '../utils/musicManager';
@@ -113,6 +121,10 @@ interface ReaderProps {
   isVip?: boolean;
   onOpenVipModal?: (reason?: 'music' | 'fonts' | 'shelf_bg' | 'stickers' | 'highlights' | 'notes') => void;
   quotesCount?: number;
+  pageNotes?: Record<string, PageNote[]>;
+  onSavePageNotes?: (pageKey: string, notes: PageNote[]) => void;
+  bookQuotes?: Quote[];
+  bookBookmarks?: Bookmark[];
 }
 
 export const Reader: React.FC<ReaderProps> = ({
@@ -142,7 +154,11 @@ export const Reader: React.FC<ReaderProps> = ({
   onSelectFontSize,
   isVip,
   onOpenVipModal,
-  quotesCount
+  quotesCount,
+  pageNotes = {},
+  onSavePageNotes,
+  bookQuotes = [],
+  bookBookmarks = []
 }) => {
   const [currentPage, setCurrentPage] = useState<number>(book.currentPage || 1);
   const [totalPages, setTotalPages] = useState<number>(book.totalPages || 1);
@@ -188,6 +204,9 @@ export const Reader: React.FC<ReaderProps> = ({
   const [loadingFile, setLoadingFile] = useState<boolean>(false);
   const [pdfPageLoading, setPdfPageLoading] = useState<boolean>(false);
   const [fileError, setFileError] = useState<string | null>(null);
+  const [isMissingFileError, setIsMissingFileError] = useState<boolean>(false);
+  const [reloadNonce, setReloadNonce] = useState<number>(0);
+  const relinkFileInputRef = useRef<HTMLInputElement | null>(null);
 
   // PDF Text Reflow (acomodar letras al ampliar) & Text Layer para selección y marcado directo
   const [pdfReflowMode, setPdfReflowMode] = useState<boolean>(() => {
@@ -266,10 +285,47 @@ export const Reader: React.FC<ReaderProps> = ({
   const lastTapRef = useRef<{ x: number; y: number; time: number } | null>(null);
   const lastDoubleTapAtRef = useRef<number>(0);
 
+  // 1. Índice de Capítulos & Buscador dentro del libro
+  const [epubChapters, setEpubChapters] = useState<ParsedEpubChapter[]>([]);
+  const [pdfOutline, setPdfOutline] = useState<{ title: string; page: number }[]>([]);
+  const [isIndexDrawerOpen, setIsIndexDrawerOpen] = useState<boolean>(false);
+  const [indexDrawerTab, setIndexDrawerTab] = useState<'chapters' | 'search' | 'notes'>('chapters');
+  const [jumpPageInput, setJumpPageInput] = useState<string>('');
+  const [bookSearchQuery, setBookSearchQuery] = useState<string>('');
+  const [bookSearchResults, setBookSearchResults] = useState<{ page: number; snippet: string }[]>([]);
+  const [isSearchingBook, setIsSearchingBook] = useState<boolean>(false);
+  const [searchProgress, setSearchProgress] = useState<{ current: number; total: number } | null>(null);
+  const searchSeqRef = useRef<number>(0);
+
+  // 4. Notas inline con icono de mensaje pequeño (💬) al lado de la línea
+  const [noteComposer, setNoteComposer] = useState<{ lineText: string; noteText: string; page: number } | null>(null);
+  const [viewingNote, setViewingNote] = useState<PageNote | null>(null);
+  const [editingNoteText, setEditingNoteText] = useState<string>('');
+  const [isEditingViewingNote, setIsEditingViewingNote] = useState<boolean>(false);
+
+  // 5. Temporizador de lectura / Modo Descanso Nocturno & Menú compacto de herramientas
+  const [isMoreToolsOpen, setIsMoreToolsOpen] = useState<boolean>(false);
+  const [sleepTimerRemainingSec, setSleepTimerRemainingSec] = useState<number | null>(null);
+  const [sleepTimerStopMusic, setSleepTimerStopMusic] = useState<boolean>(true);
+  const [isRestReminderOpen, setIsRestReminderOpen] = useState<boolean>(false);
+
   const pageKey = `${book.id}-p${currentPage}`;
   const currentPageStickers = stickers[pageKey] || [];
   const currentPageHighlights = highlights[pageKey] || [];
+  const currentPageNotes = pageNotes[pageKey] || [];
   const currentReaderModeConfig = READER_MODES.find(m => m.id === readerMode) || READER_MODES[0];
+
+  // Collect all inline notes belonging to the current book across all pages
+  const allBookPageNotes = useMemo(() => {
+    const prefix = `${book.id}-p`;
+    const list: PageNote[] = [];
+    Object.entries(pageNotes).forEach(([key, items]) => {
+      if (key.startsWith(prefix) && Array.isArray(items)) {
+        list.push(...items);
+      }
+    });
+    return list.sort((a, b) => a.page - b.page || a.createdAt - b.createdAt);
+  }, [pageNotes, book.id]);
 
   // Text selection handler
   const handleTextSelection = () => {
@@ -328,12 +384,112 @@ export const Reader: React.FC<ReaderProps> = ({
   };
 
 
-  // Subrayar citas y frases directamente en el cuerpo del texto
-  const renderHighlightedContent = (rawText: string, pageHighlights: TextHighlight[]) => {
-    if (!pageHighlights || pageHighlights.length === 0 || !rawText) {
-      return rawText;
+  // Inline Note composer & actions (💬 al lado de la línea)
+  const handleOpenNoteComposer = (lineTextArg?: string) => {
+    const clean = (lineTextArg || selectedText || '').trim();
+    if (!clean) {
+      setToastHighlight('Selecciona primero una línea o frase para colocar la nota 💬');
+      setTimeout(() => setToastHighlight(null), 2400);
+      return;
+    }
+    setNoteComposer({ lineText: clean, noteText: '', page: currentPage });
+    setSelectionPos(null);
+    setShowColorPicker(false);
+    setSelectedText('');
+    window.getSelection()?.removeAllRanges();
+  };
+
+  const handleSaveInlineNote = () => {
+    if (!noteComposer) return;
+    const trimmed = noteComposer.noteText.trim();
+    if (!trimmed) {
+      setToastHighlight('Escribe el texto de tu nota antes de finalizar ✍️');
+      setTimeout(() => setToastHighlight(null), 2200);
+      return;
+    }
+    const targetKey = `${book.id}-p${noteComposer.page}`;
+    const newNote: PageNote = {
+      id: `pnote-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      bookId: book.id,
+      page: noteComposer.page,
+      lineText: noteComposer.lineText,
+      note: trimmed,
+      createdAt: Date.now()
+    };
+    const nextList = [...(pageNotes[targetKey] || []), newNote];
+    onSavePageNotes?.(targetKey, nextList);
+    setNoteComposer(null);
+    setToastHighlight('Nota guardada como 💬 al lado de la línea');
+    setTimeout(() => setToastHighlight(null), 2600);
+  };
+
+  const handleUpdateViewingNote = () => {
+    if (!viewingNote) return;
+    const trimmed = editingNoteText.trim();
+    if (!trimmed) return;
+    const targetKey = `${book.id}-p${viewingNote.page}`;
+    const updatedList = (pageNotes[targetKey] || []).map((n) =>
+      n.id === viewingNote.id ? { ...n, note: trimmed, updatedAt: Date.now() } : n
+    );
+    onSavePageNotes?.(targetKey, updatedList);
+    setViewingNote({ ...viewingNote, note: trimmed, updatedAt: Date.now() });
+    setIsEditingViewingNote(false);
+    setToastHighlight('Nota actualizada 💬');
+    setTimeout(() => setToastHighlight(null), 2200);
+  };
+
+  const handleDeleteInlineNote = (note: PageNote) => {
+    const targetKey = `${book.id}-p${note.page}`;
+    const nextList = (pageNotes[targetKey] || []).filter((n) => n.id !== note.id);
+    onSavePageNotes?.(targetKey, nextList);
+    setViewingNote(null);
+    setIsEditingViewingNote(false);
+    setToastHighlight('Nota eliminada 🗑️');
+    setTimeout(() => setToastHighlight(null), 2200);
+  };
+
+  // Subrayar citas y colocar íconos de nota (💬) directamente junto a su línea
+  const renderPageTextContent = (
+    rawText: string,
+    pageHighlights: TextHighlight[],
+    notesForPage: PageNote[]
+  ): { nodes: React.ReactNode; unmatchedNotes: PageNote[] } => {
+    if (!rawText) {
+      return { nodes: rawText, unmatchedNotes: notesForPage };
     }
 
+    const lowerRaw = rawText.toLowerCase();
+
+    // 1. Locate inline note anchor end-offsets (attach 💬 cleanly beside the line)
+    const noteMarkersByOffset = new Map<number, PageNote[]>();
+    const matchedNoteIds = new Set<string>();
+
+    (notesForPage || []).forEach((note) => {
+      const rawLine = note.lineText?.trim();
+      if (!rawLine || rawLine.length < 2) return;
+      const firstLine = rawLine.split(/\r?\n/)[0]?.trim() || rawLine;
+      const candidates = [
+        rawLine.toLowerCase(),
+        firstLine.toLowerCase(),
+        firstLine.slice(0, 32).trim().toLowerCase()
+      ].filter((c) => c.length >= 2);
+
+      for (const candidate of candidates) {
+        const idx = lowerRaw.indexOf(candidate);
+        if (idx !== -1) {
+          const endPos = idx + candidate.length;
+          const existing = noteMarkersByOffset.get(endPos) || [];
+          existing.push(note);
+          noteMarkersByOffset.set(endPos, existing);
+          matchedNoteIds.add(note.id);
+          break;
+        }
+      }
+    });
+
+    const unmatchedNotes = (notesForPage || []).filter((n) => !matchedNoteIds.has(n.id));
+
+    // 2. Build non-overlapping highlight spans
     interface MatchRange {
       start: number;
       end: number;
@@ -343,13 +499,10 @@ export const Reader: React.FC<ReaderProps> = ({
     }
 
     const matches: MatchRange[] = [];
-    const lowerRaw = rawText.toLowerCase();
-
-    pageHighlights.forEach((hl) => {
+    (pageHighlights || []).forEach((hl) => {
       if (!hl.text || hl.text.trim().length === 0) return;
       const cleanSearch = hl.text.trim();
       const lowerSearch = cleanSearch.toLowerCase();
-
       let idx = lowerRaw.indexOf(lowerSearch);
       while (idx !== -1) {
         matches.push({
@@ -363,12 +516,7 @@ export const Reader: React.FC<ReaderProps> = ({
       }
     });
 
-    if (matches.length === 0) return rawText;
-
-    // Ordenar de menor a mayor inicio
     matches.sort((a, b) => a.start - b.start);
-
-    // Filtrar intervalos solapados
     const nonOverlapping: MatchRange[] = [];
     let currentEnd = 0;
     for (const m of matches) {
@@ -378,8 +526,9 @@ export const Reader: React.FC<ReaderProps> = ({
       }
     }
 
-    const elements: React.ReactNode[] = [];
-    let lastIndex = 0;
+    if (nonOverlapping.length === 0 && noteMarkersByOffset.size === 0) {
+      return { nodes: rawText, unmatchedNotes };
+    }
 
     const colorClasses: Record<HighlightColor, string> = {
       pink: 'bg-pink-500/40 border-b-2 border-pink-400 text-pink-100 px-1 py-0.5 rounded shadow-[0_0_10px_rgba(255,105,180,0.4)] font-medium',
@@ -392,10 +541,63 @@ export const Reader: React.FC<ReaderProps> = ({
       emerald: 'bg-emerald-500/40 border-b-2 border-emerald-400 text-emerald-100 px-1 py-0.5 rounded shadow-[0_0_10px_rgba(16,185,129,0.4)] font-medium'
     };
 
+    const noteOffsets = Array.from(noteMarkersByOffset.keys()).sort((a, b) => a - b);
+
+    const renderNoteBadge = (note: PageNote) => (
+      <button
+        key={`inline-note-${note.id}`}
+        type="button"
+        data-note-id={note.id}
+        onClick={(e) => {
+          e.stopPropagation();
+          setViewingNote(note);
+          setEditingNoteText(note.note);
+          setIsEditingViewingNote(false);
+        }}
+        className="nl-inline-note-icon"
+        title={`Nota: ${note.note.slice(0, 100)}`}
+        aria-label="Ver nota de línea"
+      >
+        <span>💬</span>
+      </button>
+    );
+
+    const emitPlainSegmentWithNotes = (segStart: number, segEnd: number, keyPrefix: string): React.ReactNode[] => {
+      const out: React.ReactNode[] = [];
+      let cursor = segStart;
+      for (const offset of noteOffsets) {
+        if (offset > segStart && offset <= segEnd) {
+          if (offset > cursor) {
+            out.push(rawText.slice(cursor, offset));
+          }
+          const notesHere = noteMarkersByOffset.get(offset) || [];
+          notesHere.forEach((n) => out.push(renderNoteBadge(n)));
+          cursor = offset;
+        }
+      }
+      if (cursor < segEnd) {
+        out.push(
+          <React.Fragment key={`${keyPrefix}-tail-${cursor}`}>
+            {rawText.slice(cursor, segEnd)}
+          </React.Fragment>
+        );
+      }
+      return out;
+    };
+
+    const elements: React.ReactNode[] = [];
+    let lastIndex = 0;
+
+    // Emit any note anchored at offset 0 (rare)
+    if (noteMarkersByOffset.has(0)) {
+      (noteMarkersByOffset.get(0) || []).forEach((n) => elements.push(renderNoteBadge(n)));
+    }
+
     nonOverlapping.forEach((range, i) => {
       if (range.start > lastIndex) {
-        elements.push(rawText.slice(lastIndex, range.start));
+        elements.push(...emitPlainSegmentWithNotes(lastIndex, range.start, `seg-${i}`));
       }
+      const notesInsideEnd = noteOffsets.filter((off) => off > range.start && off <= range.end);
       elements.push(
         <mark
           key={`hl-${range.id}-${i}`}
@@ -409,17 +611,20 @@ export const Reader: React.FC<ReaderProps> = ({
           {rawText.slice(range.start, range.end)}
         </mark>
       );
+      notesInsideEnd.forEach((off) => {
+        (noteMarkersByOffset.get(off) || []).forEach((n) => elements.push(renderNoteBadge(n)));
+      });
       lastIndex = range.end;
     });
 
     if (lastIndex < rawText.length) {
-      elements.push(rawText.slice(lastIndex));
+      elements.push(...emitPlainSegmentWithNotes(lastIndex, rawText.length, 'seg-end'));
     }
 
-    return elements;
+    return { nodes: elements, unmatchedNotes };
   };
 
-  // Memoize sanitized + highlighted EPUB HTML so DOMParser doesn't re-run on hover/animation frames
+  // Memoize sanitized + highlighted EPUB HTML + inline note message bubbles
   const rawCurrentEpubHtml =
     book.type === 'epub'
       ? epubPages[currentPage - 1] ||
@@ -429,8 +634,8 @@ export const Reader: React.FC<ReaderProps> = ({
 
   const renderedEpubHtml = useMemo(() => {
     if (book.type !== 'epub') return '';
-    return highlightHtmlSafely(rawCurrentEpubHtml, currentPageHighlights);
-  }, [book.type, rawCurrentEpubHtml, currentPageHighlights]);
+    return highlightHtmlSafely(rawCurrentEpubHtml, currentPageHighlights, currentPageNotes);
+  }, [book.type, rawCurrentEpubHtml, currentPageHighlights, currentPageNotes]);
 
   // Flush any pending progress update on unmount
   useEffect(() => {
@@ -516,11 +721,48 @@ export const Reader: React.FC<ReaderProps> = ({
 
     const loadContent = async () => {
       setFileError(null);
+      setIsMissingFileError(false);
+      setEpubChapters([]);
+      setPdfOutline([]);
 
       if (book.type === 'demo' || book.type === 'text') {
         const pages = book.content?.length || 1;
         setTotalPages(pages);
         if (currentPage > pages) setCurrentPage(1);
+        const derivedSections: ParsedEpubChapter[] = (book.content || []).map((pageTxt, idx) => {
+          const firstLine = pageTxt.split(/\r?\n/).find((l) => l.trim().length > 0)?.trim() || `Página ${idx + 1}`;
+          return {
+            id: `sec-${idx}`,
+            title: firstLine.slice(0, 65),
+            html: '',
+            text: pageTxt,
+            pageStart: idx + 1
+          };
+        });
+        setEpubChapters(derivedSections);
+        return;
+      }
+
+      if (book.type === 'epub' && book.content && book.content.length > 0) {
+        setEpubPages(book.content);
+        setTotalPages(book.content.length);
+        const fallbackChapters: ParsedEpubChapter[] = [];
+        book.content.forEach((html, idx) => {
+          const headingMatch = html.match(/<h[1-3][^>]*>(.*?)<\/h[1-3]>/i);
+          const title = headingMatch
+            ? headingMatch[1].replace(/<[^>]+>/g, '').trim()
+            : '';
+          if (title) {
+            fallbackChapters.push({
+              id: `epub-ch-${idx}`,
+              title: title.slice(0, 80),
+              html: '',
+              text: '',
+              pageStart: idx + 1
+            });
+          }
+        });
+        setEpubChapters(fallbackChapters);
         return;
       }
 
@@ -528,7 +770,13 @@ export const Reader: React.FC<ReaderProps> = ({
       try {
         const fileData = await getFileFromDB(book.id);
         if (!fileData) {
-          throw new Error('No se encontró el archivo en el almacenamiento local.');
+          if (!isCancelled) {
+            setIsMissingFileError(true);
+            setFileError(
+              'El archivo local de este libro no está guardado en este navegador (por ejemplo, si restauraste una copia de seguridad o se limpió el almacenamiento). Selecciónalo de nuevo para abrirlo.'
+            );
+          }
+          return;
         }
 
         const arrayBuffer = fileData instanceof ArrayBuffer 
@@ -561,10 +809,59 @@ export const Reader: React.FC<ReaderProps> = ({
           const safeInitialPage = Math.max(1, Math.min(currentPage, totalPgs));
           if (safeInitialPage !== currentPage) setCurrentPage(safeInitialPage);
           renderPdfPage(safeInitialPage, pdf);
+
+          // Load PDF outline / bookmarks asynchronously without blocking first paint
+          void (async () => {
+            try {
+              const outline = await pdf.getOutline();
+              if (!outline || !Array.isArray(outline) || isCancelled) return;
+              const resolved: { title: string; page: number }[] = [];
+              const walk = async (nodes: any[], depth = 0) => {
+                for (const node of nodes) {
+                  if (resolved.length >= 180 || isCancelled) break;
+                  let pageNum: number | null = null;
+                  try {
+                    let dest = node.dest;
+                    if (typeof dest === 'string') dest = await pdf.getDestination(dest);
+                    if (Array.isArray(dest) && dest[0]) {
+                      const pageIndex = await pdf.getPageIndex(dest[0]);
+                      pageNum = pageIndex + 1;
+                    }
+                  } catch {}
+                  if (node.title && pageNum && pageNum >= 1 && pageNum <= totalPgs) {
+                    const indent = depth > 0 ? `${'· '.repeat(Math.min(depth, 3))}` : '';
+                    resolved.push({ title: `${indent}${String(node.title).trim()}`, page: pageNum });
+                  }
+                  if (Array.isArray(node.items) && node.items.length > 0) {
+                    await walk(node.items, depth + 1);
+                  }
+                }
+              };
+              await walk(outline);
+              if (!isCancelled) setPdfOutline(resolved);
+            } catch {}
+          })();
         } else if (book.type === 'epub') {
           if (book.content && book.content.length > 0) {
             setEpubPages(book.content);
             setTotalPages(book.content.length);
+            const fallbackChapters: ParsedEpubChapter[] = [];
+            book.content.forEach((html, idx) => {
+              const headingMatch = html.match(/<h[1-3][^>]*>(.*?)<\/h[1-3]>/i);
+              const title = headingMatch
+                ? headingMatch[1].replace(/<[^>]+>/g, '').trim()
+                : '';
+              if (title) {
+                fallbackChapters.push({
+                  id: `epub-ch-${idx}`,
+                  title: title.slice(0, 80),
+                  html: '',
+                  text: '',
+                  pageStart: idx + 1
+                });
+              }
+            });
+            setEpubChapters(fallbackChapters);
             return;
           }
 
@@ -572,14 +869,15 @@ export const Reader: React.FC<ReaderProps> = ({
           if (isCancelled) return;
 
           setEpubPages(parsed.pages);
+          setEpubChapters(parsed.chapters || []);
           const totalPgs = Math.max(1, parsed.pages.length);
           setTotalPages(totalPgs);
           onUpdateBookProgress(book.id, Math.min(currentPage, totalPgs), totalPgs);
         }
       } catch (err: any) {
         if (!isCancelled) {
-          console.error(err);
-          setFileError(err.message || 'Error al abrir el libro.');
+          console.warn('Error al abrir el libro:', err?.message || err);
+          setFileError(err?.message || 'Error al abrir el libro.');
         }
       } finally {
         if (!isCancelled) setLoadingFile(false);
@@ -599,7 +897,127 @@ export const Reader: React.FC<ReaderProps> = ({
         try { epubRenditionRef.current.destroy(); } catch {}
       }
     };
-  }, [book.id, book.type]);
+  }, [book.id, book.type, reloadNonce]);
+
+  // Sleep Timer countdown (Modo Descanso Nocturno)
+  useEffect(() => {
+    if (sleepTimerRemainingSec === null) return;
+    if (sleepTimerRemainingSec <= 0) {
+      setSleepTimerRemainingSec(null);
+      if (sleepTimerStopMusic) {
+        musicPlayer.stop();
+      }
+      setIsRestReminderOpen(true);
+      return;
+    }
+    const timer = window.setTimeout(() => {
+      setSleepTimerRemainingSec((prev) => (prev !== null ? Math.max(0, prev - 1) : null));
+    }, 1000);
+    return () => window.clearTimeout(timer);
+  }, [sleepTimerRemainingSec, sleepTimerStopMusic]);
+
+  // Book-wide Search (EPUB / TXT / Demo / PDF progressive scan)
+  useEffect(() => {
+    const seq = ++searchSeqRef.current;
+    const query = bookSearchQuery.trim().toLowerCase();
+    if (!isIndexDrawerOpen || indexDrawerTab !== 'search' || query.length < 2) {
+      setBookSearchResults([]);
+      setIsSearchingBook(false);
+      setSearchProgress(null);
+      return;
+    }
+
+    const extractSnippet = (plainText: string, hitIndex: number, qLen: number) => {
+      const start = Math.max(0, hitIndex - 38);
+      const end = Math.min(plainText.length, hitIndex + qLen + 62);
+      return `${start > 0 ? '…' : ''}${plainText.slice(start, end).replace(/\s+/g, ' ').trim()}${end < plainText.length ? '…' : ''}`;
+    };
+
+    const runSearch = async () => {
+      setIsSearchingBook(true);
+      const hits: { page: number; snippet: string }[] = [];
+
+      if (book.type === 'epub') {
+        const sourcePages = epubPages.length > 0 ? epubPages : book.content || [];
+        for (let i = 0; i < sourcePages.length; i++) {
+          if (searchSeqRef.current !== seq) return;
+          const plain = sourcePages[i].replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ');
+          const idx = plain.toLowerCase().indexOf(query);
+          if (idx !== -1) {
+            hits.push({ page: i + 1, snippet: extractSnippet(plain, idx, query.length) });
+            if (hits.length >= 120) break;
+          }
+        }
+        if (searchSeqRef.current === seq) {
+          setBookSearchResults(hits);
+          setIsSearchingBook(false);
+          setSearchProgress(null);
+        }
+        return;
+      }
+
+      if (book.type === 'demo' || book.type === 'text') {
+        const sourcePages = book.content || [];
+        for (let i = 0; i < sourcePages.length; i++) {
+          if (searchSeqRef.current !== seq) return;
+          const plain = sourcePages[i];
+          const idx = plain.toLowerCase().indexOf(query);
+          if (idx !== -1) {
+            hits.push({ page: i + 1, snippet: extractSnippet(plain, idx, query.length) });
+            if (hits.length >= 120) break;
+          }
+        }
+        if (searchSeqRef.current === seq) {
+          setBookSearchResults(hits);
+          setIsSearchingBook(false);
+          setSearchProgress(null);
+        }
+        return;
+      }
+
+      if (book.type === 'pdf' && pdfDocRef.current) {
+        const pdf = pdfDocRef.current;
+        const total = Math.max(1, pdf.numPages || totalPages);
+        for (let p = 1; p <= total; p++) {
+          if (searchSeqRef.current !== seq) return;
+          setSearchProgress({ current: p, total });
+          let pageTxt = pdfTextCacheRef.current.get(p);
+          if (pageTxt === undefined) {
+            try {
+              const pg = await pdf.getPage(p);
+              if (searchSeqRef.current !== seq) return;
+              const tc = await pg.getTextContent();
+              pageTxt = extractPdfText(tc);
+              pdfTextCacheRef.current.set(p, pageTxt);
+            } catch {
+              pageTxt = '';
+            }
+          }
+          const idx = pageTxt.toLowerCase().indexOf(query);
+          if (idx !== -1) {
+            hits.push({ page: p, snippet: extractSnippet(pageTxt, idx, query.length) });
+            setBookSearchResults([...hits]);
+            if (hits.length >= 100) break;
+          }
+          if (p % 10 === 0) {
+            await new Promise((r) => setTimeout(r, 0));
+          }
+        }
+        if (searchSeqRef.current === seq) {
+          setBookSearchResults(hits);
+          setIsSearchingBook(false);
+          setSearchProgress(null);
+        }
+      } else {
+        setIsSearchingBook(false);
+      }
+    };
+
+    const debounce = window.setTimeout(() => {
+      void runSearch();
+    }, 260);
+    return () => window.clearTimeout(debounce);
+  }, [bookSearchQuery, isIndexDrawerOpen, indexDrawerTab, book.type, book.content, epubPages, totalPages]);
 
   // Render PDF page with cancellation token, text cache, and next-page prefetch
   const renderPdfPage = async (pageNum: number, pdfInstance?: any) => {
@@ -1119,7 +1537,7 @@ export const Reader: React.FC<ReaderProps> = ({
     if (!el) return false;
     return Boolean(
       el.closest(
-        '.movable-sticker, .sticker-drawer, .sticker-toolbar, .sticker-resize-handle, button, a, input, textarea, select, [role="button"], mark'
+        '.movable-sticker, .sticker-drawer, .sticker-toolbar, .sticker-resize-handle, .nl-inline-note-icon, [data-note-id], button, a, input, textarea, select, [role="button"], mark'
       )
     );
   };
@@ -1155,20 +1573,21 @@ export const Reader: React.FC<ReaderProps> = ({
       onPointerMove={onPointerMoveContainer}
       onPointerUp={onPointerUpContainer}
     >
-      {/* Top Reader Navbar */}
-      <div className="bg-[var(--card-bg)] border-b border-[var(--border-color)] px-3 sm:px-6 py-2 flex items-center justify-between z-30 shadow-lg">
+      {/* Top Reader Navbar (Espacioso y organizado) */}
+      <div className="bg-[var(--card-bg)] border-b border-[var(--border-color)] px-2.5 sm:px-5 py-2 flex items-center justify-between gap-2 z-30 shadow-lg">
         {/* Left: Back button & Title */}
-        <div className="flex items-center space-x-2.5 truncate pr-2">
+        <div className="flex items-center gap-2 min-w-0 flex-1">
           <button
             onClick={onBackToLibrary}
-            className="px-2.5 sm:px-3.5 py-1.5 rounded-xl text-xs font-cute font-bold bg-gradient-to-r from-pink-500/20 to-purple-500/20 border border-[var(--accent-pink)]/60 text-[var(--accent-pink)] hover:bg-[var(--accent-pink)] hover:text-black transition flex items-center gap-1.5 shadow-md active:scale-95 group shrink-0"
+            className="px-2 sm:px-3 py-1.5 rounded-xl text-xs font-cute font-bold bg-gradient-to-r from-pink-500/20 to-purple-500/20 border border-[var(--accent-pink)]/60 text-[var(--accent-pink)] hover:bg-[var(--accent-pink)] hover:text-black transition flex items-center gap-1.5 shadow-md active:scale-95 group shrink-0"
             title="Regresar a la Estantería (Esc)"
+            aria-label="Regresar a la Estantería"
           >
-            <ArrowLeft className="w-4 h-4 stroke-[2.5] transform group-hover:-translate-x-1 transition-transform" />
-            <span className="font-bold">Estantería</span>
+            <ArrowLeft className="w-4 h-4 stroke-[2.5] transform group-hover:-translate-x-0.5 transition-transform" />
+            <span className="hidden lg:inline font-bold">Estantería</span>
           </button>
-          <div className="truncate">
-            <span className="dark-reborn-font font-bold text-xs sm:text-sm text-[var(--accent-pink)] truncate block max-w-[140px] sm:max-w-xs md:max-w-md">
+          <div className="min-w-0 flex-1">
+            <span className="dark-reborn-font font-bold text-xs sm:text-sm text-[var(--accent-pink)] truncate block">
               {book.title}
             </span>
             <span className="text-[10px] text-[var(--text-muted)] truncate block">
@@ -1177,102 +1596,237 @@ export const Reader: React.FC<ReaderProps> = ({
           </div>
         </div>
 
-        {/* Right: Tools & Actions */}
-        <div className="flex items-center space-x-1 sm:space-x-1.5">
-          {/* Unico Icono Kawaii de Configuración de Lectura */}
-          <button
-            type="button"
-            onClick={() => setIsSettingsModalOpen(true)}
-            className="px-2.5 sm:px-3 py-1.5 rounded-xl text-xs font-cute font-bold bg-gradient-to-r from-pink-500/20 via-purple-500/20 to-pink-500/10 border border-[var(--accent-pink)] text-[var(--accent-pink)] hover:bg-[var(--accent-pink)] hover:text-black transition flex items-center gap-1.5 shadow-md active:scale-95"
-            title="Ajustes Kawaii de Lectura: Fuente, tamaño, márgenes, contraste, iluminación y modo PDF"
-          >
-            <span className="text-sm">🌸</span>
-            <span className="hidden sm:inline">Ajustes</span>
-          </button>
-
-          {/* Estantería de Música (Función VIP) */}
+        {/* Right: Clean Primary Controls + Overflow Tools Menu */}
+        <div className="flex items-center gap-1.5 shrink-0">
+          {/* Índice de Capítulos, Buscador y Notas del Libro */}
           <button
             type="button"
             onClick={() => {
-              if (!isVip) {
-                onOpenVipModal?.('music');
-                return;
-              }
-              if (onOpenMusicShelf) {
-                onOpenMusicShelf();
-              } else {
-                setIsMusicModalOpen(true);
-              }
+              setIsMoreToolsOpen(false);
+              setIndexDrawerTab('chapters');
+              setIsIndexDrawerOpen(true);
             }}
-            className={`px-2.5 sm:px-3 py-1.5 rounded-xl text-xs font-cute font-bold transition flex items-center gap-1.5 shadow-md active:scale-95 ${
-              isMusicPlaying
-                ? 'bg-[var(--accent-purple)] text-black border border-[var(--accent-purple)] shadow-[0_0_12px_rgba(189,147,249,0.5)] animate-pulse'
-                : 'bg-black/40 border border-[var(--border-color)] text-[var(--text-muted)] hover:text-[var(--accent-purple)] hover:border-[var(--accent-purple)]'
-            }`}
-            title={isVip ? "Estantería de Música: Escuchar de fondo y subir canciones" : "Reproductor de Música: Exclusivo VIP ($2/mes) 👑"}
+            className="px-2.5 py-1.5 rounded-xl text-xs font-semibold bg-black/40 border border-[var(--border-color)] text-[var(--text-main)] hover:text-[var(--accent-pink)] hover:border-[var(--accent-pink)] transition flex items-center gap-1.5"
+            title="Índice de capítulos, buscar en el libro y notas/marcadores"
           >
-            <span className="text-sm">{isMusicPlaying ? '🎶' : '🎵'}</span>
-            <span className="hidden sm:inline">Música</span>
-            {!isVip && <span className="text-[10px] text-amber-300 font-bold ml-0.5">👑</span>}
-            {isMusicPlaying && (
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping" />
-            )}
-          </button>
-
-          {/* Sticker Drawer Button */}
-          <button
-            onClick={() => {
-              setStickerMenuPosition(null);
-              pendingStickerSpotRef.current = null;
-              setIsStickerDrawerOpen(!isStickerDrawerOpen);
-            }}
-            className={`px-2.5 py-1.5 rounded-xl text-xs font-semibold flex items-center space-x-1 transition ${
-              isStickerDrawerOpen
-                ? 'bg-[var(--accent-pink)] text-black font-bold shadow-md'
-                : 'bg-[var(--accent-pink)]/20 border border-[var(--accent-pink)]/40 text-[var(--accent-pink)] hover:bg-[var(--accent-pink)] hover:text-black'
-            }`}
-            title="Pegar stickers kawaii"
-          >
-            <span>🎀</span>
-            <span className="hidden sm:inline">Stickers</span>
-            {currentPageStickers.length > 0 && (
-              <span className="text-[10px] ml-0.5 opacity-80">
-                ({currentPageStickers.length})
+            <List className="w-3.5 h-3.5 text-[var(--accent-pink)]" />
+            <span className="hidden md:inline">Índice</span>
+            {allBookPageNotes.length > 0 && (
+              <span className="text-[10px] px-1 rounded bg-pink-500/20 text-[var(--accent-pink)] font-bold">
+                💬{allBookPageNotes.length}
               </span>
             )}
           </button>
 
           {/* Add Bookmark Button */}
           <button
+            type="button"
             onClick={() => onToggleBookmark(currentPage)}
-            className={`p-1.5 sm:px-2 sm:py-1.5 rounded-xl text-xs transition border ${
+            className={`p-1.5 sm:px-2.5 sm:py-1.5 rounded-xl text-xs transition border ${
               isBookmarked
                 ? 'bg-[var(--accent-pink)] text-black border-[var(--accent-pink)]'
                 : 'bg-black/40 border-[var(--border-color)] text-[var(--text-muted)] hover:text-white'
             }`}
             title={isBookmarked ? 'Página guardada en marcadores' : 'Guardar marcador en esta página'}
+            aria-label="Marcador de página"
           >
             <BookmarkIcon className={`w-3.5 h-3.5 ${isBookmarked ? 'fill-current' : ''}`} />
           </button>
 
-          {/* Add Quote Button */}
+          {/* Unico Icono Kawaii de Configuración de Lectura */}
           <button
-            onClick={handleCaptureSelection}
-            className="px-2.5 py-1.5 bg-purple-500/20 border border-purple-500/40 text-[var(--accent-purple)] rounded-xl text-xs font-semibold hover:bg-purple-500 hover:text-black transition flex items-center space-x-1"
-            title="Guardar cita o nota literaria"
+            type="button"
+            onClick={() => {
+              setIsMoreToolsOpen(false);
+              setIsSettingsModalOpen(true);
+            }}
+            className="px-2.5 py-1.5 rounded-xl text-xs font-cute font-bold bg-gradient-to-r from-pink-500/20 via-purple-500/20 to-pink-500/10 border border-[var(--accent-pink)] text-[var(--accent-pink)] hover:bg-[var(--accent-pink)] hover:text-black transition flex items-center gap-1.5 shadow-md active:scale-95"
+            title="Ajustes Kawaii de Lectura: Fuente, tamaño, márgenes, contraste, iluminación y modo PDF"
           >
-            <Feather className="w-3.5 h-3.5" />
-            <span className="hidden sm:inline">Cita</span>
+            <span className="text-sm">🌸</span>
+            <span className="hidden md:inline">Ajustes</span>
           </button>
 
-          {/* Fullscreen Toggle */}
-          <button
-            onClick={toggleFullscreen}
-            className="p-1.5 bg-black/40 border border-[var(--border-color)] hover:border-white/30 rounded-xl text-xs text-[var(--text-muted)] hover:text-white transition"
-            title="Pantalla completa"
-          >
-            {isFullscreen ? <Minimize2 className="w-3.5 h-3.5" /> : <Maximize2 className="w-3.5 h-3.5" />}
-          </button>
+          {/* Más Herramientas (Música, Stickers, Cita, Temporizador, Pantalla completa) */}
+          <div className="relative">
+            <button
+              type="button"
+              onClick={() => setIsMoreToolsOpen((v) => !v)}
+              className={`px-2.5 py-1.5 rounded-xl text-xs font-semibold border transition flex items-center gap-1.5 ${
+                isMoreToolsOpen || sleepTimerRemainingSec !== null || isMusicPlaying
+                  ? 'bg-purple-500/20 border-[var(--accent-purple)] text-white shadow-sm'
+                  : 'bg-black/40 border-[var(--border-color)] text-[var(--text-muted)] hover:text-white hover:border-[var(--accent-pink)]'
+              }`}
+              title="Más herramientas: Música, Stickers, Cita, Temporizador y Pantalla completa"
+              aria-label="Más herramientas de lectura"
+            >
+              <MoreHorizontal className="w-4 h-4" />
+              {sleepTimerRemainingSec !== null && (
+                <span className="font-mono text-[10px] font-bold text-indigo-300">
+                  {Math.floor(sleepTimerRemainingSec / 60)}:{String(sleepTimerRemainingSec % 60).padStart(2, '0')}
+                </span>
+              )}
+              {isMusicPlaying && sleepTimerRemainingSec === null && (
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping" />
+              )}
+            </button>
+
+            {isMoreToolsOpen && (
+              <>
+                <div
+                  className="fixed inset-0 z-40"
+                  onClick={() => setIsMoreToolsOpen(false)}
+                />
+                <div className="absolute right-0 top-11 z-50 w-64 bg-[var(--card-bg)] border border-[var(--border-color)] rounded-2xl p-2.5 shadow-2xl modal-animate space-y-1.5">
+                  {/* Música */}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsMoreToolsOpen(false);
+                      if (!isVip) {
+                        onOpenVipModal?.('music');
+                        return;
+                      }
+                      if (onOpenMusicShelf) {
+                        onOpenMusicShelf();
+                      } else {
+                        setIsMusicModalOpen(true);
+                      }
+                    }}
+                    className={`w-full px-3 py-2 rounded-xl text-xs font-semibold flex items-center justify-between transition ${
+                      isMusicPlaying
+                        ? 'bg-[var(--accent-purple)]/20 text-[var(--accent-purple)] border border-[var(--accent-purple)]/40'
+                        : 'hover:bg-white/10 text-[var(--text-main)]'
+                    }`}
+                  >
+                    <span className="flex items-center gap-2">
+                      <span>{isMusicPlaying ? '🎶' : '🎵'}</span>
+                      <span>Música ambiental</span>
+                    </span>
+                    {!isVip ? (
+                      <span className="text-[10px] text-amber-300 font-bold">VIP 👑</span>
+                    ) : isMusicPlaying ? (
+                      <span className="text-[10px] text-emerald-400 font-bold">Sonando</span>
+                    ) : null}
+                  </button>
+
+                  {/* Stickers */}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsMoreToolsOpen(false);
+                      setStickerMenuPosition(null);
+                      pendingStickerSpotRef.current = null;
+                      setIsStickerDrawerOpen(!isStickerDrawerOpen);
+                    }}
+                    className="w-full px-3 py-2 rounded-xl text-xs font-semibold hover:bg-white/10 text-[var(--text-main)] flex items-center justify-between transition"
+                  >
+                    <span className="flex items-center gap-2">
+                      <span>🎀</span>
+                      <span>Stickers kawaii</span>
+                    </span>
+                    {currentPageStickers.length > 0 && (
+                      <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-pink-500/20 text-[var(--accent-pink)] font-bold">
+                        {currentPageStickers.length}
+                      </span>
+                    )}
+                  </button>
+
+                  {/* Guardar Cita */}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsMoreToolsOpen(false);
+                      handleCaptureSelection();
+                    }}
+                    className="w-full px-3 py-2 rounded-xl text-xs font-semibold hover:bg-white/10 text-[var(--text-main)] flex items-center justify-between transition"
+                  >
+                    <span className="flex items-center gap-2">
+                      <Feather className="w-3.5 h-3.5 text-[var(--accent-purple)]" />
+                      <span>Guardar cita en Baúl</span>
+                    </span>
+                  </button>
+
+                  {/* Pantalla completa */}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsMoreToolsOpen(false);
+                      toggleFullscreen();
+                    }}
+                    className="w-full px-3 py-2 rounded-xl text-xs font-semibold hover:bg-white/10 text-[var(--text-main)] flex items-center justify-between transition"
+                  >
+                    <span className="flex items-center gap-2">
+                      {isFullscreen ? (
+                        <Minimize2 className="w-3.5 h-3.5 text-[var(--accent-pink)]" />
+                      ) : (
+                        <Maximize2 className="w-3.5 h-3.5 text-[var(--accent-pink)]" />
+                      )}
+                      <span>{isFullscreen ? 'Salir de pantalla completa' : 'Pantalla completa'}</span>
+                    </span>
+                  </button>
+
+                  {/* Temporizador de Descanso Nocturno integrado */}
+                  <div className="pt-2 mt-1 border-t border-[var(--border-color)] space-y-2 px-1">
+                    <div className="flex items-center justify-between text-[11px] font-bold text-indigo-300">
+                      <span className="flex items-center gap-1.5">
+                        <Moon className="w-3.5 h-3.5" />
+                        <span>Temporizador descanso</span>
+                      </span>
+                      {sleepTimerRemainingSec !== null && (
+                        <span className="font-mono text-[10px] text-white bg-indigo-500/30 px-1.5 py-0.5 rounded">
+                          {Math.floor(sleepTimerRemainingSec / 60)}:{String(sleepTimerRemainingSec % 60).padStart(2, '0')}
+                        </span>
+                      )}
+                    </div>
+
+                    <div className="grid grid-cols-4 gap-1">
+                      {[15, 30, 45, 60].map((mins) => (
+                        <button
+                          key={mins}
+                          type="button"
+                          onClick={() => {
+                            setSleepTimerRemainingSec(mins * 60);
+                            setIsMoreToolsOpen(false);
+                            setToastHighlight(`🌙 Temporizador activado: ${mins} min`);
+                            setTimeout(() => setToastHighlight(null), 2400);
+                          }}
+                          className="py-1 rounded-lg bg-indigo-500/15 hover:bg-indigo-500 hover:text-black border border-indigo-400/30 text-[11px] font-bold text-indigo-200 transition"
+                        >
+                          {mins}m
+                        </button>
+                      ))}
+                    </div>
+
+                    <label className="flex items-center gap-2 text-[11px] text-[var(--text-muted)] cursor-pointer select-none">
+                      <input
+                        type="checkbox"
+                        checked={sleepTimerStopMusic}
+                        onChange={(e) => setSleepTimerStopMusic(e.target.checked)}
+                        className="accent-indigo-400 rounded"
+                      />
+                      <span>Pausar música al terminar</span>
+                    </label>
+
+                    {sleepTimerRemainingSec !== null && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSleepTimerRemainingSec(null);
+                          setIsMoreToolsOpen(false);
+                          setToastHighlight('Temporizador detenido.');
+                          setTimeout(() => setToastHighlight(null), 2000);
+                        }}
+                        className="w-full py-1.5 rounded-xl bg-rose-500/20 border border-rose-500/40 text-rose-300 text-[11px] font-bold hover:bg-rose-500/30 transition"
+                      >
+                        Detener temporizador
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
         </div>
       </div>
 
@@ -1497,6 +2051,14 @@ export const Reader: React.FC<ReaderProps> = ({
                 <span>Subrayar</span>
               </button>
               <button
+                onClick={() => handleOpenNoteComposer(selectedText)}
+                className="px-2 py-1 rounded-xl bg-pink-500/20 border border-pink-400/40 text-pink-200 hover:bg-[var(--accent-pink)] hover:text-black transition text-xs font-semibold flex items-center gap-1"
+                title="Colocar nota pequeña 💬 al lado de esta línea"
+              >
+                <MessageSquare className="w-3.5 h-3.5" />
+                <span>Nota 💬</span>
+              </button>
+              <button
                 onClick={() => {
                   if (!isVip && quotesCount !== undefined && quotesCount >= 3) {
                     onOpenVipModal?.('notes');
@@ -1644,6 +2206,16 @@ export const Reader: React.FC<ReaderProps> = ({
               </button>
             </div>
 
+            {/* Colocar Nota 💬 en la línea */}
+            <button
+              onClick={() => handleOpenNoteComposer(selectedText)}
+              className="px-3 py-2 bg-pink-500/25 border border-pink-400/50 hover:bg-[var(--accent-pink)] hover:text-black rounded-xl text-xs font-bold text-pink-200 flex items-center gap-1 transition shrink-0 active:scale-95"
+              title="Colocar nota pequeña 💬 al lado de la línea"
+            >
+              <MessageSquare className="w-3.5 h-3.5" />
+              <span>Nota 💬</span>
+            </button>
+
             {/* Crear Cita */}
             <button
               onClick={() => {
@@ -1728,15 +2300,57 @@ export const Reader: React.FC<ReaderProps> = ({
             </p>
           </div>
         ) : fileError ? (
-          <div className="my-auto max-w-md bg-red-950/40 border border-red-500/50 rounded-2xl p-6 text-center">
-            <p className="text-3xl mb-2">🦇</p>
-            <h4 className="font-bold text-sm text-red-300 mb-1">
-              No se pudo abrir el libro
-            </h4>
-            <p className="text-xs text-red-200/80 mb-4">{fileError}</p>
+          <div className="my-auto max-w-md bg-red-950/40 border border-red-500/50 rounded-2xl p-6 text-center space-y-4">
+            <div>
+              <p className="text-3xl mb-2">🦇</p>
+              <h4 className="font-bold text-sm text-red-300 mb-1">
+                No se pudo abrir el libro
+              </h4>
+              <p className="text-xs text-red-200/85 leading-relaxed">{fileError}</p>
+            </div>
+
+            {isMissingFileError && (book.type === 'epub' || book.type === 'pdf') && (
+              <>
+                <input
+                  ref={relinkFileInputRef}
+                  type="file"
+                  accept={book.type === 'pdf' ? '.pdf,application/pdf' : '.epub,application/epub+zip'}
+                  className="hidden"
+                  onChange={async (e) => {
+                    const picked = e.target.files?.[0];
+                    e.target.value = '';
+                    if (!picked) return;
+                    try {
+                      setLoadingFile(true);
+                      setFileError(null);
+                      setIsMissingFileError(false);
+                      const buf = await picked.arrayBuffer();
+                      await saveFileToDB(book.id, buf);
+                      setReloadNonce((n) => n + 1);
+                    } catch {
+                      setLoadingFile(false);
+                      setIsMissingFileError(true);
+                      setFileError('No se pudo guardar el archivo seleccionado en este navegador.');
+                    }
+                  }}
+                />
+                <button
+                  type="button"
+                  onClick={() => relinkFileInputRef.current?.click()}
+                  className="w-full px-4 py-2.5 bg-[var(--accent-pink)] hover:brightness-110 text-black font-bold text-xs rounded-xl flex items-center justify-center gap-2 transition cursor-pointer"
+                >
+                  <Upload className="w-4 h-4" />
+                  <span>
+                    Seleccionar {book.fileName ? `"${book.fileName}"` : `archivo .${book.type}`}
+                  </span>
+                </button>
+              </>
+            )}
+
             <button
+              type="button"
               onClick={onBackToLibrary}
-              className="px-4 py-2 bg-red-500 text-black font-bold text-xs rounded-xl"
+              className="w-full px-4 py-2 bg-white/10 hover:bg-white/20 text-white font-semibold text-xs rounded-xl transition cursor-pointer"
             >
               Volver a la Biblioteca
             </button>
@@ -1864,17 +2478,50 @@ export const Reader: React.FC<ReaderProps> = ({
                         </p>
                       </div>
                     ) : pdfPageText ? (
-                      <div 
-                        className="prose max-w-none transition-all whitespace-pre-line select-text break-words px-1 sm:px-4 py-2"
-                        style={{ 
-                          fontSize: `${fontSize}px`, 
-                          lineHeight: lineHeight,
-                          color: currentReaderModeConfig.text,
-                          fontFamily: currentFont 
-                        }}
-                      >
-                        {renderHighlightedContent(pdfPageText, currentPageHighlights)}
-                      </div>
+                      (() => {
+                        const { nodes, unmatchedNotes } = renderPageTextContent(
+                          pdfPageText,
+                          currentPageHighlights,
+                          currentPageNotes
+                        );
+                        return (
+                          <div className="space-y-2">
+                            {unmatchedNotes.length > 0 && (
+                              <div className="flex flex-wrap items-center gap-1.5 px-2 sm:px-4 pt-1">
+                                {unmatchedNotes.map((n) => (
+                                  <button
+                                    key={`unmatched-pdf-${n.id}`}
+                                    type="button"
+                                    data-note-id={n.id}
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setViewingNote(n);
+                                      setEditingNoteText(n.note);
+                                      setIsEditingViewingNote(false);
+                                    }}
+                                    className="nl-inline-note-icon text-[11px]"
+                                    title={`Nota: ${n.note}`}
+                                  >
+                                    <span>💬</span>
+                                    <span className="max-w-[110px] truncate">{n.lineText}</span>
+                                  </button>
+                                ))}
+                              </div>
+                            )}
+                            <div
+                              className="prose max-w-none transition-all whitespace-pre-line select-text break-words px-1 sm:px-4 py-2"
+                              style={{
+                                fontSize: `${fontSize}px`,
+                                lineHeight: lineHeight,
+                                color: currentReaderModeConfig.text,
+                                fontFamily: currentFont
+                              }}
+                            >
+                              {nodes}
+                            </div>
+                          </div>
+                        );
+                      })()
                     ) : (
                       <div className="text-center py-12 px-4 space-y-3 bg-black/30 rounded-2xl border border-white/5">
                         <div className="text-3xl animate-bounce">📜</div>
@@ -1981,31 +2628,111 @@ export const Reader: React.FC<ReaderProps> = ({
                           </span>
                         ))}
                       </div>
+
+                      {/* Iconos pequeños 💬 de Notas inline junto a la línea en PDF Página Fija */}
+                      {currentPageNotes.map((note, idx) => {
+                        const cleanLine = note.lineText.toLowerCase().trim();
+                        const matchingItems = pdfTextItems.filter((item) => {
+                          const itemStr = item.str.toLowerCase().trim();
+                          return itemStr.length >= 2 && (cleanLine.includes(itemStr) || itemStr.includes(cleanLine));
+                        });
+                        const anchor = matchingItems.length > 0 ? matchingItems[matchingItems.length - 1] : null;
+                        const maxWidth = pdfViewportDim.width > 0 ? pdfViewportDim.width - 28 : 300;
+                        const bubbleLeft = anchor ? Math.min(maxWidth, anchor.left + anchor.width + 4) : 12;
+                        const bubbleTop = anchor ? Math.max(4, anchor.top - 2) : 12 + idx * 26;
+                        return (
+                          <button
+                            key={`pdf-note-${note.id}`}
+                            type="button"
+                            data-note-id={note.id}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setViewingNote(note);
+                              setEditingNoteText(note.note);
+                              setIsEditingViewingNote(false);
+                            }}
+                            className="nl-inline-note-icon absolute z-30 pointer-events-auto shadow-md"
+                            style={{
+                              left: `${bubbleLeft}px`,
+                              top: `${bubbleTop}px`
+                            }}
+                            title={`Nota: ${note.note.slice(0, 100)}`}
+                          >
+                            <span>💬</span>
+                          </button>
+                        );
+                      })}
                     </div>
                   </div>
                 )}
               </div>
             )}
 
-            {/* 2. EPUB Render Div con Subrayado Directo (HTML memoizado) */}
+            {/* 2. EPUB Render Div con Subrayado Directo e Iconos 💬 de Notas */}
             {book.type === 'epub' && (
               <div
                 className="prose max-w-none select-text leading-relaxed epub-rendered-content"
                 style={{ fontSize: `${fontSize}px`, lineHeight: lineHeight }}
+                onClick={(e) => {
+                  const noteEl = (e.target as HTMLElement | null)?.closest('[data-note-id]') as HTMLElement | null;
+                  if (noteEl) {
+                    e.stopPropagation();
+                    const noteId = noteEl.getAttribute('data-note-id');
+                    const found = currentPageNotes.find((n) => n.id === noteId);
+                    if (found) {
+                      setViewingNote(found);
+                      setEditingNoteText(found.note);
+                      setIsEditingViewingNote(false);
+                    }
+                  }
+                }}
                 dangerouslySetInnerHTML={{
                   __html: renderedEpubHtml
                 }}
               />
             )}
 
-            {/* 3. Demo or Text Book Page con Subrayado Directo en la Frase */}
+            {/* 3. Demo or Text Book Page con Subrayado Directo e Iconos 💬 en la línea */}
             {(book.type === 'demo' || book.type === 'text') && (
               <div 
                 className="prose max-w-none transition-all whitespace-pre-line select-text"
                 style={{ fontSize: `${fontSize}px`, lineHeight: lineHeight }}
               >
                 {book.content && book.content[currentPage - 1] ? (
-                  renderHighlightedContent(book.content[currentPage - 1], currentPageHighlights)
+                  (() => {
+                    const { nodes, unmatchedNotes } = renderPageTextContent(
+                      book.content[currentPage - 1],
+                      currentPageHighlights,
+                      currentPageNotes
+                    );
+                    return (
+                      <>
+                        {unmatchedNotes.length > 0 && (
+                          <div className="flex flex-wrap items-center gap-1.5 mb-2 not-prose">
+                            {unmatchedNotes.map((n) => (
+                              <button
+                                key={`unmatched-txt-${n.id}`}
+                                type="button"
+                                data-note-id={n.id}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setViewingNote(n);
+                                  setEditingNoteText(n.note);
+                                  setIsEditingViewingNote(false);
+                                }}
+                                className="nl-inline-note-icon text-[11px]"
+                                title={`Nota: ${n.note}`}
+                              >
+                                <span>💬</span>
+                                <span className="max-w-[120px] truncate">{n.lineText}</span>
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                        {nodes}
+                      </>
+                    );
+                  })()
                 ) : (
                   <p className="text-center italic text-sm opacity-60 py-10">
                     Fin de la lectura de este capítulo. 🐾
@@ -2305,6 +3032,478 @@ export const Reader: React.FC<ReaderProps> = ({
           setTimeout(() => setToastHighlight(null), 3000);
         }}
       />
+
+      {/* Drawer de Índice de Capítulos, Buscador y Notas/Marcadores del Libro */}
+      {isIndexDrawerOpen && (
+        <div
+          className="fixed inset-0 bg-black/75 backdrop-blur-sm z-50 flex justify-end"
+          onClick={() => setIsIndexDrawerOpen(false)}
+        >
+          <div
+            className="w-full max-w-sm h-full bg-[var(--card-bg)] border-l border-[var(--border-color)] shadow-2xl flex flex-col modal-animate"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="p-4 border-b border-[var(--border-color)] flex items-center justify-between gap-2">
+              <div className="min-w-0">
+                <h3 className="font-bold text-sm text-[var(--accent-pink)] flex items-center gap-1.5">
+                  <BookOpen className="w-4 h-4 shrink-0" />
+                  <span className="truncate">{book.title}</span>
+                </h3>
+                <p className="text-[11px] text-[var(--text-muted)]">
+                  Página {currentPage} de {totalPages}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsIndexDrawerOpen(false)}
+                className="p-1.5 rounded-xl bg-white/5 hover:bg-white/15 text-[var(--text-muted)] hover:text-white transition"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Ir directo a página */}
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                const target = parseInt(jumpPageInput, 10);
+                if (!Number.isNaN(target) && target >= 1 && target <= totalPages) {
+                  handlePageChange(target);
+                  setJumpPageInput('');
+                  setIsIndexDrawerOpen(false);
+                }
+              }}
+              className="px-4 py-2.5 border-b border-[var(--border-color)] bg-black/25 flex items-center gap-2"
+            >
+              <input
+                type="number"
+                min={1}
+                max={totalPages}
+                value={jumpPageInput}
+                onChange={(e) => setJumpPageInput(e.target.value)}
+                placeholder={`Ir a pág. (1-${totalPages})`}
+                className="flex-1 bg-black/50 border border-[var(--border-color)] rounded-xl px-3 py-1.5 text-xs text-white focus:outline-none focus:border-[var(--accent-pink)]"
+              />
+              <button
+                type="submit"
+                className="px-3 py-1.5 rounded-xl bg-[var(--accent-pink)] text-black text-xs font-bold hover:opacity-90 transition"
+              >
+                Ir
+              </button>
+            </form>
+
+            {/* Tabs */}
+            <div className="px-4 pt-2.5 flex items-center gap-1.5 border-b border-[var(--border-color)] pb-2">
+              {[
+                { id: 'chapters' as const, label: 'Índice', icon: <List className="w-3.5 h-3.5" /> },
+                { id: 'search' as const, label: 'Buscar', icon: <Search className="w-3.5 h-3.5" /> },
+                { id: 'notes' as const, label: `Notas (${allBookPageNotes.length + bookBookmarks.length})`, icon: <MessageSquare className="w-3.5 h-3.5" /> }
+              ].map((tab) => (
+                <button
+                  key={tab.id}
+                  type="button"
+                  onClick={() => setIndexDrawerTab(tab.id)}
+                  className={`flex-1 py-1.5 px-2 rounded-xl text-[11px] font-bold flex items-center justify-center gap-1 transition ${
+                    indexDrawerTab === tab.id
+                      ? 'bg-[var(--accent-pink)] text-black shadow'
+                      : 'bg-black/40 text-[var(--text-muted)] hover:text-white border border-white/5'
+                  }`}
+                >
+                  {tab.icon}
+                  <span className="truncate">{tab.label}</span>
+                </button>
+              ))}
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-3.5 space-y-2">
+              {indexDrawerTab === 'chapters' && (
+                <>
+                  {book.type === 'pdf' ? (
+                    pdfOutline.length > 0 ? (
+                      pdfOutline.map((item, idx) => (
+                        <button
+                          key={`pdf-out-${idx}`}
+                          type="button"
+                          onClick={() => {
+                            handlePageChange(item.page);
+                            setIsIndexDrawerOpen(false);
+                          }}
+                          className={`w-full text-left px-3 py-2 rounded-xl border text-xs flex items-center justify-between gap-2 transition ${
+                            currentPage === item.page
+                              ? 'bg-[var(--accent-pink)]/15 border-[var(--accent-pink)] text-[var(--accent-pink)] font-bold'
+                              : 'bg-black/35 border-white/5 text-[var(--text-main)] hover:border-[var(--accent-pink)]/50'
+                          }`}
+                        >
+                          <span className="truncate">{item.title}</span>
+                          <span className="text-[10px] font-mono text-[var(--text-muted)] shrink-0">p.{item.page}</span>
+                        </button>
+                      ))
+                    ) : (
+                      <div className="text-center py-8 text-xs text-[var(--text-muted)] space-y-2">
+                        <p>Este PDF no incluye tabla de capítulos interna.</p>
+                        <p className="text-[11px] opacity-80">Usa el cuadro "Ir a pág." arriba o la pestaña "Buscar" para saltar a cualquier escena.</p>
+                      </div>
+                    )
+                  ) : epubChapters.length > 0 ? (
+                    epubChapters.map((ch) => (
+                      <button
+                        key={ch.id}
+                        type="button"
+                        onClick={() => {
+                          handlePageChange(ch.pageStart);
+                          setIsIndexDrawerOpen(false);
+                        }}
+                        className={`w-full text-left px-3 py-2 rounded-xl border text-xs flex items-center justify-between gap-2 transition ${
+                          currentPage === ch.pageStart
+                            ? 'bg-[var(--accent-pink)]/15 border-[var(--accent-pink)] text-[var(--accent-pink)] font-bold'
+                            : 'bg-black/35 border-white/5 text-[var(--text-main)] hover:border-[var(--accent-pink)]/50'
+                        }`}
+                      >
+                        <span className="truncate">{ch.title}</span>
+                        <span className="text-[10px] font-mono text-[var(--text-muted)] shrink-0">p.{ch.pageStart}</span>
+                      </button>
+                    ))
+                  ) : (
+                    <div className="text-center py-8 text-xs text-[var(--text-muted)]">
+                      No se detectaron títulos de capítulo. Usa "Ir a pág." o "Buscar".
+                    </div>
+                  )}
+                </>
+              )}
+
+              {indexDrawerTab === 'search' && (
+                <div className="space-y-2.5">
+                  <div className="relative">
+                    <Search className="w-3.5 h-3.5 absolute left-3 top-2.5 text-[var(--text-muted)]" />
+                    <input
+                      type="text"
+                      value={bookSearchQuery}
+                      onChange={(e) => setBookSearchQuery(e.target.value)}
+                      placeholder="Buscar palabra o frase en el libro..."
+                      autoFocus
+                      className="w-full bg-black/50 border border-[var(--border-color)] rounded-xl pl-8 pr-3 py-2 text-xs text-white focus:outline-none focus:border-[var(--accent-pink)]"
+                    />
+                  </div>
+
+                  {isSearchingBook && (
+                    <p className="text-[11px] text-[var(--accent-pink)] flex items-center gap-1.5 px-1">
+                      <Sparkles className="w-3 h-3 animate-spin" />
+                      {searchProgress
+                        ? `Escaneando página ${searchProgress.current} de ${searchProgress.total}...`
+                        : 'Buscando coincidencias...'}
+                    </p>
+                  )}
+
+                  {bookSearchQuery.trim().length < 2 ? (
+                    <p className="text-center py-8 text-xs text-[var(--text-muted)]">
+                      Escribe al menos 2 letras para buscar en todo el libro.
+                    </p>
+                  ) : !isSearchingBook && bookSearchResults.length === 0 ? (
+                    <p className="text-center py-8 text-xs text-[var(--text-muted)]">
+                      No se encontraron coincidencias para "{bookSearchQuery}".
+                    </p>
+                  ) : (
+                    bookSearchResults.map((hit, i) => (
+                      <button
+                        key={`search-hit-${hit.page}-${i}`}
+                        type="button"
+                        onClick={() => {
+                          handlePageChange(hit.page);
+                          setIsIndexDrawerOpen(false);
+                        }}
+                        className="w-full text-left p-2.5 rounded-xl bg-black/40 border border-white/10 hover:border-[var(--accent-pink)] transition space-y-1"
+                      >
+                        <div className="flex items-center justify-between text-[10px] font-bold text-[var(--accent-pink)]">
+                          <span>Página {hit.page}</span>
+                          <span>Ir →</span>
+                        </div>
+                        <p className="text-[11px] text-[var(--text-main)] line-clamp-2 leading-relaxed">
+                          {hit.snippet}
+                        </p>
+                      </button>
+                    ))
+                  )}
+                </div>
+              )}
+
+              {indexDrawerTab === 'notes' && (
+                <div className="space-y-3">
+                  <div>
+                    <h4 className="text-[11px] font-bold text-[var(--accent-pink)] uppercase tracking-wider mb-1.5">
+                      💬 Notas en Líneas ({allBookPageNotes.length})
+                    </h4>
+                    {allBookPageNotes.length === 0 ? (
+                      <p className="text-xs text-[var(--text-muted)] bg-black/25 rounded-xl p-3 border border-white/5">
+                        Aún no hay notas inline en este libro. Selecciona una frase mientras lees y pulsa "Nota 💬".
+                      </p>
+                    ) : (
+                      <div className="space-y-1.5">
+                        {allBookPageNotes.map((n) => (
+                          <button
+                            key={n.id}
+                            type="button"
+                            onClick={() => {
+                              handlePageChange(n.page);
+                              setIsIndexDrawerOpen(false);
+                              setViewingNote(n);
+                              setEditingNoteText(n.note);
+                              setIsEditingViewingNote(false);
+                            }}
+                            className="w-full text-left p-2.5 rounded-xl bg-black/40 border border-pink-400/25 hover:border-[var(--accent-pink)] transition space-y-1"
+                          >
+                            <div className="flex items-center justify-between text-[10px] font-bold text-[var(--accent-pink)]">
+                              <span>💬 Página {n.page}</span>
+                              <span>Abrir</span>
+                            </div>
+                            <p className="text-[11px] italic text-[var(--text-muted)] truncate">
+                              "{n.lineText}"
+                            </p>
+                            <p className="text-xs text-white line-clamp-2">
+                              {n.note}
+                            </p>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  <div>
+                    <h4 className="text-[11px] font-bold text-[var(--accent-purple)] uppercase tracking-wider mb-1.5">
+                      🔖 Marcadores ({bookBookmarks.length})
+                    </h4>
+                    {bookBookmarks.length === 0 ? (
+                      <p className="text-xs text-[var(--text-muted)] bg-black/25 rounded-xl p-3 border border-white/5">
+                        Sin marcadores guardados en este libro.
+                      </p>
+                    ) : (
+                      <div className="space-y-1.5">
+                        {bookBookmarks.map((bm) => (
+                          <button
+                            key={bm.id}
+                            type="button"
+                            onClick={() => {
+                              handlePageChange(bm.page);
+                              setIsIndexDrawerOpen(false);
+                            }}
+                            className="w-full text-left px-3 py-2 rounded-xl bg-black/40 border border-white/10 hover:border-[var(--accent-purple)] text-xs flex items-center justify-between transition"
+                          >
+                            <span className="font-semibold text-[var(--text-main)]">🔖 Página {bm.page}</span>
+                            <span className="text-[10px] text-[var(--accent-purple)]">Ir →</span>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  {bookQuotes.length > 0 && (
+                    <div>
+                      <h4 className="text-[11px] font-bold text-amber-300 uppercase tracking-wider mb-1.5">
+                        🖋️ Citas del Baúl ({bookQuotes.length})
+                      </h4>
+                      <div className="space-y-1.5">
+                        {bookQuotes.map((q) => (
+                          <button
+                            key={q.id}
+                            type="button"
+                            onClick={() => {
+                              if (q.page) handlePageChange(q.page);
+                              setIsIndexDrawerOpen(false);
+                            }}
+                            className="w-full text-left p-2.5 rounded-xl bg-black/40 border border-white/10 hover:border-amber-400/50 transition space-y-1"
+                          >
+                            <p className="text-xs italic text-[var(--text-main)] line-clamp-2">"{q.text}"</p>
+                            {q.page && (
+                              <span className="text-[10px] text-amber-300 block">Página {q.page}</span>
+                            )}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Compositor de Nota Inline (se convierte en 💬 junto a la línea al finalizar) */}
+      {noteComposer && (
+        <div
+          className="fixed inset-0 bg-black/75 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+          onClick={() => setNoteComposer(null)}
+        >
+          <div
+            className="w-full max-w-md bg-[var(--card-bg)] border-2 border-[var(--accent-pink)] rounded-2xl p-5 shadow-2xl modal-animate space-y-3"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-bold text-[var(--accent-pink)] flex items-center gap-1.5">
+                <MessageSquare className="w-4 h-4" />
+                <span>Nueva Nota junto a la línea</span>
+              </h3>
+              <button
+                type="button"
+                onClick={() => setNoteComposer(null)}
+                className="p-1 rounded-lg text-[var(--text-muted)] hover:text-white"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="bg-black/45 border border-white/10 rounded-xl p-2.5 text-xs italic text-[var(--text-muted)] line-clamp-2">
+              "{noteComposer.lineText}"
+            </div>
+
+            <textarea
+              rows={3}
+              autoFocus
+              value={noteComposer.noteText}
+              onChange={(e) => setNoteComposer({ ...noteComposer, noteText: e.target.value })}
+              placeholder="Escribe tu pensamiento o recordatorio sobre esta línea..."
+              className="w-full bg-black/50 border border-[var(--border-color)] rounded-xl p-3 text-xs text-white focus:outline-none focus:border-[var(--accent-pink)] resize-none"
+            />
+
+            <div className="flex items-center justify-end gap-2 pt-1">
+              <button
+                type="button"
+                onClick={() => setNoteComposer(null)}
+                className="px-3.5 py-2 rounded-xl text-xs font-semibold bg-white/10 hover:bg-white/20 text-white transition"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={handleSaveInlineNote}
+                className="px-4 py-2 rounded-xl text-xs font-bold bg-[var(--accent-pink)] text-black hover:opacity-90 transition flex items-center gap-1.5 shadow-lg"
+              >
+                <Check className="w-3.5 h-3.5" />
+                <span>Finalizar y colocar 💬</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Visor / Editor al tocar el ícono pequeño 💬 junto a una línea */}
+      {viewingNote && (
+        <div
+          className="fixed inset-0 bg-black/75 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+          onClick={() => {
+            setViewingNote(null);
+            setIsEditingViewingNote(false);
+          }}
+        >
+          <div
+            className="w-full max-w-md bg-[var(--card-bg)] border-2 border-[var(--accent-pink)] rounded-2xl p-5 shadow-2xl modal-animate space-y-3"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold text-[var(--accent-pink)] flex items-center gap-1.5">
+                <span>💬 Nota de línea · Pág. {viewingNote.page}</span>
+              </span>
+              <button
+                type="button"
+                onClick={() => {
+                  setViewingNote(null);
+                  setIsEditingViewingNote(false);
+                }}
+                className="p-1 rounded-lg text-[var(--text-muted)] hover:text-white"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="bg-black/45 border border-white/10 rounded-xl p-2.5 text-xs italic text-[var(--text-muted)]">
+              "{viewingNote.lineText}"
+            </div>
+
+            {isEditingViewingNote ? (
+              <textarea
+                rows={3}
+                autoFocus
+                value={editingNoteText}
+                onChange={(e) => setEditingNoteText(e.target.value)}
+                className="w-full bg-black/50 border border-[var(--border-color)] rounded-xl p-3 text-xs text-white focus:outline-none focus:border-[var(--accent-pink)] resize-none"
+              />
+            ) : (
+              <p className="text-sm text-white leading-relaxed bg-black/30 rounded-xl p-3 border border-pink-400/20 whitespace-pre-wrap">
+                {viewingNote.note}
+              </p>
+            )}
+
+            <div className="flex items-center justify-between gap-2 pt-1">
+              <button
+                type="button"
+                onClick={() => handleDeleteInlineNote(viewingNote)}
+                className="px-3 py-1.5 rounded-xl text-xs font-semibold bg-rose-500/15 border border-rose-500/35 text-rose-300 hover:bg-rose-500/30 transition flex items-center gap-1"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>Eliminar</span>
+              </button>
+
+              {isEditingViewingNote ? (
+                <button
+                  type="button"
+                  onClick={handleUpdateViewingNote}
+                  className="px-4 py-1.5 rounded-xl text-xs font-bold bg-[var(--accent-pink)] text-black hover:opacity-90 transition flex items-center gap-1"
+                >
+                  <Check className="w-3.5 h-3.5" />
+                  <span>Guardar cambios</span>
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEditingNoteText(viewingNote.note);
+                    setIsEditingViewingNote(true);
+                  }}
+                  className="px-3.5 py-1.5 rounded-xl text-xs font-bold bg-white/10 hover:bg-white/20 text-white transition flex items-center gap-1"
+                >
+                  <Edit3 className="w-3.5 h-3.5" />
+                  <span>Editar</span>
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Modo Descanso Nocturno al terminar el temporizador */}
+      {isRestReminderOpen && (
+        <div className="fixed inset-0 bg-black/85 backdrop-blur-md z-50 flex items-center justify-center p-4">
+          <div className="w-full max-w-sm bg-[var(--card-bg)] border-2 border-indigo-400/60 rounded-3xl p-6 text-center shadow-2xl modal-animate space-y-4">
+            <div className="w-12 h-12 rounded-full bg-indigo-500/20 border border-indigo-400/40 text-indigo-300 mx-auto flex items-center justify-center text-2xl">
+              🌙
+            </div>
+            <div>
+              <h3 className="text-base font-bold text-white">Hora de descansar tus ojos</h3>
+              <p className="text-xs text-[var(--text-muted)] mt-1.5 leading-relaxed">
+                Tu sesión de lectura programada ha finalizado. {sleepTimerStopMusic ? 'La música ambiental se pausó suavemente.' : ''}
+              </p>
+            </div>
+            <div className="flex items-center justify-center gap-2 pt-1">
+              <button
+                type="button"
+                onClick={() => {
+                  setIsRestReminderOpen(false);
+                  setSleepTimerRemainingSec(15 * 60);
+                }}
+                className="px-3.5 py-2 rounded-xl text-xs font-semibold bg-white/10 hover:bg-white/20 text-white transition"
+              >
+                Seguir 15 min
+              </button>
+              <button
+                type="button"
+                onClick={() => setIsRestReminderOpen(false)}
+                className="px-4 py-2 rounded-xl text-xs font-bold bg-indigo-400 text-black hover:opacity-90 transition"
+              >
+                Aceptar 🐾
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
